@@ -1,0 +1,16 @@
+/* theme.css — PHASE UI_INTEGRATION */
+:root {
+  --primary:       #22c55e;
+  --primary-dark:  #16a34a;
+  --primary-light: #dcfce7;
+  --danger:        #ef4444;
+  --danger-light:  #fee2e2;
+  --warning:       #f59e0b;
+  --bg:            #f9fafb;
+  --card:          #ffffff;
+  --text:          #111827;
+  --text-muted:    #6b7280;
+  --border:        #e5e7eb;
+  --radius:        12px;
+  --shadow:        0 1px 4px rgba(0,0,0,0.08);
+}

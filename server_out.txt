@@ -1,0 +1,965 @@
+[ENV] .env 없음 → 시스템 환경변수 사용
+[DB] SQLite 연결 완료 → F:\플라윙스_작업\농민일손_플랫폼\server\farm.db
+
+──────────────────────────────────────────
+📨 Kakao AlimTalk Status
+   Mode      : MOCK
+   Test Mode : OFF
+   Config OK : ⚠️  환경변수 미설정
+──────────────────────────────────────────
+
+[KAKAO_SERVICE] mode=MOCK template_job_match=(미설정)
+[STATIC] Serving frontend from F:\플라윙스_작업\농민일손_플랫폼\dist
+[SEED] 기존 데이터 22건 있음 → 스킵
+┌──────────────────────────────────────────────────┐
+│  🌾 농민 일손 플랫폼 서버 시작                    │
+│                                                  │
+│  로컬:     http://localhost:3002                  │
+│  네트워크:  http://192.168.45.20:3002             │
+│                                                  │
+│  📱 모바일:  같은 Wi-Fi 접속 후 네트워크 URL 사용  │
+│  🌐 외부:   ngrok http 3002                      │
+└──────────────────────────────────────────────────┘
+──────────────────────────────────────────
+📨 Kakao AlimTalk Status
+   Mode      : MOCK 🟡
+   Test Mode : OFF
+   Test URL  : GET /api/test/alarm
+──────────────────────────────────────────
+[AM 10:44:47] POST /api/auth/login
+[AUTH] 신규: P10농민(farmer) jobType=null loc=null gps=none id=user-1776390287359-0mco
+[AM 10:44:47] POST /api/jobs
+[JOB_CREATED] id=job-1776390287370-n50zs category=방제 location=경기 화성 gps=37.19,126.83 urgent=false
+[ANALYTICS] job_created jobId=job-1776390287370-n50zs userId=user-1776390287359-0mco
+[MATCH] category=방제 mode=GPS loc=경기 화성 => 1/16명 매칭
+[MATCH_ALERT] job=job-1776390287370-n50zs sending to 1 worker(s)
+[KAKAO_MOCK_SENT] to=*********9999 type=JOB_MATCH name=테스트작업자 jobType=방제 loc=경기 화성 date=2026-04-17 · 일당 130000 link=https://농민일손.kr/jobs/job-1776390287370-n50zs?source=kakao
+[AM 10:44:47] POST /api/jobs
+[JOB_CREATED] id=job-1776390287379-lzend category=예초 location=서울 gps=none urgent=false
+[ANALYTICS] job_created jobId=job-1776390287379-lzend userId=user-1776390287359-0mco
+[MATCH] category=예초 mode=GPS loc=서울 => 0/16명 매칭
+[MATCH_ALERT] no matching workers for job=job-1776390287379-lzend
+[AM 10:44:47] GET /api/jobs/map
+[MAP_DATA_FETCH] count=10 gps=off
+[AM 10:44:47] POST /api/jobs/job-1776390287370-n50zs/close
+[JOB_CLOSED] id=job-1776390287370-n50zs prevStatus=open farmer=user-1776390287359-0mco
+[ANALYTICS] job_closed jobId=job-1776390287370-n50zs userId=user-1776390287359-0mco
+[AM 10:44:47] GET /api/jobs/map
+[MAP_DATA_FETCH] count=9 gps=off
+[AM 10:44:47] POST /api/jobs
+[JOB_CREATED] id=job-1776390287398-afle0 category=수확 일손 location=경기 화성 gps=37.2,126.84 urgent=false
+[ANALYTICS] job_created jobId=job-1776390287398-afle0 userId=user-1776390287359-0mco
+[MATCH] category=수확 일손 mode=GPS loc=경기 화성 => 1/16명 매칭
+[MATCH_ALERT] job=job-1776390287398-afle0 sending to 1 worker(s)
+[KAKAO_MOCK_SENT] to=*********9902 type=JOB_MATCH name=작업자B jobType=수확 일손 loc=경기 화성 date=2026-04-17 · 일당 120000 link=https://농민일손.kr/jobs/job-1776390287398-afle0?source=kakao
+[AM 10:44:47] GET /api/jobs/map
+[MAP_DATA_FETCH] count=10 gps=on
+[AM 10:44:47] GET /api/jobs
+[JOB_LIST_VIEWED] count=15 category=all gps=off
+[AM 10:44:47] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=n/a payValue=0 score=998.2238
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=n/a payValue=0 score=998.2238
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=n/a payValue=0 score=998.2238
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=n/a payValue=0 score=-1.7762
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=n/a payValue=0 score=998.2238
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=n/a payValue=0 score=998.2237
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=n/a payValue=0 score=998.2237
+[RECOMMEND_SORT] jobId=job-1776305037126-olfs2 isToday=false distanceKm=n/a payValue=0 score=998.2237
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=n/a payValue=0 score=-1.7763
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=n/a payValue=150000 score=983.2237
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=n/a payValue=130000 score=985.2237
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=n/a payValue=150000 score=-16.7764
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=n/a payValue=0 score=-1.7764
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=n/a payValue=0 score=998.2236
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=n/a payValue=120000 score=-13.7764
+[RECOMMEND_LIST] userLat=n/a userLng=n/a count=15
+[AM 10:44:47] GET /api/admin/metrics
+[ADMIN_METRICS_FETCH] today=2026-04-17 jobsToday=9 appsToday=5 matchToday=2 closedToday=4
+[AM 10:44:47] POST /api/analytics/event
+[ANALYTICS] map_view_open jobId=- userId=-
+[AM 10:44:47] POST /api/analytics/event
+[ANALYTICS] map_marker_click jobId=- userId=-
+[AM 10:44:47] POST /api/analytics/event
+[ANALYTICS] map_gps_denied jobId=- userId=-
+[AM 10:45:25] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 10:45:25] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776305037126-olfs2 isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=15
+[AM 10:45:25] GET /api/workers/nearby
+[AM 10:45:25] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:45:45] GET /api/jobs
+[JOB_LIST_VIEWED] count=6 category=all gps=on
+[AM 10:45:49] POST /api/jobs/job-1776389538204-zd4x6/apply
+[APPLY] jobId=job-1776389538204-zd4x6 workerId=user-1776304934390-x054
+[JOB_APPLIED] jobId=job-1776389538204-zd4x6 workerId=user-1776304934390-x054
+[ANALYTICS] job_applied jobId=job-1776389538204-zd4x6 userId=user-1776304934390-x054
+[AM 10:45:59] GET /api/jobs
+[AM 10:45:59] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776305037126-olfs2 isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=15
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:45:59] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:46:00] GET /api/jobs
+[JOB_LIST_VIEWED] count=6 category=all gps=on
+[AM 10:46:03] POST /api/jobs/job-1776389538204-zd4x6/apply
+[AM 10:46:05] POST /api/jobs/job-1776389538204-zd4x6/apply
+[AM 10:46:10] GET /api/jobs
+[JOB_LIST_VIEWED] count=6 category=밭갈이 gps=on
+[AM 10:46:11] POST /api/jobs/job-1776305037126-olfs2/apply
+[APPLY] jobId=job-1776305037126-olfs2 workerId=user-1776304934390-x054
+[JOB_APPLIED] jobId=job-1776305037126-olfs2 workerId=user-1776304934390-x054
+[ANALYTICS] job_applied jobId=job-1776305037126-olfs2 userId=user-1776304934390-x054
+[AM 10:46:13] GET /api/jobs
+[JOB_LIST_VIEWED] count=6 category=예초 gps=on
+[AM 10:46:14] GET /api/jobs
+[AM 10:46:14] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776305037126-olfs2 isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=15
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:46:14] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:46:16] GET /api/jobs
+[JOB_LIST_VIEWED] count=6 category=all gps=on
+[AM 10:46:18] POST /api/jobs/job-1776389538204-zd4x6/apply
+[AM 10:46:20] GET /api/jobs
+[AM 10:46:20] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776305037126-olfs2 isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=15
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:46:20] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:46:27] GET /api/contacts/my
+[CONTACTS_VIEWED] userId=user-1776304934390-x054 count=0
+[AM 10:46:32] GET /api/jobs
+[AM 10:46:32] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776305037126-olfs2 isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=15
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:46:32] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:47:26] GET /api/jobs
+[AM 10:47:26] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776305037126-olfs2 isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=15
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:47:26] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:48:04] GET /api/jobs/my/jobs
+[JOB_LIST_MY_POSTED] userId=user-1776304934390-x054 count=1
+[AM 10:48:14] POST /api/jobs/job-1776305037126-olfs2/close
+[JOB_CLOSED] id=job-1776305037126-olfs2 prevStatus=open farmer=user-1776304934390-x054
+[ANALYTICS] job_closed jobId=job-1776305037126-olfs2 userId=user-1776304934390-x054
+[AM 10:48:14] GET /api/jobs/my/jobs
+[JOB_LIST_MY_POSTED] userId=user-1776304934390-x054 count=1
+[AM 10:48:16] GET /api/jobs
+[AM 10:48:16] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:48:17] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:49:52] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 10:49:57] POST /api/jobs/job-1776389538204-zd4x6/apply
+[AM 10:50:00] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=밭갈이 gps=on
+[AM 10:50:00] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=로터리 gps=on
+[AM 10:50:03] POST /api/jobs/job-1776389538204-zd4x6/apply
+[AM 10:50:06] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=두둑 gps=on
+[AM 10:50:07] POST /api/jobs/job-1776389538204-zd4x6/apply
+[AM 10:50:09] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=방제 gps=on
+[AM 10:50:16] POST /api/jobs/job-1776312931287-4yom9/apply
+[APPLY] jobId=job-1776312931287-4yom9 workerId=user-1776304934390-x054
+[JOB_APPLIED] jobId=job-1776312931287-4yom9 workerId=user-1776304934390-x054
+[ANALYTICS] job_applied jobId=job-1776312931287-4yom9 userId=user-1776304934390-x054
+[AM 10:50:20] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=수확 일손 gps=on
+[AM 10:50:21] POST /api/jobs/job-1776389538204-zd4x6/apply
+[AM 10:50:23] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=예초 gps=on
+[AM 10:50:44] GET /api/jobs
+[AM 10:50:44] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:50:44] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:50:47] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 10:50:53] GET /api/jobs
+[AM 10:50:53] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:50:53] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:50:55] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 10:50:57] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=밭갈이 gps=on
+[AM 10:50:58] GET /api/jobs
+[AM 10:50:58] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 10:50:58] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:53:50] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 10:53:50] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 10:53:50] GET /api/workers/nearby
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:53:50] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:54:11] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 10:54:30] POST /api/jobs/job-1776390287379-lzend/apply
+[APPLY] jobId=job-1776390287379-lzend workerId=user-1776304934390-x054
+[JOB_APPLIED] jobId=job-1776390287379-lzend workerId=user-1776304934390-x054
+[ANALYTICS] job_applied jobId=job-1776390287379-lzend userId=user-1776304934390-x054
+[AM 10:54:37] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=두둑 gps=on
+[AM 10:54:39] GET /api/jobs
+[AM 10:54:39] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 10:54:39] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 10:58:39] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 10:58:39] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 10:58:39] GET /api/workers/nearby
+[AM 10:58:39] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:00:24] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:00:24] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:00:24] GET /api/workers/nearby
+[AM 11:00:24] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:04:10] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:04:10] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:04:10] GET /api/workers/nearby
+[AM 11:04:10] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:06:59] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:06:59] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:06:59] GET /api/workers/nearby
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:06:59] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:07:11] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 11:07:14] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=예초 gps=on
+[AM 11:07:15] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=수확 일손 gps=on
+[AM 11:07:15] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=방제 gps=on
+[AM 11:07:16] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=두둑 gps=on
+[AM 11:07:16] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=로터리 gps=on
+[AM 11:07:17] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=밭갈이 gps=on
+[AM 11:07:18] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 11:07:19] GET /api/jobs
+[AM 11:07:19] GET /api/workers/nearby
+[AM 11:07:19] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:07:21] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 11:07:26] GET /api/jobs
+[AM 11:07:26] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:07:26] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:07:30] GET /api/jobs/my/applications
+[AM 11:07:32] GET /api/jobs
+[AM 11:07:32] GET /api/workers/nearby
+[AM 11:07:32] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:08:29] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:08:29] GET /api/jobs
+[AM 11:08:29] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:08:29] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:10:16] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:10:16] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:10:16] GET /api/workers/nearby
+[AM 11:10:16] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:12:17] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:12:17] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:12:17] GET /api/workers/nearby
+[AM 11:12:17] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:13:11] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:13:11] GET /api/jobs
+[AM 11:13:11] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:13:11] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:13:17] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:13:17] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:13:17] GET /api/workers/nearby
+[AM 11:13:17] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:15:00] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:15:00] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:15:00] GET /api/workers/nearby
+[AM 11:15:00] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:15:44] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:15:44] GET /api/jobs
+[AM 11:15:44] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:15:45] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:15:46] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 11:16:31] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=밭갈이 gps=on
+[AM 11:16:32] GET /api/jobs
+[AM 11:16:32] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:16:32] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:17:57] GET /
+[AM 11:17:57] GET /assets/index-IPkDThOa.css
+[AM 11:17:57] GET /assets/index-DRelN8pV.js
+[AM 11:17:58] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776312537246-h4rg
+[AM 11:17:58] GET /api/jobs
+[AM 11:17:58] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4530
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.4948
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3559
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3491
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1387
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.1884
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.1884
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4393
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4393
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4393
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.1883
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3664
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4393
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1385
+[RECOMMEND_LIST] userLat=37.8303607 userLng=127.067773 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:17:58] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776312537246-h4rg
+[AM 11:18:42] GET /
+[AM 11:18:42] GET /assets/index-DRelN8pV.js
+[AM 11:18:42] GET /assets/index-IPkDThOa.css
+[AM 11:18:42] GET /api/workers/nearby
+[AM 11:18:42] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776312537246-h4rg
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:18:42] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4519
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.4939
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3553
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3490
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1377
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.1873
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.1873
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4385
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4385
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4385
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.1872
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3661
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4385
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1375
+[RECOMMEND_LIST] userLat=37.8303562 userLng=127.067751 count=14
+[AM 11:18:42] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776312537246-h4rg
+[AM 11:24:33] GET /api/contacts/my
+[CONTACTS_VIEWED] userId=user-1776304934390-x054 count=0
+[AM 11:24:34] GET /api/jobs
+[AM 11:24:34] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:24:34] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:24:35] GET /api/jobs
+[JOB_LIST_VIEWED] count=5 category=all gps=on
+[AM 11:24:38] GET /api/jobs
+[AM 11:24:38] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:24:38] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:24:50] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:24:50] GET /api/workers/nearby
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:24:50] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:27:07] GET /
+[AM 11:27:07] GET /assets/index-DRelN8pV.js
+[AM 11:27:07] GET /assets/index-IPkDThOa.css
+[AM 11:27:07] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:27:07] GET /api/jobs
+[AM 11:27:07] GET /api/workers/nearby
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:27:07] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:27:11] POST /api/analytics/event
+[ANALYTICS] map_view_open jobId=- userId=user-1776304934390-x054
+[AM 11:27:11] GET /api/jobs/map
+[MAP_DATA_FETCH] count=10 gps=on
+[AM 11:27:19] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:27:19] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:27:19] GET /api/workers/nearby
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:27:19] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[AM 11:27:35] POST /api/analytics/event
+[ANALYTICS] map_view_open jobId=- userId=user-1776304934390-x054
+[AM 11:27:35] GET /api/jobs/map
+[MAP_DATA_FETCH] count=10 gps=on
+[AM 11:31:02] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:31:02] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:31:02] GET /api/workers/nearby
+[AM 11:31:02] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:31:04] POST /api/analytics/event
+[ANALYTICS] map_view_open jobId=- userId=user-1776304934390-x054
+[AM 11:31:04] GET /api/jobs/map
+[MAP_DATA_FETCH] count=10 gps=on
+[AM 11:32:43] POST /api/analytics/event
+[ANALYTICS] mobile_visit jobId=- userId=user-1776304934390-x054
+[AM 11:32:43] GET /api/jobs
+[RECOMMEND_SORT] jobId=job-001 isToday=false distanceKm=74.2 payValue=0 score=1072.4652
+[RECOMMEND_SORT] jobId=job-002 isToday=false distanceKm=141.3 payValue=0 score=1139.5074
+[RECOMMEND_SORT] jobId=job-003 isToday=false distanceKm=314.1 payValue=0 score=1312.3700
+[RECOMMEND_SORT] jobId=job-004 isToday=true distanceKm=93.1 payValue=0 score=91.3650
+[RECOMMEND_SORT] jobId=job-005 isToday=false distanceKm=72.9 payValue=0 score=1071.1510
+[RECOMMEND_SORT] jobId=job-1776302967257-759ua isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776303259624-jo2yv isToday=false distanceKm=74 payValue=0 score=1072.2002
+[RECOMMEND_SORT] jobId=job-1776312931287-4yom9 isToday=true distanceKm=37.2 payValue=0 score=35.4528
+[RECOMMEND_SORT] jobId=job-1776319895819-zw3xs isToday=false distanceKm=37.2 payValue=150000 score=1020.4528
+[RECOMMEND_SORT] jobId=job-1776320478648-1hiib isToday=false distanceKm=37.2 payValue=130000 score=1022.4528
+[RECOMMEND_SORT] jobId=job-1776386457177-wqf4b isToday=true distanceKm=74 payValue=150000 score=57.2001
+[RECOMMEND_SORT] jobId=job-1776389538204-zd4x6 isToday=true distanceKm=0.4 payValue=0 score=-1.3820
+[RECOMMEND_SORT] jobId=job-1776390287379-lzend isToday=false distanceKm=37.2 payValue=0 score=1035.4528
+[RECOMMEND_SORT] jobId=job-1776390287398-afle0 isToday=true distanceKm=72.9 payValue=120000 score=59.1508
+[RECOMMEND_LIST] userLat=37.830494 userLng=127.067692 count=14
+[AM 11:32:43] GET /api/workers/nearby
+[AM 11:32:43] POST /api/analytics/event
+[ANALYTICS] location_permission_granted jobId=- userId=user-1776304934390-x054
+[WORKERS_VIEWED] count=0 gps=on
+[AM 11:33:26] POST /api/analytics/event
+[ANALYTICS] map_view_open jobId=- userId=user-1776304934390-x054
+[AM 11:33:26] GET /api/jobs/map
+[MAP_DATA_FETCH] count=10 gps=on

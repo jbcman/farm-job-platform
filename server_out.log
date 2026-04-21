@@ -1,0 +1,38 @@
+[ENV] .env 없음 → 시스템 환경변수 사용
+[DB] SQLite 연결 완료 → F:\플라윙스_작업\농민일손_플랫폼\server\farm.db
+
+──────────────────────────────────────────
+📨 Kakao AlimTalk Status
+   Mode      : MOCK
+   Test Mode : OFF
+   Config OK : ⚠️  환경변수 미설정
+──────────────────────────────────────────
+
+[STATIC] Serving frontend from F:\플라윙스_작업\농민일손_플랫폼\dist
+[SEED] 기존 데이터 14건 있음 → 스킵
+┌──────────────────────────────────────────────────┐
+│  🌾 농민 일손 플랫폼 서버 시작                    │
+│                                                  │
+│  로컬:     http://localhost:3002                  │
+│  네트워크:  http://192.168.45.20:3002             │
+│                                                  │
+│  📱 모바일:  같은 Wi-Fi 접속 후 네트워크 URL 사용  │
+│  🌐 외부:   ngrok http 3002                      │
+└──────────────────────────────────────────────────┘
+──────────────────────────────────────────
+📨 Kakao AlimTalk Status
+   Mode      : MOCK 🟡
+   Test Mode : OFF
+   Test URL  : GET /api/test/alarm
+──────────────────────────────────────────
+[PM 3:11:35] POST /api/jobs
+[JOB_CREATED] id=job-1776319895819-zw3xs category=??? location=?? ??? urgent=false
+[ANALYTICS] job_created jobId=job-1776319895819-zw3xs userId=test-user-001
+[PM 3:11:35] GET /api/jobs
+[JOB_LIST_VIEWED] count=10 category=all gps=off
+[PM 3:11:35] GET /
+[PM 3:11:46] POST /api/jobs/job-1776319895819-zw3xs/apply
+[JOB_APPLIED] jobId=job-1776319895819-zw3xs workerId=worker-seed-1
+[ANALYTICS] job_applied jobId=job-1776319895819-zw3xs userId=worker-seed-1
+[PM 3:11:46] GET /api/jobs/job-1776319895819-zw3xs/applicants
+[APPLICANT_VIEWED] jobId=job-1776319895819-zw3xs count=1

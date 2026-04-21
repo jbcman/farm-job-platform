@@ -1,0 +1,495 @@
+import React from 'react';
+import { MapPin, Clock, Maximize2, Zap, CheckCircle, Play, Flag, Star, Banknote, XCircle, RefreshCw, ImageIcon } from 'lucide-react';
+import { trackClientEvent } from '../utils/api.js';
+
+/** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
+function logBehavior(job, action) {
+  try {
+    const userId = localStorage.getItem('farm-userId');
+    if (!userId) return;
+    fetch('/api/behavior', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+      body: JSON.stringify({
+        jobId:   job.id,
+        action,
+        jobType: job.category || null,
+        lat:     job.latitude  ?? null,
+        lng:     job.longitude ?? null,
+      }),
+    }).catch(() => {}); // 실패 무시
+  } catch (_) {}
+}
+
+const CATEGORY_EMOJI = {
+  '밭갈이': '🚜', '로터리': '🔄', '두둑': '⛰️',
+  '방제': '💊', '수확 일손': '🌾', '예초': '✂️',
+};
+
+// PHASE IMAGE_JOBTYPE_AI: autoJobType 아이콘 (같은 맵 재사용)
+const JOB_ICONS = CATEGORY_EMOJI;
+
+const STATUS_BADGE = {
+  matched:     { label: '연결완료',  cls: 'badge-matched',                       icon: CheckCircle },
+  in_progress: { label: '진행중',    cls: 'bg-blue-100 text-blue-700 badge',      icon: Play        },
+  done:        { label: '완료',      cls: 'bg-gray-100 text-gray-600 badge',      icon: Flag        },
+  closed:      { label: '마감',      cls: 'bg-red-50   text-red-600   badge',     icon: XCircle     },
+};
+
+/**
+ * JobCard — 작업 카드
+ *
+ * @param {object}   job
+ * @param {'worker'|'farmer'} mode
+ * @param {function} [onApply]          작업자: 지원 클릭
+ * @param {function} [onViewApplicants] 농민: 지원자 보기
+ * @param {function} [onStartJob]       농민: 작업 시작
+ * @param {function} [onCompleteJob]    농민: 작업 완료
+ * @param {function} [onWriteReview]    농민: 리뷰 작성
+ * @param {boolean}  [applied]          이미 지원 여부
+ * @param {string}   [userId]           현재 사용자 ID (오너 체크)
+ */
+export default function JobCard({
+  job, mode,
+  onApply, onViewApplicants,
+  onStartJob, onCompleteJob, onWriteReview, onCloseJob, onCopyJob,
+  onViewMap,      // UI_INTEGRATION: 위치보기 콜백
+  applied = false,
+  userId,
+}) {
+  // PHASE IMAGE_JOBTYPE_AI: autoJobType 확정 시 우선 아이콘
+  const resolvedType = job.autoJobType || job.category;
+  const emoji    = JOB_ICONS[resolvedType] || '🌱';
+  const statusBadge = STATUS_BADGE[job.status];
+  const isOwner  = userId && job.requesterId === userId;
+
+  // PHASE 26: 평수 표시 문자열 (areaPyeong 우선, fallback → areaSize+areaUnit)
+  const areaDisplay = job.areaPyeong
+    ? `${job.areaPyeong.toLocaleString()}평`
+    : (job.areaSize ? `${job.areaSize.toLocaleString()}${job.areaUnit}` : null);
+
+  // PHASE 26: 썸네일 — farmImages[0] 또는 thumbUrl 또는 imageUrl
+  const thumbUrl = job.thumbUrl
+    || (Array.isArray(job.farmImages) && job.farmImages[0])
+    || job.imageUrl
+    || null;
+
+  // PHASE IMAGE_DIFFICULTY_AI: 난이도 배지
+  const difficultyLabel = (() => {
+    const d = job.difficulty;
+    if (d == null || !Number.isFinite(d)) return null;
+    if (d >= 0.8) return { text: '고난이도', cls: 'bg-red-50 text-red-600 font-bold' };
+    if (d >= 0.5) return { text: '중난이도', cls: 'bg-orange-50 text-orange-500 font-semibold' };
+    return { text: '저난이도', cls: 'bg-green-50 text-green-600 font-semibold' };
+  })();
+
+  // UI_INTEGRATION: 거리 → 이동 시간 변환 (🚜 차량 기준 30km/h)
+  const driveMinLabel = (() => {
+    const km = job.distKm ?? job.distanceKm ?? null;
+    if (km == null || !Number.isFinite(km)) return null;
+    const min = Math.round((km / 30) * 60);
+    if (min <= 1) return '차량 1분 이내';
+    if (min <= 60) return `차량 ${min}분`;
+    return `차량 ${Math.round(min / 60)}시간`;
+  })();
+
+  // UI_INTEGRATION: 인기 표시 — 지원자 수 경쟁 심리
+  const popularLabel = (() => {
+    const n = job.applicationCount ?? 0;
+    if (n <= 0) return null;
+    if (n >= 5) return { text: `🔥 ${n}명 지원`, cls: 'text-red-600 font-bold' };
+    if (n >= 3) return { text: `👥 ${n}명 지원`, cls: 'text-orange-600 font-semibold' };
+    return { text: `${n}명 지원`, cls: 'text-gray-500' };
+  })();
+
+  // Phase 6: distanceKm 표시 (distLabel 우선, 없으면 distanceKm 직접 사용)
+  const distDisplay = job.distLabel
+    ? job.distLabel
+    : job.distanceKm != null
+      ? (job.distanceKm < 1 ? '1km 이내' : `${job.distanceKm}km`)
+      : null;
+
+  // FINAL POLISH: 거리 기반 배지 색상 — 가까울수록 강하게
+  const distKm = job.distKm ?? job.distanceKm ?? null;
+  const distBadgeStyle = distKm !== null
+    ? distKm < 1
+      ? 'bg-red-50 text-red-600 font-bold'      // 1km 이내 → 빨강
+      : distKm < 3
+        ? 'bg-orange-50 text-orange-600 font-bold' // 3km 이내 → 주황
+        : 'bg-blue-50 text-blue-600 font-semibold' // 그 외 → 파랑 (기존)
+    : 'bg-blue-50 text-blue-600 font-semibold';
+
+  // PHASE 18: 급구/오늘 카드 강조 클래스
+  const urgentBorder = job.isUrgent && job.status === 'open'
+    ? 'border-l-4 border-l-red-500'
+    : job.isToday
+      ? 'border-l-4 border-l-farm-green'
+      : '';
+
+  return (
+    <div
+      className={`card animate-fade-in ${urgentBorder}`}
+      onClick={() => logBehavior(job, 'view')}
+    >
+
+      {/* VISUAL_JOB_LITE: 카테고리 대표 이미지 배너 (imageUrl 또는 기본 이미지) */}
+      {(thumbUrl || job.imageUrl) && !job.isUrgent && (
+        <div style={{
+          width: 'calc(100% + 32px)', height: 100, overflow: 'hidden',
+          marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
+          borderRadius: '8px 8px 0 0', position: 'relative',
+        }}>
+          <img
+            src={thumbUrl || job.imageUrl}
+            alt={job.category}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={e => { e.target.parentElement.style.display = 'none'; }}
+          />
+          {/* 카테고리 아이콘 오버레이 */}
+          <span style={{
+            position: 'absolute', top: 8, left: 10,
+            fontSize: 22, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+          }}>
+            {emoji}
+          </span>
+        </div>
+      )}
+
+      {/* PHASE SCALE: 스폰서 공고 배너 (최상단, 급구보다 우선) */}
+      {job.isSponsored && job.status === 'open' && (
+        <div style={{
+          background: 'linear-gradient(90deg, #b45309 0%, #d97706 100%)',
+          color: '#fff', fontWeight: 800, fontSize: 12,
+          padding: '5px 12px', borderRadius: '8px 8px 0 0',
+          marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 5, letterSpacing: 0.3,
+        }}>
+          ⭐ 추천 공고 — 검증된 농민이 올린 공고예요
+        </div>
+      )}
+
+      {/* PHASE 18: 급구 강조 배너 — 카드 최상단 */}
+      {!job.isSponsored && job.isUrgent && job.status === 'open' && (
+        <div style={{
+          background: 'linear-gradient(90deg, #dc2626 0%, #ef4444 100%)',
+          color: '#fff', fontWeight: 800, fontSize: 12,
+          padding: '5px 12px', borderRadius: '8px 8px 0 0',
+          marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 5, letterSpacing: 0.3,
+        }}>
+          🔥 급구 — 즉시 연결 가능
+        </div>
+      )}
+
+      {/* 상단: 카테고리 + 배지 */}
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">{emoji}</span>
+          <span className="text-lg font-bold text-gray-800">{job.category}</span>
+        </div>
+        <div className="flex gap-1.5 flex-wrap justify-end">
+          {/* Phase 6: 오늘 배지 */}
+          {job.isToday && (
+            <span className="text-xs bg-farm-green text-white font-bold rounded-full px-2 py-0.5">
+              오늘
+            </span>
+          )}
+          {/* Phase 6 / FINAL POLISH: 거리 배지 — 거리에 따라 색상 강도 변화 */}
+          {distDisplay && (
+            <span className={`text-xs rounded-full px-2 py-0.5 ${distBadgeStyle}`}>
+              📏 {distDisplay}
+            </span>
+          )}
+          {/* PHASE SCALE: 유료 긴급 공고 배지 */}
+          {job.isUrgentPaid && job.status === 'open' && (
+            <span className="text-xs bg-red-500 text-white font-black rounded-full px-2 py-0.5">
+              🔥 긴급 공고
+            </span>
+          )}
+          {/* PHASE SCALE: 스폰서 배지 (배너 없을 경우 폴백) */}
+          {job.isSponsored && job.status === 'open' && (
+            <span className="text-xs bg-amber-500 text-white font-black rounded-full px-2 py-0.5">
+              ⭐ 추천
+            </span>
+          )}
+          {/* UI_INTEGRATION: 마감 임박 배지 (지원자 3명 초과) */}
+          {!job.isUrgent && !job.isUrgentPaid && job.status === 'open' && (job.applicationCount || 0) > 2 && (
+            <span className="text-xs bg-orange-100 text-orange-600 font-bold rounded-full px-2 py-0.5">
+              🔥 마감 임박
+            </span>
+          )}
+          {difficultyLabel && (
+            <span className={`text-xs rounded-full px-2 py-0.5 ${difficultyLabel.cls}`}>
+              ⚒️ {difficultyLabel.text}
+            </span>
+          )}
+          {job.isUrgent && job.status === 'open' && (
+            <span className="badge-urgent flex items-center gap-1">
+              <Zap size={12} />급구
+            </span>
+          )}
+          {statusBadge && job.status !== 'open' && (
+            <span className={`${statusBadge.cls} flex items-center gap-1`}>
+              <statusBadge.icon size={12} />
+              {statusBadge.label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 가격 — 최우선 시각 요소 (카테고리 바로 아래) */}
+      {job.pay && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <Banknote size={16} className="text-green-600 shrink-0" />
+          <span className="font-black text-green-600 text-xl leading-none">💰 {job.pay}</span>
+        </div>
+      )}
+
+      {/* 경쟁/긴급 통합 배지 — 가격 바로 아래 */}
+      {job.status === 'open' && (job.isUrgent || (job.applicationCount ?? 0) >= 3) && (
+        <div className="flex items-center gap-1.5 bg-red-50 rounded-xl px-3 py-1.5 mb-2 w-fit">
+          <span className="text-sm font-black text-red-500">
+            🔥 마감 임박
+            {(job.applicationCount ?? 0) > 0 && ` (지원 ${job.applicationCount}명)`}
+          </span>
+        </div>
+      )}
+
+      {/* 요청자 + PHASE 22 신뢰도 + BRAND_UI AI 추천 배지 */}
+      <div className="flex items-center gap-2 mb-2">
+        <p className="text-sm text-gray-500">{job.requesterName} 님의 요청</p>
+        <span className="text-xs text-indigo-500 bg-indigo-50 rounded-full px-2 py-0.5 font-semibold">
+          ✦ AI 추천
+        </span>
+        {job.avgRating != null && job.ratingCount > 0 ? (
+          <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600
+                           bg-amber-50 rounded-full px-2 py-0.5">
+            <Star size={10} className="fill-amber-400 text-amber-400" />
+            {job.avgRating.toFixed(1)}
+            <span className="text-gray-400 font-normal">({job.ratingCount}회)</span>
+            {job.ratingCount >= 10 && (
+              <span className="ml-0.5 text-red-500">🔥</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-xs bg-blue-50 text-blue-500 rounded-full px-2 py-0.5 font-medium">
+            🆕 신규
+          </span>
+        )}
+      </div>
+
+      {/* 정보 행 */}
+      <div className="flex gap-3 mb-4">
+        {/* 텍스트 정보 (flex-1) */}
+        <div className="flex-1 flex flex-col gap-1.5 text-sm text-gray-600 min-w-0">
+          {/* PHASE 23/24: 주소 항상 표시 + 좌표 없음 경고 */}
+          <div className="flex items-center gap-1.5">
+            <MapPin size={14} className="text-farm-green shrink-0" />
+            <span className={`truncate ${job.locationText ? '' : 'text-gray-400 italic'}`}>
+              {job.locationText || '위치 정보 없음'}
+            </span>
+            {distDisplay && (
+              <span className={`ml-1 text-xs shrink-0 ${
+                distKm !== null && distKm < 3 ? 'font-bold text-orange-500' : 'text-gray-400'
+              }`}>
+                ({distDisplay})
+              </span>
+            )}
+          </div>
+          {/* PHASE 24: 좌표 미등록 경고 */}
+          {!job.latitude && !job.longitude && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-600
+                            bg-amber-50 rounded-lg px-2.5 py-1.5 font-semibold">
+              ⚠️ 위치 확인 필요 — 지도 미표시
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Clock size={14} className="text-farm-green shrink-0" />
+            <span>{job.date}  {job.timeSlot}</span>
+          </div>
+          {/* PHASE 26: 평수 */}
+          {areaDisplay && (
+            <div className="flex items-center gap-1.5">
+              <Maximize2 size={14} className="text-farm-green shrink-0" />
+              <span className="font-semibold text-farm-green">{areaDisplay}</span>
+            </div>
+          )}
+          {driveMinLabel && (
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              🚜 {driveMinLabel}
+            </div>
+          )}
+        </div>
+
+        {/* PHASE 26: 밭 이미지 썸네일 */}
+        {thumbUrl ? (
+          <div className="shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-gray-100 border border-gray-100">
+            <img
+              src={thumbUrl}
+              alt="밭 사진"
+              className="w-full h-full object-cover"
+              onError={e => { e.target.style.display = 'none'; }}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {/* 메모 */}
+      {job.note && (
+        <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-3 py-2 mb-4 line-clamp-2">
+          {job.note}
+        </p>
+      )}
+
+      {/* PHASE IMAGE_JOBTYPE_AI: AI 태그 (파싱 안정화) */}
+      {(() => {
+        let tags = [];
+        try { tags = job.tags ? JSON.parse(job.tags) : []; } catch (_) { tags = []; }
+        if (!Array.isArray(tags)) tags = [];
+        if (tags.length === 0) return null;
+        return (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {tags.map(t => (
+              <span key={t} className="text-xs bg-farm-light text-farm-green rounded-full px-2 py-0.5 font-medium">
+                #{t}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* ── 작업자 모드 액션 — UI_INTEGRATION ── */}
+      {mode === 'worker' && job.status === 'open' && (
+        applied ? (
+          <button disabled className="btn btn-full bg-gray-100 text-gray-400 cursor-not-allowed">
+            신청됨 ✓
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            {/* 위치 확인: 앱 지도 + 카카오 길찾기 */}
+            {(job.latitude || job.longitude) && (
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  onClick={() => {
+                    try { trackClientEvent('map_view', { jobId: job.id }); } catch (_) {}
+                    if (onViewMap) onViewMap(job);
+                    else window.dispatchEvent(new CustomEvent('move-map', { detail: job }));
+                  }}
+                  className="btn-outline py-2.5 px-2.5 rounded-xl text-xs font-semibold
+                             flex items-center gap-1 active:scale-95 transition-transform"
+                >
+                  <MapPin size={13} /> 지도
+                </button>
+                <a
+                  href={`https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업지')},${job.latitude},${job.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => { e.stopPropagation(); try { trackClientEvent('direction_click', { jobId: job.id }); } catch (_) {} }}
+                  className="py-2.5 px-2.5 rounded-xl text-xs font-bold bg-yellow-400 text-yellow-900
+                             flex items-center gap-1 active:scale-95 transition-transform shrink-0"
+                >
+                  🧭 길찾기
+                </a>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                logBehavior(job, 'apply');
+                try { trackClientEvent('apply_click', { jobId: job.id, category: job.category }); } catch (_) {}
+                onApply?.(job);
+              }}
+              className={`flex-1 py-2.5 rounded-2xl font-black text-white text-base
+                          flex items-center justify-center gap-1.5
+                          active:scale-95 transition-transform shadow-md
+                          ${(job.isUrgent || (job.applicationCount ?? 0) >= 3)
+                            ? 'bg-red-500'
+                            : 'bg-green-600'}`}
+            >
+              {(job.isUrgent || (job.applicationCount ?? 0) >= 3)
+                ? '⚡ 지금 지원하기 (마감 임박)'
+                : '지금 지원하기'}
+            </button>
+          </div>
+        )
+      )}
+
+      {/* ── 농민 모드 액션 ── */}
+      {mode === 'farmer' && (
+        <div className="space-y-2">
+          {/* 지원자 수 + 지원자 보기 (마감 포함 항상 표시) */}
+          {job.status !== 'in_progress' && job.status !== 'done' && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                지원자 <strong className="text-farm-green">{job.applicationCount || 0}명</strong>
+              </span>
+              <button
+                onClick={() => onViewApplicants?.(job)}
+                className="btn-outline py-2 px-4 text-sm"
+              >
+                {job.status === 'closed' ? '지원자 확인' : job.status === 'matched' ? '연결 확인' : '누가 할 수 있나'}
+              </button>
+            </div>
+          )}
+
+          {/* 마감하기 버튼 (open / matched, 오너만) */}
+          {(job.status === 'open' || job.status === 'matched') && isOwner && onCloseJob && (
+            <button
+              onClick={() => onCloseJob(job)}
+              className="btn-full py-2.5 bg-red-50 text-red-600 font-bold rounded-xl border border-red-200
+                         flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+            >
+              <XCircle size={16} /> 마감하기
+            </button>
+          )}
+
+          {/* 작업 시작 버튼 (matched 상태, 오너만) */}
+          {job.status === 'matched' && isOwner && onStartJob && (
+            <button
+              onClick={() => onStartJob(job)}
+              className="btn-full py-2.5 bg-blue-500 text-white font-bold rounded-xl
+                         flex items-center justify-center gap-1.5"
+            >
+              <Play size={16} /> 작업 시작
+            </button>
+          )}
+
+          {/* 작업 완료 버튼 (in_progress 상태, 오너만) */}
+          {job.status === 'in_progress' && isOwner && onCompleteJob && (
+            <button
+              onClick={() => onCompleteJob(job)}
+              className="btn-full py-2.5 bg-farm-green text-white font-bold rounded-xl
+                         flex items-center justify-center gap-1.5"
+            >
+              <Flag size={16} /> 작업 완료
+            </button>
+          )}
+
+          {/* 리뷰 작성 버튼 (done 상태, 오너만) */}
+          {job.status === 'done' && isOwner && onWriteReview && (
+            <button
+              onClick={() => onWriteReview(job)}
+              className="btn-full py-2.5 bg-amber-400 text-white font-bold rounded-xl
+                         flex items-center justify-center gap-1.5"
+            >
+              <Star size={16} /> 후기 작성
+            </button>
+          )}
+
+          {/* 다시 등록하기 (closed 상태, 오너만) — Phase 12: 퍼널 시작 이벤트 */}
+          {job.status === 'closed' && isOwner && onCopyJob && (
+            <button
+              onClick={() => {
+                try { trackClientEvent('job_copy_started', { jobId: job.id }); } catch (_) {}
+                onCopyJob(job);
+              }}
+              className="btn-full py-2.5 bg-farm-light text-farm-green font-bold rounded-xl border border-farm-green
+                         flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+            >
+              <RefreshCw size={16} /> 다시 등록하기
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,40 @@
+@echo off
+chcp 65001 > nul
+title FARM SERVER RUNNER
+
+set PROJECT_DIR=F:\플라윙스_작업\농민일손_플랫폼\server
+set APP_NAME=farm-server
+
+echo.
+echo ==========================================
+echo   FARM SERVER RUNNER
+echo ==========================================
+echo.
+
+cd /d "%PROJECT_DIR%"
+if errorlevel 1 (
+    echo [ERROR] 서버 폴더로 이동 실패: %PROJECT_DIR%
+    pause
+    exit /b 1
+)
+
+echo [STEP] PM2 상태 확인 중...
+pm2 status | findstr /I "%APP_NAME%" > nul
+
+if %errorlevel%==0 (
+    echo [INFO] %APP_NAME% 이미 등록됨 → restart 실행
+    pm2 restart %APP_NAME%
+) else (
+    echo [INFO] %APP_NAME% 없음 → 새로 start 실행
+    pm2 start index.js --name %APP_NAME%
+)
+
+echo.
+echo [STEP] 최종 상태 확인
+pm2 status
+
+echo.
+echo [DONE] 브라우저에서 확인:
+echo http://localhost:3002/
+echo.
+pause

@@ -1,0 +1,47 @@
+@echo off
+chcp 65001 > nul
+title FARM SERVER DEPLOY
+
+set PROJECT_DIR=F:\플라윙스_작업\농민일손_플랫폼\server
+set APP_NAME=farm-server
+set PORT=3002
+
+echo.
+echo ==========================================
+echo   FARM SERVER DEPLOY
+echo ==========================================
+echo.
+
+cd /d "%PROJECT_DIR%"
+if errorlevel 1 (
+    echo [ERROR] 서버 폴더로 이동 실패: %PROJECT_DIR%
+    pause
+    exit /b 1
+)
+
+echo [STEP 1] PM2 기존 앱 정리
+pm2 delete %APP_NAME% > nul 2>&1
+
+echo [STEP 2] %PORT% 포트 점유 프로세스 확인 및 종료
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%PORT% ^| findstr LISTENING') do (
+    echo [INFO] PID %%a 종료
+    taskkill /PID %%a /F > nul 2>&1
+)
+
+echo [STEP 3] 서버 재기동
+pm2 start index.js --name %APP_NAME%
+
+if errorlevel 1 (
+    echo [ERROR] PM2 start 실패
+    pause
+    exit /b 1
+)
+
+echo [STEP 4] PM2 상태 확인
+pm2 status
+
+echo.
+echo [STEP 5] 최근 로그 20줄
+pm2 logs %APP_NAME% --lines 20
+
+pause
