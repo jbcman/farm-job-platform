@@ -492,6 +492,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               onWriteReview={setReviewJob}
               onCloseJob={myJobsMode ? handleClose : undefined}
               onCopyJob={myJobsMode ? onCopyJob : undefined}
+              userLocation={gpsLoc || loc}
             />
           </div>
         ))}

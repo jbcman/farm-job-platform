@@ -1,29 +1,33 @@
 'use strict';
 /**
- * geocodeService.js — Nominatim (OpenStreetMap) 기반 무료 지오코딩
- * API key 불필요. 한국 주소 특화 (countrycodes=kr)
+ * geocodeService.js — 지오코딩 (Kakao 우선 → Nominatim 폴백)
  *
- * Nominatim 이용 약관:
- *   - User-Agent 헤더 필수
- *   - 1초 이상 요청 간격 유지 (rate limit 초과 시 403/차단)
+ * 우선순위:
+ *   ① Kakao Local API  — KAKAO_REST_API_KEY 환경변수 설정 시 사용
+ *   ② Nominatim (OSM) — Kakao 미설정 또는 실패 시 폴백 (API key 불필요)
  *
- * 구현된 안정성 장치:
- *   ① Rate limit guard  — 최소 1초 간격 강제 (Promise 대기)
- *   ② In-memory cache   — 동일 주소 재요청 차단 (서버 재시작까지 유효)
- *   ③ 5초 타임아웃      — 외부 API 실패가 job 등록을 막지 않도록 fail-safe
+ * 안정성 장치:
+ *   - In-memory cache      (서버 재시작까지 유효, 동일 주소 재호출 차단)
+ *   - Rate limit guard     (Nominatim: 1.1초 간격 강제)
+ *   - 5초 타임아웃         (외부 API 실패가 job 등록 막지 않음)
+ *   - NaN/null 방어        (반환값 항상 { lat, lng } | null)
  *
- * 반환값: { lat, lng } | null
+ * 반환값: { lat: number, lng: number } | null
  */
 
 const https = require('https');
 
-// ─── Rate limit guard (Nominatim: 1 req/sec) ──────────────────
-let _lastCallTs = 0;
-const RATE_LIMIT_MS = 1100; // 1.1초 — 약간의 여유
+const KAKAO_KEY  = process.env.KAKAO_REST_API_KEY || '';
+const HAS_KAKAO  = !!KAKAO_KEY;
+
+console.log(`[GEOCODE] mode=${HAS_KAKAO ? 'KAKAO+NOMINATIM' : 'NOMINATIM_ONLY'}`);
 
 // ─── In-memory cache ──────────────────────────────────────────
-// key: normalized address string, value: { lat, lng } | null
 const _geoCache = new Map();
+
+// ─── Nominatim rate limit guard (1 req/sec) ───────────────────
+let _nominatimLastCallTs = 0;
+const NOMINATIM_RATE_MS  = 1100;
 
 /**
  * geocodeAddress(address)
@@ -35,86 +39,107 @@ async function geocodeAddress(address) {
 
     const key = address.trim().toLowerCase();
 
-    // ① 캐시 히트 — API 호출 없이 즉시 반환
+    // ① 캐시 히트
     if (_geoCache.has(key)) {
         const cached = _geoCache.get(key);
-        console.log(`[GEOCODE_CACHE_HIT] "${key}" → ${cached ? `(${cached.lat}, ${cached.lng})` : 'null'}`);
+        console.log(`[GEOCODE_CACHE] "${key}" → ${cached ? `(${cached.lat}, ${cached.lng})` : 'null'}`);
         return cached;
     }
 
-    // ② Rate limit — 마지막 호출로부터 1.1초 미만이면 대기
-    const now = Date.now();
-    const elapsed = now - _lastCallTs;
-    if (elapsed < RATE_LIMIT_MS) {
-        const waitMs = RATE_LIMIT_MS - elapsed;
-        console.log(`[GEOCODE_RATE_WAIT] ${waitMs}ms 대기 중...`);
-        await new Promise(res => setTimeout(res, waitMs));
+    // ② Kakao API (키 있을 때 우선)
+    if (KAKAO_KEY) {
+        const result = await _fetchKakao(address.trim());
+        if (result) {
+            _geoCache.set(key, result);
+            return result;
+        }
+        console.warn(`[GEOCODE_KAKAO_MISS] "${address}" → Nominatim 폴백`);
     }
-    _lastCallTs = Date.now();
 
-    // ③ 실제 Nominatim 요청
+    // ③ Nominatim 폴백 (rate limit 적용)
+    const now     = Date.now();
+    const elapsed = now - _nominatimLastCallTs;
+    if (elapsed < NOMINATIM_RATE_MS) {
+        await new Promise(r => setTimeout(r, NOMINATIM_RATE_MS - elapsed));
+    }
+    _nominatimLastCallTs = Date.now();
+
     const result = await _fetchNominatim(address.trim());
-
-    // ④ 결과 캐싱 (성공/실패 모두 — null도 캐싱해서 동일 주소 재시도 방지)
-    _geoCache.set(key, result);
-
+    _geoCache.set(key, result); // 실패(null)도 캐싱하여 재시도 방지
     return result;
 }
 
-/**
- * _fetchNominatim — 실제 HTTP 요청 (내부 전용)
- */
+// ─── Kakao Local API ──────────────────────────────────────────
+function _fetchKakao(address) {
+    return new Promise((resolve) => {
+        const query   = encodeURIComponent(address);
+        const options = {
+            hostname: 'dapi.kakao.com',
+            path:     `/v2/local/search/address.json?query=${query}`,
+            headers:  { Authorization: `KakaoAK ${KAKAO_KEY}` },
+        };
+
+        const req = https.get(options, (resp) => {
+            let data = '';
+            resp.on('data',  chunk => { data += chunk; });
+            resp.on('end',   () => {
+                try {
+                    const json = JSON.parse(data);
+                    const doc  = json.documents?.[0];
+                    if (!doc) { console.log(`[GEOCODE_KAKAO_EMPTY] "${address}"`); return resolve(null); }
+                    const lat = parseFloat(doc.y);
+                    const lng = parseFloat(doc.x);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return resolve(null);
+                    console.log(`[GEOCODE_KAKAO_OK] "${address}" → (${lat}, ${lng})`);
+                    resolve({ lat, lng });
+                } catch (e) {
+                    console.error('[GEOCODE_KAKAO_PARSE]', e.message);
+                    resolve(null);
+                }
+            });
+            resp.on('error', e => { console.error('[GEOCODE_KAKAO_RESP]', e.message); resolve(null); });
+        });
+
+        req.on('error', e => { console.error('[GEOCODE_KAKAO_REQ]', e.message); resolve(null); });
+        req.setTimeout(5000, () => { req.destroy(); console.warn('[GEOCODE_KAKAO_TIMEOUT]', address); resolve(null); });
+    });
+}
+
+// ─── Nominatim (OpenStreetMap) ────────────────────────────────
 function _fetchNominatim(address) {
     return new Promise((resolve) => {
         const query   = encodeURIComponent(address);
-        const url     = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=kr`;
         const options = {
-            headers: {
-                // Nominatim 필수 요구사항: 연락 가능한 User-Agent
-                'User-Agent': 'FarmHands-Platform/1.0 (jbcman01@gmail.com)',
-            },
+            hostname: 'nominatim.openstreetmap.org',
+            path:     `/search?q=${query}&format=json&limit=1&countrycodes=kr`,
+            headers:  { 'User-Agent': 'FarmHands-Platform/1.0 (jbcman01@gmail.com)' },
         };
 
-        const httpReq = https.get(url, options, (resp) => {
+        const req = https.get(options, (resp) => {
             let data = '';
-            resp.on('data',  (chunk) => { data += chunk; });
+            resp.on('data',  chunk => { data += chunk; });
             resp.on('end',   () => {
                 try {
                     const results = JSON.parse(data);
                     if (!Array.isArray(results) || results.length === 0) {
-                        console.log(`[GEOCODE_NO_RESULT] "${address}"`);
+                        console.log(`[GEOCODE_NOMINATIM_EMPTY] "${address}"`);
                         return resolve(null);
                     }
-                    const { lat, lon } = results[0];
-                    const parsedLat = parseFloat(lat);
-                    const parsedLng = parseFloat(lon);
-                    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
-                        return resolve(null);
-                    }
-                    console.log(`[GEOCODE_OK] "${address}" → (${parsedLat}, ${parsedLng})`);
-                    resolve({ lat: parsedLat, lng: parsedLng });
+                    const lat = parseFloat(results[0].lat);
+                    const lng = parseFloat(results[0].lon);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return resolve(null);
+                    console.log(`[GEOCODE_NOMINATIM_OK] "${address}" → (${lat}, ${lng})`);
+                    resolve({ lat, lng });
                 } catch (e) {
-                    console.error('[GEOCODE_PARSE_ERROR]', e.message);
+                    console.error('[GEOCODE_NOMINATIM_PARSE]', e.message);
                     resolve(null);
                 }
             });
-            resp.on('error', (e) => {
-                console.error('[GEOCODE_RESP_ERROR]', e.message);
-                resolve(null);
-            });
+            resp.on('error', e => { console.error('[GEOCODE_NOMINATIM_RESP]', e.message); resolve(null); });
         });
 
-        httpReq.on('error', (e) => {
-            console.error('[GEOCODE_REQUEST_ERROR]', e.message);
-            resolve(null);
-        });
-
-        // 5초 타임아웃 — 외부 API 실패가 job 등록을 막으면 안 됨
-        httpReq.setTimeout(5000, () => {
-            httpReq.destroy();
-            console.warn('[GEOCODE_TIMEOUT]', address);
-            resolve(null);
-        });
+        req.on('error', e => { console.error('[GEOCODE_NOMINATIM_REQ]', e.message); resolve(null); });
+        req.setTimeout(5000, () => { req.destroy(); console.warn('[GEOCODE_NOMINATIM_TIMEOUT]', address); resolve(null); });
     });
 }
 

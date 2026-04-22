@@ -113,6 +113,17 @@ router.get('/activity', auth, (req, res) => {
     }
 });
 
+// ── GET /api/admin/ops/system-status ────────────────────────────
+// 인증 없음 — 운영자 페이지가 키 없이도 시스템 상태 조회 가능
+router.get('/ops/system-status', (req, res) => {
+    const hasKakao = !!process.env.KAKAO_REST_API_KEY;
+    return res.json({
+        ok:    true,
+        kakao: { enabled: hasKakao, mode: hasKakao ? 'REAL' : 'MOCK' },
+        time:  new Date().toISOString(),
+    });
+});
+
 // ── GET /api/admin/ops/jobs ──────────────────────────────────────
 // 운영자 전용: 공고 목록 + 결제 상태 (최근 50건, pending 우선)
 router.get('/ops/jobs', auth, (req, res) => {
@@ -154,6 +165,30 @@ router.get('/ops/jobs', auth, (req, res) => {
     } catch (e) {
         console.error('[ADMIN_OPS_JOBS_ERROR]', e.message);
         return res.status(500).json({ ok: false, error: '조회 오류: ' + e.message });
+    }
+});
+
+// ── POST /api/admin/ops/close-job ───────────────────────────────
+// 운영자 전용: 공고 강제 종료 (쓰레기 데이터, 오입력 등)
+router.post('/ops/close-job', auth, (req, res) => {
+    try {
+        const { jobId } = req.body;
+        if (!jobId) return res.status(400).json({ ok: false, error: 'jobId 필요' });
+
+        const now    = new Date().toISOString();
+        const result = db.prepare(
+            "UPDATE jobs SET status = 'closed', closedAt = ? WHERE id = ?"
+        ).run(now, jobId);
+
+        if (result.changes === 0) {
+            return res.status(404).json({ ok: false, error: '공고를 찾을 수 없어요.' });
+        }
+
+        console.log(`[OPS_CLOSE_JOB] jobId=${jobId} closedAt=${now}`);
+        return res.json({ ok: true });
+    } catch (e) {
+        console.error('[OPS_CLOSE_JOB_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '처리 오류: ' + e.message });
     }
 });
 

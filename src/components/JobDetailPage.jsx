@@ -6,6 +6,7 @@ import {
 import { getJob, applyJob, getUserId, trackClientEvent } from '../utils/api.js';
 import { saveRecentJob } from '../utils/recentJobs.js';
 import { shareJobKakao, isKakaoAvailable } from '../utils/kakao.js';
+import { getMapPageUrl, getKakaoNaviLink } from '../utils/mapLink.js';
 
 const CATEGORY_EMOJI = {
   '밭갈이': '🚜', '로터리': '🔄', '두둑': '⛰️',
@@ -285,61 +286,73 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
           </div>
         </div>
 
-        {/* 🗺️ 위치 확인 + 길찾기 (GPS 있을 때만) */}
-        {(job.latitude && job.longitude) && (
-          <div className="card space-y-3">
-            <p className="text-xs font-bold text-gray-400 uppercase">위치 확인</p>
-            <div className="grid grid-cols-2 gap-2">
-              {/* 카카오맵 길찾기 */}
-              <a
-                href={`https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업지')},${job.latitude},${job.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-3 bg-yellow-400 text-yellow-900
-                           font-bold text-sm rounded-2xl active:scale-95 transition-transform shadow-sm"
-                onClick={() => trackClientEvent('nav_kakao', { jobId: job.id })}
-              >
-                🧭 카카오 길찾기
-              </a>
-              {/* 네이버 지도 길찾기 */}
-              <a
-                href={`https://map.naver.com/v5/directions/-/${job.longitude},${job.latitude},${encodeURIComponent(job.locationText || '작업지')}//car`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-3 bg-green-500 text-white
-                           font-bold text-sm rounded-2xl active:scale-95 transition-transform shadow-sm"
-                onClick={() => trackClientEvent('nav_naver', { jobId: job.id })}
-              >
-                🗺️ 네이버 길찾기
-              </a>
-            </div>
-            {/* 지도 미니 뷰어 링크 */}
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('move-map', { detail: job }))}
-              className="w-full py-2.5 border border-gray-200 text-gray-600 font-semibold text-sm
-                         rounded-xl flex items-center justify-center gap-2
-                         active:scale-95 transition-transform"
-            >
-              <MapPin size={15} className="text-farm-green" /> 앱 지도에서 보기
-            </button>
-          </div>
-        )}
+        {/* 🗺️ 위치 확인 — MAP_ACTIONS_FINAL: 2버튼 통일 */}
+        {(() => {
+          const mapUrl   = getMapPageUrl(job);
+          const naviLink = getKakaoNaviLink(job);
+          const hasCoords = !!mapUrl;
 
-        {/* GPS 없을 때 — 주소 검색 링크 */}
-        {(!job.latitude || !job.longitude) && job.locationText && (
-          <div className="card">
-            <p className="text-xs font-bold text-gray-400 uppercase mb-3">위치 확인</p>
-            <a
-              href={`https://map.kakao.com/link/search/${encodeURIComponent(job.locationText)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 py-3 bg-yellow-400 text-yellow-900
-                         font-bold text-sm rounded-2xl active:scale-95 transition-transform w-full"
-            >
-              🔍 "{job.locationText}" 검색하기
-            </a>
-          </div>
-        )}
+          return (
+            <div className="card space-y-3">
+              <p className="text-xs font-bold text-gray-400 uppercase">위치 확인</p>
+
+              {/* 주소 텍스트 */}
+              <div className="bg-gray-50 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                <MapPin size={15} className="text-farm-green shrink-0" />
+                <span className="text-sm font-medium text-gray-700">
+                  {job.locationText || '주소 정보 없음'}
+                </span>
+              </div>
+
+              {/* 액션 버튼 2개 */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* 📍 지도에서 보기 → MapPage */}
+                <button
+                  onClick={() => {
+                    if (!mapUrl) return;
+                    trackClientEvent('map_view', { jobId: job.id });
+                    window.location.href = mapUrl;
+                  }}
+                  disabled={!hasCoords}
+                  className={`flex items-center justify-center gap-2 py-3 font-bold text-sm rounded-2xl
+                              active:scale-95 transition-transform
+                              ${hasCoords
+                                ? 'bg-farm-green text-white shadow-sm'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                >
+                  📍 지도에서 보기
+                </button>
+
+                {/* 🧭 카카오 길찾기 */}
+                {naviLink ? (
+                  <a
+                    href={naviLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 py-3 bg-yellow-400 text-yellow-900
+                               font-bold text-sm rounded-2xl active:scale-95 transition-transform shadow-sm"
+                    onClick={() => trackClientEvent('nav_kakao', { jobId: job.id })}
+                  >
+                    🧭 길찾기
+                  </a>
+                ) : (
+                  /* 좌표 없음 — 주소 검색 폴백 */
+                  job.locationText && (
+                    <a
+                      href={`https://map.kakao.com/link/search/${encodeURIComponent(job.locationText)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 py-3 bg-yellow-400 text-yellow-900
+                                 font-bold text-sm rounded-2xl active:scale-95 transition-transform shadow-sm"
+                    >
+                      🔍 검색
+                    </a>
+                  )
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* 메모/설명 */}
         {job.note && (

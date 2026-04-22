@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Phone, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { Phone, CheckCircle, RefreshCw, Loader2, XCircle } from 'lucide-react';
 
 /**
  * OperatorPage — MVP 운영자 페이지
@@ -29,12 +29,14 @@ const PAY_LABEL = {
 };
 
 export default function OperatorPage() {
-  const [summary,  setSummary]  = useState(null);
-  const [jobs,     setJobs]     = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [marking,  setMarking]  = useState(null); // jobId being marked
-  const [error,    setError]    = useState('');
-  const [lastRefresh, setLastRefresh] = useState(null);
+  const [summary,      setSummary]      = useState(null);
+  const [jobs,         setJobs]         = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [marking,      setMarking]      = useState(null); // jobId being marked (pay)
+  const [closing,      setClosing]      = useState(null); // jobId being closed
+  const [error,        setError]        = useState('');
+  const [lastRefresh,  setLastRefresh]  = useState(null);
+  const [systemStatus, setSystemStatus] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +58,14 @@ export default function OperatorPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // 시스템 상태 (Kakao API 연결 여부) 확인
+  useEffect(() => {
+    fetch('/api/admin/ops/system-status')
+      .then(r => r.json())
+      .then(d => { if (d.ok) setSystemStatus(d); })
+      .catch(() => {});
+  }, []);
+
   async function markPaid(jobId) {
     setMarking(jobId);
     try {
@@ -74,6 +84,28 @@ export default function OperatorPage() {
       alert('오류: ' + e.message);
     } finally {
       setMarking(null);
+    }
+  }
+
+  async function closeJob(jobId, category) {
+    const label = category || jobId;
+    if (!window.confirm(`"${label}" 공고를 닫을까요?\n(복구 불가 — 신중하게 눌러주세요)`)) return;
+    setClosing(jobId);
+    try {
+      const adminKey = ADMIN_KEY || prompt('관리자 키를 입력하세요') || '';
+      const res  = await fetch('/api/admin/ops/close-job', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ jobId, adminKey }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '처리 실패');
+      // 로컬 상태 즉시 반영
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'closed' } : j));
+    } catch (e) {
+      alert('오류: ' + e.message);
+    } finally {
+      setClosing(null);
     }
   }
 
@@ -127,6 +159,22 @@ export default function OperatorPage() {
         </div>
       )}
 
+      {/* Kakao API 상태 뱃지 */}
+      {systemStatus && (
+        <div className="mx-4 mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl border bg-white">
+          <span className="text-xs text-gray-500 font-medium">Kakao API</span>
+          {systemStatus.kakao.enabled ? (
+            <span className="ml-auto flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
+              ● REAL <span className="font-normal text-green-500">실제 경로</span>
+            </span>
+          ) : (
+            <span className="ml-auto flex items-center gap-1.5 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5">
+              ● MOCK <span className="font-normal text-amber-500">거리 추정</span>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 에러 */}
       {error && (
         <div className="mx-4 mt-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
@@ -147,6 +195,8 @@ export default function OperatorPage() {
           const statusInfo = STATUS_LABEL[job.status] || { text: job.status, cls: 'bg-gray-100 text-gray-500' };
           const payInfo    = PAY_LABEL[job.payStatus]  || PAY_LABEL['none'];
           const isMarking  = marking === job.id;
+          const isClosing  = closing === job.id;
+          const isClosed   = job.status === 'closed' || job.status === 'completed';
 
           return (
             <div
@@ -189,7 +239,7 @@ export default function OperatorPage() {
                 </span>
               </div>
 
-              {/* 버튼 행 */}
+              {/* 버튼 행 — 결제완료 | 전화하기 | 닫기 */}
               <div className="flex gap-2">
                 {/* 결제 완료 버튼: payStatus가 pending일 때만 활성 */}
                 <button
@@ -204,7 +254,7 @@ export default function OperatorPage() {
                   {isMarking
                     ? <Loader2 size={14} className="animate-spin" />
                     : <CheckCircle size={14} />}
-                  {job.payStatus === 'paid' ? '결제 완료됨' : '✅ 결제완료'}
+                  {job.payStatus === 'paid' ? '완료됨' : '✅ 결제완료'}
                 </button>
 
                 {/* 전화하기 버튼 */}
@@ -217,7 +267,7 @@ export default function OperatorPage() {
                                        text-sm font-bold bg-blue-50 text-blue-600 border border-blue-200
                                        active:scale-95 transition-transform">
                       <Phone size={14} />
-                      📞 전화하기
+                      전화
                     </button>
                   </a>
                 ) : (
@@ -230,6 +280,23 @@ export default function OperatorPage() {
                     번호 없음
                   </button>
                 )}
+
+                {/* 공고 닫기 버튼: 이미 closed/completed면 비활성 */}
+                <button
+                  onClick={() => closeJob(job.id, job.category)}
+                  disabled={isClosed || isClosing}
+                  className={`flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-sm font-bold
+                    transition-all active:scale-95
+                    ${isClosed
+                      ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                      : 'bg-red-50 text-red-500 border border-red-200 hover:bg-red-100'}`}
+                  title="공고 강제 종료"
+                >
+                  {isClosing
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <XCircle size={14} />}
+                  {isClosed ? '종료됨' : '닫기'}
+                </button>
               </div>
             </div>
           );

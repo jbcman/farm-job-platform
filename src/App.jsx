@@ -13,6 +13,7 @@ import JobMapView            from './components/JobMapView.jsx';
 import MyApplicationsPage   from './components/MyApplicationsPage.jsx';
 import PayResultPage         from './components/PayResultPage.jsx';
 import OperatorPage          from './components/OperatorPage.jsx';
+import MapPage               from './pages/MapPage.jsx';
 import { getUserId, trackClientEvent, getNotifications } from './utils/api.js';
 import { getOrCreateUser } from './utils/userProfile.js';
 
@@ -45,6 +46,11 @@ function isAdminPath() {
 /** /ops 경로 감지 — MVP 운영자 페이지 */
 function isOpsPath() {
   return window.location.pathname.startsWith('/ops');
+}
+
+/** /map 경로 감지 — 작업 위치 단건 지도 */
+function isMapDetailPath() {
+  return window.location.pathname.startsWith('/map');
 }
 
 /** PHASE SCALE+: 결제 결과 경로 감지 */
@@ -99,6 +105,11 @@ export default function App() {
         <OperatorPage />
       </div>
     );
+  }
+
+  // 작업 위치 지도: /map?lat=&lng=&title= (로그인 게이트 우회 — 공유 링크 대비)
+  if (isMapDetailPath()) {
+    return <MapPage />;
   }
 
   // PHASE SCALE+: 결제 결과 페이지 (토스 리다이렉트 복귀)

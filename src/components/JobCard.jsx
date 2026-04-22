@@ -1,6 +1,9 @@
 import React from 'react';
 import { MapPin, Clock, Maximize2, Zap, CheckCircle, Play, Flag, Star, Banknote, XCircle, RefreshCw, ImageIcon } from 'lucide-react';
 import { trackClientEvent } from '../utils/api.js';
+import { formatDistance } from '../utils/formatDistance.js';
+import { formatDriveTime } from '../utils/formatDriveTime.js';
+import { getMapPageUrl, getKakaoNaviLink } from '../utils/mapLink.js';
 
 /** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
 function logBehavior(job, action) {
@@ -53,9 +56,11 @@ export default function JobCard({
   job, mode,
   onApply, onViewApplicants,
   onStartJob, onCompleteJob, onWriteReview, onCloseJob, onCopyJob,
-  onViewMap,      // UI_INTEGRATION: 위치보기 콜백
+  onViewMap,        // UI_INTEGRATION: 위치보기 콜백
+  onViewDetail,     // 카드 클릭 시 상세 이동 콜백
   applied = false,
   userId,
+  userLocation,     // DISTANCE_FIX: { lat, lng } | null — 프론트 폴백 거리 계산용
 }) {
   // PHASE IMAGE_JOBTYPE_AI: autoJobType 확정 시 우선 아이콘
   const resolvedType = job.autoJobType || job.category;
@@ -83,15 +88,8 @@ export default function JobCard({
     return { text: '저난이도', cls: 'bg-green-50 text-green-600 font-semibold' };
   })();
 
-  // UI_INTEGRATION: 거리 → 이동 시간 변환 (🚜 차량 기준 30km/h)
-  const driveMinLabel = (() => {
-    const km = job.distKm ?? job.distanceKm ?? null;
-    if (km == null || !Number.isFinite(km)) return null;
-    const min = Math.round((km / 30) * 60);
-    if (min <= 1) return '차량 1분 이내';
-    if (min <= 60) return `차량 ${min}분`;
-    return `차량 ${Math.round(min / 60)}시간`;
-  })();
+  // PHASE DRIVE_TIME V2: Kakao 실제 경로 우선, distKm 추정 폴백
+  const driveMinLabel = formatDriveTime(job);
 
   // UI_INTEGRATION: 인기 표시 — 지원자 수 경쟁 심리
   const popularLabel = (() => {
@@ -102,22 +100,18 @@ export default function JobCard({
     return { text: `${n}명 지원`, cls: 'text-gray-500' };
   })();
 
-  // Phase 6: distanceKm 표시 (distLabel 우선, 없으면 distanceKm 직접 사용)
-  const distDisplay = job.distLabel
-    ? job.distLabel
-    : job.distanceKm != null
-      ? (job.distanceKm < 1 ? '1km 이내' : `${job.distanceKm}km`)
-      : null;
+  // DISTANCE_FIX: formatDistance — NaN/null 완전 방어, 서버값 우선, 클라이언트 폴백
+  const distDisplay = formatDistance(job, userLocation);
 
-  // FINAL POLISH: 거리 기반 배지 색상 — 가까울수록 강하게
-  const distKm = job.distKm ?? job.distanceKm ?? null;
+  // DISTANCE_FIX: 거리 배지 색상 (실제 km값 기준)
+  const distKm = (job.distKm != null && Number.isFinite(job.distKm)) ? job.distKm : null;
   const distBadgeStyle = distKm !== null
     ? distKm < 1
-      ? 'bg-red-50 text-red-600 font-bold'      // 1km 이내 → 빨강
+      ? 'bg-red-50 text-red-600 font-bold'        // 1km 이내 → 빨강
       : distKm < 3
         ? 'bg-orange-50 text-orange-600 font-bold' // 3km 이내 → 주황
-        : 'bg-blue-50 text-blue-600 font-semibold' // 그 외 → 파랑 (기존)
-    : 'bg-blue-50 text-blue-600 font-semibold';
+        : 'bg-blue-50 text-blue-600 font-semibold' // 그 외 → 파랑
+    : 'bg-blue-50 text-blue-600 font-medium';      // 거리 미확인 → 연파랑
 
   // PHASE 18: 급구/오늘 카드 강조 클래스
   const urgentBorder = job.isUrgent && job.status === 'open'
@@ -126,10 +120,31 @@ export default function JobCard({
       ? 'border-l-4 border-l-farm-green'
       : '';
 
+  // STEP 1: 지도 버튼 클릭 핸들러 — 카드 click 이벤트와 완전 분리
+  const handleMapClick = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log('🔥 MAP BUTTON CLICKED', { id: job.id, lat: job.latitude, lng: job.longitude });
+    const url = getMapPageUrl(job);
+    console.log('🔥 MAP URL:', url);
+    try { trackClientEvent('map_view', { jobId: job.id }); } catch (_) {}
+    if (!url) {
+      alert('📍 위치 정보가 없어 지도를 열 수 없습니다');
+      return;
+    }
+    window.location.assign(url);
+  };
+
   return (
     <div
       className={`card animate-fade-in ${urgentBorder}`}
-      onClick={() => logBehavior(job, 'view')}
+      onClick={(e) => {
+        // 버튼/링크 클릭이면 카드 클릭 완전 무시 (통합 셀렉터)
+        if (e.target.closest('button, a')) return;
+        console.log('📦 CARD CLICK', job.id);
+        logBehavior(job, 'view');
+        onViewDetail && onViewDetail(job);
+      }}
     >
 
       {/* VISUAL_JOB_LITE: 카테고리 대표 이미지 배너 (imageUrl 또는 기본 이미지) */}
@@ -296,8 +311,8 @@ export default function JobCard({
               </span>
             )}
           </div>
-          {/* PHASE 24: 좌표 미등록 경고 */}
-          {!job.latitude && !job.longitude && (
+          {/* DISTANCE_FIX: 좌표 미등록 경고 (null-safe) */}
+          {(!Number.isFinite(job.latitude) || !Number.isFinite(job.longitude)) && (
             <div className="flex items-center gap-1.5 text-xs text-amber-600
                             bg-amber-50 rounded-lg px-2.5 py-1.5 font-semibold">
               ⚠️ 위치 확인 필요 — 지도 미표시
@@ -316,7 +331,7 @@ export default function JobCard({
           )}
           {driveMinLabel && (
             <div className="flex items-center gap-1 text-xs text-gray-500">
-              🚜 {driveMinLabel}
+              {driveMinLabel}
             </div>
           )}
         </div>
@@ -366,32 +381,51 @@ export default function JobCard({
           </button>
         ) : (
           <div className="flex gap-2">
-            {/* 위치 확인: 앱 지도 + 카카오 길찾기 */}
-            {(job.latitude || job.longitude) && (
-              <div className="flex gap-1.5 shrink-0">
-                <button
-                  onClick={() => {
-                    try { trackClientEvent('map_view', { jobId: job.id }); } catch (_) {}
-                    if (onViewMap) onViewMap(job);
-                    else window.dispatchEvent(new CustomEvent('move-map', { detail: job }));
-                  }}
-                  className="btn-outline py-2.5 px-2.5 rounded-xl text-xs font-semibold
-                             flex items-center gap-1 active:scale-95 transition-transform"
-                >
-                  <MapPin size={13} /> 지도
-                </button>
-                <a
-                  href={`https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업지')},${job.latitude},${job.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => { e.stopPropagation(); try { trackClientEvent('direction_click', { jobId: job.id }); } catch (_) {} }}
-                  className="py-2.5 px-2.5 rounded-xl text-xs font-bold bg-yellow-400 text-yellow-900
-                             flex items-center gap-1 active:scale-95 transition-transform shrink-0"
-                >
-                  🧭 길찾기
-                </a>
-              </div>
-            )}
+            {/* MAP_PAGE: 지도 보기 + 카카오 길찾기 */}
+            {(() => {
+              const naviLink = getKakaoNaviLink(job);
+
+              return (
+                <div className="flex gap-1.5 shrink-0">
+                  {/* 🧪 임시 테스트 버튼 — 이벤트 발화 확인용 */}
+                  <button
+                    onClick={() => {
+                      alert('TEST CLICK');
+                      console.log('🧪 TEST BUTTON WORKING', job.id);
+                    }}
+                    style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer',
+                             fontSize: 10, padding: '2px 6px', background: '#fbbf24', border: 'none',
+                             borderRadius: 6, fontWeight: 700 }}
+                  >
+                    TEST
+                  </button>
+
+                  {/* 📍 지도 → handleMapClick (카드 이벤트와 완전 분리) */}
+                  <button
+                    onClick={handleMapClick}
+                    style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer' }}
+                    className="btn-outline py-2.5 px-2.5 rounded-xl text-xs font-semibold
+                               flex items-center gap-1 active:scale-95 transition-transform"
+                  >
+                    <MapPin size={13} /> 지도
+                  </button>
+
+                  {/* 🧭 길찾기 → 카카오맵 */}
+                  {naviLink && (
+                    <a
+                      href={naviLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => { e.stopPropagation(); try { trackClientEvent('direction_click', { jobId: job.id }); } catch (_) {} }}
+                      className="py-2.5 px-2.5 rounded-xl text-xs font-bold bg-yellow-400 text-yellow-900
+                                 flex items-center gap-1 active:scale-95 transition-transform shrink-0"
+                    >
+                      🧭 길찾기
+                    </a>
+                  )}
+                </div>
+              );
+            })()}
             <button
               onClick={() => {
                 logBehavior(job, 'apply');
@@ -416,6 +450,18 @@ export default function JobCard({
       {/* ── 농민 모드 액션 ── */}
       {mode === 'farmer' && (
         <div className="space-y-2">
+          {/* 지도 버튼 — 농민도 자기 밭 위치 확인 가능 (handleMapClick 공유) */}
+          <button
+            onClick={handleMapClick}
+            style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer' }}
+            className="btn-full py-2 rounded-xl text-sm font-semibold
+                       flex items-center justify-center gap-1.5
+                       bg-green-50 text-green-700 border border-green-200
+                       active:scale-95 transition-transform"
+          >
+            <MapPin size={14} /> 📍 내 밭 지도 보기
+          </button>
+
           {/* 지원자 수 + 지원자 보기 (마감 포함 항상 표시) */}
           {job.status !== 'in_progress' && job.status !== 'done' && (
             <div className="flex items-center justify-between">

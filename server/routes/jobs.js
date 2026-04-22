@@ -17,6 +17,7 @@ const { checkAndAutoSelect }           = require('../services/autoSelect');
 const { getCallInfo }                  = require('../services/callService');
 const { tryFireReminder }              = require('../services/reminderRecovery');
 const { geocodeAddress }               = require('../services/geocodeService');
+const { getDriveTime }                 = require('../services/directionService');
 const { getDefaultImage }              = require('../utils/jobImages');
 const { estimateDifficulty }           = require('../services/imageDifficultyService');
 const { classifyImage }                = require('../services/imageJobTypeService');
@@ -34,6 +35,13 @@ function newId(prefix) {
 }
 
 /** DB row → JS object (정수 Boolean 정규화) */
+/** 좌표 파싱 헬퍼 — null/''/NaN/string 모두 방어, 실제 좌표만 number로 반환 */
+function _parseCoord(v) {
+    if (v == null || v === '') return null;      // null / undefined / 빈 문자열
+    const n = Number(v);
+    return Number.isFinite(n) && n !== 0 ? n : null; // 0 좌표는 무효 처리
+}
+
 function normalizeJob(row) {
     if (!row) return null;
     return {
@@ -41,6 +49,9 @@ function normalizeJob(row) {
         isUrgent:     !!row.isUrgent,
         autoSelected: !!row.autoSelected,
         isUrgentPaid: !!row.isUrgentPaid,
+        // DISTANCE_FIX: 좌표 명시적 노출 (null/빈문자열/NaN 완전 방어 + string→number 변환)
+        latitude:  _parseCoord(row.latitude),
+        longitude: _parseCoord(row.longitude),
     };
 }
 
@@ -84,16 +95,26 @@ function parseFarmImages(raw) {
 /** 작업 응답 포맷 (거리 정보 + PHASE 22 신뢰도 + PHASE 26 밭 정보 포함) */
 function jobView(job, opts = {}) {
     const { userLat, userLon } = opts;
-    const dist = (userLat && userLon)
+
+    // DISTANCE_FIX: 좌표 없거나 NaN이면 거리 계산 금지
+    const canCalcDist = (
+        userLat && userLon &&
+        job.latitude  != null && Number.isFinite(job.latitude)  &&
+        job.longitude != null && Number.isFinite(job.longitude)
+    );
+    const dist = canCalcDist
         ? distanceKm(userLat, userLon, job.latitude, job.longitude)
         : null;
+    // NaN 방어 (Haversine이 NaN 반환 시 null 처리)
+    const distSafe = (dist != null && Number.isFinite(dist)) ? dist : null;
+
     const { avgRating, ratingCount } = getRequesterRating(job.requesterId);
     const farmImages = parseFarmImages(job.farmImages);
     return {
         ...job,
         applicationCount: appCountForJob(job.id),
-        distKm:      dist !== null ? Math.round(dist * 10) / 10 : null,
-        distLabel:   dist !== null ? distLabel(dist) : null,
+        distKm:      distSafe !== null ? Math.round(distSafe * 10) / 10 : null,
+        distLabel:   distSafe !== null ? distLabel(distSafe) : null,
         avgRating,
         ratingCount,
         // PHASE 26
@@ -535,10 +556,40 @@ router.get('/map', (req, res) => {
 });
 
 // ─── GET /api/jobs/:id ────────────────────────────────────────
-router.get('/:id', (req, res) => {
-    const row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
-    if (!row) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
-    return res.json({ ok: true, job: jobView(normalizeJob(row)) });
+// PHASE DRIVE_TIME V2: 단건 상세 조회 — 실제 경로 이동시간 포함 (async)
+router.get('/:id', async (req, res) => {
+    try {
+        const row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
+        if (!row) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+        const job = jobView(normalizeJob(row));
+
+        // 사용자 위치 (query: ?lat=&lon=)
+        const userLat = parseFloat(req.query.lat) || null;
+        const userLon = parseFloat(req.query.lon) || null;
+
+        // 실제 경로 이동시간 — Kakao API 키 없거나 좌표 없으면 null (fail-safe)
+        let driveMin    = null;
+        let driveSource = 'estimate'; // 'kakao' | 'estimate'
+        if (
+            userLat && userLon &&
+            Number.isFinite(job.latitude) && Number.isFinite(job.longitude)
+        ) {
+            const kakaoMin = await getDriveTime(
+                { lat: userLat, lng: userLon },
+                { lat: job.latitude, lng: job.longitude }
+            );
+            if (kakaoMin != null) {
+                driveMin    = kakaoMin;
+                driveSource = 'kakao';
+            }
+        }
+
+        return res.json({ ok: true, job: { ...job, driveMin, driveSource } });
+    } catch (e) {
+        console.error('[JOB_DETAIL_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '상세 조회 중 오류가 발생했어요.' });
+    }
 });
 
 // ─── POST /api/jobs/:id/apply ─────────────────────────────────
