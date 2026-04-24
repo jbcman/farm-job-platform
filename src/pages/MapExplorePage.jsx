@@ -47,15 +47,22 @@ function fmtDist(km) {
 }
 
 // ── 작업 마커 아이콘 ───────────────────────────────────────────
-function makeJobIcon(isToday, isUrgent) {
-  const bg    = isUrgent ? '#dc2626' : isToday ? '#16a34a' : '#2563eb';
-  const emoji = isUrgent ? '🔥' : '🌾';
+function makeJobIcon(isToday, isUrgent, isSponsored) {
+  // 스폰서: 황금 ⭐  /  긴급: 빨강 🔥  /  오늘: 초록 🌾  /  기본: 파랑 🌾
+  const bg    = isSponsored ? '#d97706'
+              : isUrgent    ? '#dc2626'
+              : isToday     ? '#16a34a'
+              :               '#2563eb';
+  const emoji = isSponsored ? '⭐' : isUrgent ? '🔥' : '🌾';
+  const ring  = isSponsored ? '3px solid #fef08a' : '2px solid #fff';
+  const glow  = isSponsored ? '0 0 0 2px #fbbf24, 0 2px 8px rgba(217,119,6,.55)'
+                            : '0 2px 6px rgba(0,0,0,.4)';
   return L.divIcon({
     html: `<div style="
       background:${bg};color:#fff;font-size:15px;
       width:34px;height:34px;border-radius:50%;
       display:flex;align-items:center;justify-content:center;
-      border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);
+      border:${ring};box-shadow:${glow};
     ">${emoji}</div>`,
     className: '', iconSize: [34, 34], iconAnchor: [17, 17],
   });
@@ -92,7 +99,7 @@ export default function MapExplorePage() {
 
       data.markers.forEach(job => {
         if (job.lat == null || job.lng == null) return;
-        const marker = L.marker([job.lat, job.lng], { icon: makeJobIcon(job.isToday, job.isUrgent) });
+        const marker = L.marker([job.lat, job.lng], { icon: makeJobIcon(job.isToday, job.isUrgent, job.isSponsored) });
         marker.addTo(map);
         marker.on('click', () => setSelected(job));
         markersRef.current.push(marker);
@@ -242,13 +249,24 @@ export default function MapExplorePage() {
             {/* 작업명 */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: '#166534' }}>
-                {selected.isUrgent ? '🔥' : '🌾'} {selected.category || '작업'}
+                {selected.isSponsored ? '⭐' : selected.isUrgent ? '🔥' : '🌾'} {selected.category || '작업'}
               </p>
               <button
                 onClick={() => setSelected(null)}
                 style={{ background: 'none', border: 'none', fontSize: 18, color: '#9ca3af', cursor: 'pointer', lineHeight: 1 }}
               >✕</button>
             </div>
+            {/* 스폰서 배지 */}
+            {selected.isSponsored && (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                background: '#fffbeb', border: '1px solid #fbbf24',
+                borderRadius: 9999, padding: '3px 10px', marginBottom: 10,
+                fontSize: 12, fontWeight: 800, color: '#92400e',
+              }}>
+                ⭐ 스폰서 · AI 추천 {selected.aiScore ?? '-'}점
+              </div>
+            )}
 
             {/* 메타 */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
