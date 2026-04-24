@@ -471,8 +471,8 @@ export default function JobCard({
             >
               <MapPin size={15} /> 지도
             </button>
-          </div>{/* end flex gap-2 buttons */}
-          </div>{/* end mt-2 wrapper */}
+          </div>
+          </div>
         )
       )}
 
