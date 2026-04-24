@@ -21,6 +21,8 @@ const { getDriveTime }                 = require('../services/directionService')
 const { getDefaultImage }              = require('../utils/jobImages');
 const { estimateDifficulty }           = require('../services/imageDifficultyService');
 const { classifyImage }                = require('../services/imageJobTypeService');
+const { sortJobs: aiSortJobs }        = require('../services/recommendService');
+const { findNearestWorkers }          = require('../services/matchService');
 // autoMatchService 통합 완료 — matchingService로 일원화됨
 
 const router = express.Router();
@@ -460,6 +462,31 @@ router.get('/', (req, res) => {
     return res.json({ ok: true, jobs: ranked });
 });
 
+// ─── GET /api/jobs/recommended — PHASE_AI_MATCHING_MAP_V1 ────
+// AI 가중치 추천: dist 60% + pay 20% + recency 20%
+// ?lat=&lng=  GPS 좌표 (선택 — 없으면 pay+recency만)
+router.get('/recommended', (req, res) => {
+    const { lat, lng } = req.query;
+    const uLat = lat ? parseFloat(lat) : null;
+    const uLng = lng ? parseFloat(lng) : null;
+    const user = (uLat && isFinite(uLat) && uLng && isFinite(uLng))
+        ? { lat: uLat, lng: uLng }
+        : null;
+
+    const rows = db.prepare("SELECT * FROM jobs WHERE status = 'open'").all().map(normalizeJob);
+    const sorted = aiSortJobs(rows, user);
+
+    const result = sorted.map(j => ({
+        ...jobView(j, { userLat: user?.lat, userLon: user?.lng }),
+        _aiScore: j._aiScore,
+        distKm:   j.distKm,
+        payValue: j.payValue,
+    }));
+
+    console.log(`[RECOMMENDED] lat=${uLat ?? 'n/a'} lng=${uLng ?? 'n/a'} count=${result.length}`);
+    return res.json({ ok: true, jobs: result, count: result.length });
+});
+
 // ─── GET /api/jobs/nearby — PHASE NEARBY_MATCH ───────────────
 // 사용자 위치 기준 반경 N km 내 open 일자리 (JS Haversine — SQLite trig 없음)
 router.get('/nearby', (req, res) => {
@@ -553,6 +580,31 @@ router.get('/map', (req, res) => {
 
     console.log(`[MAP_DATA_FETCH] count=${markers.length} gps=${userLat ? 'on' : 'off'}`);
     return res.json({ ok: true, markers });
+});
+
+// ─── GET /api/jobs/:id/match — PHASE_AI_MATCHING_MAP_V1 ──────
+// 작업 기준 가장 가까운 작업자 TOP 5
+router.get('/:id/match', (req, res) => {
+    const row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    const job = normalizeJob(row);
+
+    // 좌표 있는 작업자(users role='worker') 조회
+    const workers = db.prepare(
+        "SELECT id, name, lat, lng, phone, categories FROM users WHERE role = 'worker' AND lat IS NOT NULL AND lng IS NOT NULL"
+    ).all();
+
+    const matches = findNearestWorkers(job, workers, 5);
+    return res.json({
+        ok: true,
+        jobId:   job.id,
+        matches: matches.map(m => ({
+            workerId: m.worker.id,
+            name:     m.worker.name,
+            phone:    m.worker.phone,
+            distKm:   m.distKm,
+        })),
+    });
 });
 
 // ─── GET /api/jobs/:id ────────────────────────────────────────
@@ -736,6 +788,27 @@ router.get('/:id/contact', (req, res) => {
         phoneFull: farmer.phone,
         noPhone: false,
     });
+});
+
+// ─── POST /api/jobs/:id/contact — ACTION_BUTTON_SIMPLIFY_V2 ───
+// 연락 시도 로그: contactCount 증가 + lastContactAt 갱신
+// auth 불필요 — 클라이언트 fire-and-forget 방식
+router.post('/:id/contact', (req, res) => {
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+        UPDATE jobs
+        SET lastContactAt = ?,
+            contactCount  = COALESCE(contactCount, 0) + 1
+        WHERE id = ?
+    `).run(now, req.params.id);
+
+    if (result.changes === 0) {
+        return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    }
+
+    const row = db.prepare('SELECT id, contactCount, lastContactAt FROM jobs WHERE id = ?').get(req.params.id);
+    console.log(`[CONTACT_ATTEMPT] jobId=${req.params.id} contactCount=${row?.contactCount}`);
+    return res.json({ ok: true, contactCount: row?.contactCount });
 });
 
 // ─── GET /api/jobs/:id/applicants (PHASE 28: 스마트 매칭 정렬) ──

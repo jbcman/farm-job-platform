@@ -4,14 +4,15 @@
  *
  * - VWorld Base 타일 (mapConfig 재사용)
  * - 작업 위치 핀(초록) + 내 위치 핀(파랑) + 파선 연결 + fitBounds
- * - 하단 바: 작업명 · 이동시간 · [📄 상세보기] [🧭 길찾기]
+ * - 하단 바: 작업명 · 이동시간 · 직선거리 · [📄 상세보기] [🧭 길찾기]
  * - 로그인 게이트 없음 (공유 링크 대비)
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MAP_CONFIG } from '../config/mapConfig.js';
 import { getKakaoNaviLink } from '../utils/mapLink.js';
+import { getDistanceKm } from '../utils/distance.js';
 
 // Vite 환경 Leaflet 마커 아이콘 경로 복구
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -33,9 +34,17 @@ function fmtDrive(min) {
   return m > 0 ? `🚜 ${h}시간 ${m}분` : `🚜 ${h}시간`;
 }
 
+// ── 거리 포맷 ────────────────────────────────────────────────────
+function fmtDist(km) {
+  if (km == null || !Number.isFinite(km)) return null;
+  if (km < 1) return `📏 ${Math.round(km * 1000)}m`;
+  return `📏 ${km.toFixed(1)}km`;
+}
+
 export default function MapPage() {
-  const mapRef = useRef(null);
-  const mapObj = useRef(null);
+  const mapRef  = useRef(null);
+  const mapObj  = useRef(null);
+  const [userLoc, setUserLoc] = useState(null); // GPS 확보 후 상태 저장
 
   // ── URL 파라미터 파싱 ────────────────────────────────────────────
   const params   = new URLSearchParams(window.location.search);
@@ -51,8 +60,9 @@ export default function MapPage() {
     ? getKakaoNaviLink({ latitude: lat, longitude: lng, category: title })
     : null;
 
-  // ── 진단 로그 ──────────────────────────────────────────────────
-  console.log('[MAP PAGE PARAM]', { lat, lng, title, jobId, driveMin, hasCoords });
+  // ── 직선 거리 계산 (GPS 확보 시) ─────────────────────────────────
+  const distKm    = userLoc ? getDistanceKm(userLoc.lat, userLoc.lng, lat, lng) : null;
+  const distLabel = fmtDist(distKm);
 
   // ── Leaflet 초기화 ───────────────────────────────────────────────
   useEffect(() => {
@@ -87,6 +97,9 @@ export default function MapPage() {
       ({ coords }) => {
         const uLat = coords.latitude, uLng = coords.longitude;
 
+        // state 업데이트 → 하단 바 거리 표시 트리거
+        setUserLoc({ lat: uLat, lng: uLng });
+
         const userIcon = L.divIcon({
           html: `<div style="
             background:#2563eb;color:#fff;font-size:14px;
@@ -104,7 +117,7 @@ export default function MapPage() {
 
         map.fitBounds([[uLat, uLng], [lat, lng]], { padding: [40, 60] });
       },
-      () => {} // GPS 거부 시 무시
+      () => {} // GPS 거부 시 무시 (fallback: 작업 위치만 표시)
     );
 
     return () => { map.remove(); mapObj.current = null; };
@@ -114,10 +127,8 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100dvh' }}>
 
-      {/* 상단: 뒤로가기만 (길찾기는 하단으로 이동) */}
-      <div style={{
-        position: 'absolute', top: 12, left: 12, zIndex: 1000,
-      }}>
+      {/* 상단: 뒤로가기 */}
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 1000 }}>
         <button
           onClick={() => window.history.back()}
           style={{
@@ -179,11 +190,22 @@ export default function MapPage() {
             )}
           </div>
 
-          {/* 좌표 */}
-          <p style={{ margin: '0 0 12px', fontSize: 11, color: '#9ca3af' }}>
-            {lat.toFixed(5)}, {lng.toFixed(5)}
-            {driveLabel && <span style={{ marginLeft: 6 }}>· 차량 이동시간 기준</span>}
-          </p>
+          {/* 거리 정보 행 — GPS 확보 시 직선거리, 항상 좌표 표시 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 12px' }}>
+            {distLabel ? (
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#2563eb' }}>
+                {distLabel}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: '#d1d5db' }}>위치 허용 시 거리 표시</span>
+            )}
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>
+              {lat.toFixed(5)}, {lng.toFixed(5)}
+            </span>
+            {driveLabel && (
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>· 차량 기준</span>
+            )}
+          </div>
 
           {/* 액션 버튼 */}
           <div style={{ display: 'flex', gap: 8 }}>
@@ -204,7 +226,7 @@ export default function MapPage() {
               📄 상세보기
             </button>
 
-            {/* 길찾기 버튼 */}
+            {/* 🧭 길찾기 → 카카오맵 */}
             {naviLink ? (
               <a href={naviLink} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textDecoration: 'none' }}>
                 <button style={{

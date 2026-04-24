@@ -3,7 +3,9 @@ import { MapPin, Clock, Maximize2, Zap, CheckCircle, Play, Flag, Star, Banknote,
 import { trackClientEvent } from '../utils/api.js';
 import { formatDistance } from '../utils/formatDistance.js';
 import { formatDriveTime } from '../utils/formatDriveTime.js';
-import { getMapPageUrl, getKakaoNaviLink } from '../utils/mapLink.js';
+import { getMapPageUrl } from '../utils/mapLink.js';
+import { getSMSLink, getCallLink } from '../utils/contactLink.js';
+import { getUserSkillLevel, incrementApplyCount } from '../utils/userProfile.js';
 
 /** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
 function logBehavior(job, action) {
@@ -120,28 +122,24 @@ export default function JobCard({
       ? 'border-l-4 border-l-farm-green'
       : '';
 
-  // STEP 1: 지도 버튼 클릭 핸들러 — 카드 click 이벤트와 완전 분리
+  // 지도 버튼 핸들러 — 카드 이벤트와 완전 분리
   const handleMapClick = (e) => {
     e.stopPropagation();
     e.preventDefault();
-    console.log('🔥 MAP BUTTON CLICKED', { id: job.id, lat: job.latitude, lng: job.longitude });
     const url = getMapPageUrl(job);
-    console.log('🔥 MAP URL:', url);
     try { trackClientEvent('map_view', { jobId: job.id }); } catch (_) {}
     if (!url) {
       alert('📍 위치 정보가 없어 지도를 열 수 없습니다');
       return;
     }
-    window.location.assign(url);
+    window.location.href = url;
   };
 
   return (
     <div
       className={`card animate-fade-in ${urgentBorder}`}
       onClick={(e) => {
-        // 버튼/링크 클릭이면 카드 클릭 완전 무시 (통합 셀렉터)
         if (e.target.closest('button, a')) return;
-        console.log('📦 CARD CLICK', job.id);
         logBehavior(job, 'view');
         onViewDetail && onViewDetail(job);
       }}
@@ -373,79 +371,113 @@ export default function JobCard({
         );
       })()}
 
-      {/* ── 작업자 모드 액션 — UI_INTEGRATION ── */}
+      {/* ── 작업자 모드 액션 — ACTION_BUTTON_SIMPLIFY_V2 ── */}
+
+      {/* CASE: worker + open + 미지원 → 버튼 2개 */}
       {mode === 'worker' && job.status === 'open' && (
         applied ? (
           <button disabled className="btn btn-full bg-gray-100 text-gray-400 cursor-not-allowed">
             신청됨 ✓
           </button>
         ) : (
-          <div className="flex gap-2">
-            {/* MAP_PAGE: 지도 보기 + 카카오 길찾기 */}
-            {(() => {
-              const naviLink = getKakaoNaviLink(job);
-
-              return (
-                <div className="flex gap-1.5 shrink-0">
-                  {/* 🧪 임시 테스트 버튼 — 이벤트 발화 확인용 */}
-                  <button
-                    onClick={() => {
-                      alert('TEST CLICK');
-                      console.log('🧪 TEST BUTTON WORKING', job.id);
-                    }}
-                    style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer',
-                             fontSize: 10, padding: '2px 6px', background: '#fbbf24', border: 'none',
-                             borderRadius: 6, fontWeight: 700 }}
-                  >
-                    TEST
-                  </button>
-
-                  {/* 📍 지도 → handleMapClick (카드 이벤트와 완전 분리) */}
-                  <button
-                    onClick={handleMapClick}
-                    style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer' }}
-                    className="btn-outline py-2.5 px-2.5 rounded-xl text-xs font-semibold
-                               flex items-center gap-1 active:scale-95 transition-transform"
-                  >
-                    <MapPin size={13} /> 지도
-                  </button>
-
-                  {/* 🧭 길찾기 → 카카오맵 */}
-                  {naviLink && (
-                    <a
-                      href={naviLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => { e.stopPropagation(); try { trackClientEvent('direction_click', { jobId: job.id }); } catch (_) {} }}
-                      className="py-2.5 px-2.5 rounded-xl text-xs font-bold bg-yellow-400 text-yellow-900
-                                 flex items-center gap-1 active:scale-95 transition-transform shrink-0"
-                    >
-                      🧭 길찾기
-                    </a>
-                  )}
-                </div>
-              );
-            })()}
+          <div className="flex gap-2 mt-2">
+            {/* PRIMARY: 📩 바로 연락하기 */}
             <button
-              onClick={() => {
-                logBehavior(job, 'apply');
-                try { trackClientEvent('apply_click', { jobId: job.id, category: job.category }); } catch (_) {}
-                onApply?.(job);
-              }}
-              className={`flex-1 py-2.5 rounded-2xl font-black text-white text-base
-                          flex items-center justify-center gap-1.5
+              className={`flex-1 py-3 rounded-2xl font-black text-white text-base
+                          flex items-center justify-center gap-2
                           active:scale-95 transition-transform shadow-md
                           ${(job.isUrgent || (job.applicationCount ?? 0) >= 3)
-                            ? 'bg-red-500'
-                            : 'bg-green-600'}`}
+                            ? 'bg-red-500' : 'bg-blue-600'}`}
+              onClick={async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const skillLevel = getUserSkillLevel();
+                const link = getSMSLink(job, skillLevel);
+                if (!link) {
+                  // 연락처 없음 → 지원 흐름으로 대신 연결
+                  logBehavior(job, 'apply');
+                  incrementApplyCount();
+                  try { trackClientEvent('apply_click', { jobId: job.id, category: job.category }); } catch (_) {}
+                  onApply?.(job);
+                  return;
+                }
+                // 서버 연락 로그 (fire-and-forget)
+                fetch(`/api/jobs/${job.id}/contact`, { method: 'POST' }).catch(() => {});
+                try { trackClientEvent('sms_click', { jobId: job.id, skillLevel }); } catch (_) {}
+                window.location.href = link;
+              }}
             >
               {(job.isUrgent || (job.applicationCount ?? 0) >= 3)
                 ? '⚡ 지금 지원하기 (마감 임박)'
-                : '지금 지원하기'}
+                : '📩 바로 연락하기'}
+            </button>
+
+            {/* SECONDARY: 📍 지도 */}
+            <button
+              onClick={handleMapClick}
+              style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer' }}
+              className="px-4 py-3 border-2 border-gray-200 rounded-2xl text-sm font-bold
+                         text-gray-600 flex items-center gap-1.5
+                         active:scale-95 transition-transform bg-white"
+            >
+              <MapPin size={15} /> 지도
             </button>
           </div>
         )
       )}
+
+      {/* CASE: worker + matched/in_progress → 전화 + 문자 */}
+      {mode === 'worker' && (job.status === 'matched' || job.status === 'in_progress') && (() => {
+        const skillLevel = getUserSkillLevel();
+        const smsLink    = getSMSLink(job, skillLevel);
+        const callLink   = getCallLink(job);
+        const hasContact = !!(smsLink || callLink);
+        return (
+          <div className="flex flex-col gap-2 mt-2">
+            {!hasContact && (
+              <p className="text-xs text-center text-amber-600 bg-amber-50 rounded-xl px-3 py-2 font-medium">
+                ⏳ 연락처는 매칭 완료 후 공개됩니다
+              </p>
+            )}
+            {/* 📞 전화하기 */}
+            <button
+              style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer' }}
+              className={`py-3 rounded-2xl text-sm font-black
+                          flex items-center justify-center gap-2
+                          active:scale-95 transition-transform
+                          ${callLink ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (!callLink) { alert('📞 연락처가 아직 공개되지 않았습니다.'); return; }
+                fetch(`/api/jobs/${job.id}/contact`, { method: 'POST' }).catch(() => {});
+                try { trackClientEvent('call_click', { jobId: job.id }); } catch (_) {}
+                window.location.href = callLink;
+              }}
+            >
+              📞 {callLink ? '전화하기' : '전화 미공개'}
+            </button>
+            {/* 📩 문자 보내기 */}
+            <button
+              style={{ position: 'relative', zIndex: 999999, pointerEvents: 'auto', cursor: 'pointer' }}
+              className={`py-3 rounded-2xl text-sm font-black
+                          flex items-center justify-center gap-2
+                          active:scale-95 transition-transform
+                          ${smsLink ? 'bg-blue-500 text-white shadow-md' : 'bg-gray-100 text-gray-400'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (!smsLink) { alert('📩 연락처가 공개되지 않았습니다.'); return; }
+                fetch(`/api/jobs/${job.id}/contact`, { method: 'POST' }).catch(() => {});
+                try { trackClientEvent('sms_click', { jobId: job.id, skillLevel }); } catch (_) {}
+                window.location.href = smsLink;
+              }}
+            >
+              📩 {smsLink ? '문자 보내기' : '문자 미공개'}
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ── 농민 모드 액션 ── */}
       {mode === 'farmer' && (

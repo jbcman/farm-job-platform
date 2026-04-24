@@ -99,3 +99,35 @@ export function initProfileFromLogin(workerInfo = {}) {
     }
   } catch (_) {}
 }
+
+/**
+ * AI_CONTACT_V2 — 작업자 숙련도 판별
+ *
+ * localStorage 기반 휴리스틱:
+ *   farm-applyCount  : 누적 지원 횟수 (지원하기 클릭마다 +1)
+ *   farm-category    : 주로 하는 작업 유형 (있으면 경험자 신호)
+ *
+ * @returns {'beginner' | 'experienced' | 'expert'}
+ */
+export function getUserSkillLevel() {
+  try {
+    const applyCount = parseInt(localStorage.getItem('farm-applyCount') || '0', 10);
+    const hasCategory = !!localStorage.getItem('farm-category');
+
+    if (applyCount >= 5 || (applyCount >= 3 && hasCategory)) return 'expert';
+    if (applyCount >= 1 || hasCategory) return 'experienced';
+    return 'beginner';
+  } catch (_) {
+    return 'beginner';
+  }
+}
+
+/**
+ * AI_CONTACT_V2 — 지원 횟수 1 증가 (지원하기 클릭 시 호출)
+ */
+export function incrementApplyCount() {
+  try {
+    const cur = parseInt(localStorage.getItem('farm-applyCount') || '0', 10);
+    localStorage.setItem('farm-applyCount', String(cur + 1));
+  } catch (_) {}
+}

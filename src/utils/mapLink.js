@@ -13,7 +13,6 @@
 export function getMapPageUrl(job) {
   if (!job) return null;
 
-  // Number() 캐스팅 — string으로 들어와도 방어
   const lat = Number(job.latitude);
   const lng = Number(job.longitude);
 
@@ -26,7 +25,6 @@ export function getMapPageUrl(job) {
     jobId: job.id || '',
   });
 
-  // 이동시간: driveMin(Kakao 실제) 우선, distKm 추정 폴백
   if (Number.isFinite(job.driveMin) && job.driveMin > 0) {
     p.set('driveMin', String(job.driveMin));
   } else if (Number.isFinite(job.distKm) && job.distKm > 0) {

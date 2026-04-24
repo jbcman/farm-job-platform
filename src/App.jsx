@@ -14,6 +14,7 @@ import MyApplicationsPage   from './components/MyApplicationsPage.jsx';
 import PayResultPage         from './components/PayResultPage.jsx';
 import OperatorPage          from './components/OperatorPage.jsx';
 import MapPage               from './pages/MapPage.jsx';
+import MapExplorePage        from './pages/MapExplorePage.jsx';
 import { getUserId, trackClientEvent, getNotifications } from './utils/api.js';
 import { getOrCreateUser } from './utils/userProfile.js';
 
@@ -46,6 +47,11 @@ function isAdminPath() {
 /** /ops 경로 감지 — MVP 운영자 페이지 */
 function isOpsPath() {
   return window.location.pathname.startsWith('/ops');
+}
+
+/** /map-explore 경로 감지 — 전체 일손 지도 탐색 (Uber-style) */
+function isMapExplorePath() {
+  return window.location.pathname.startsWith('/map-explore');
 }
 
 /** /map 경로 감지 — 작업 위치 단건 지도 */
@@ -105,6 +111,11 @@ export default function App() {
         <OperatorPage />
       </div>
     );
+  }
+
+  // 전체 일손 지도 탐색: /map-explore (Uber-style — 로그인 게이트 우회)
+  if (isMapExplorePath()) {
+    return <MapExplorePage />;
   }
 
   // 작업 위치 지도: /map?lat=&lng=&title= (로그인 게이트 우회 — 공유 링크 대비)
