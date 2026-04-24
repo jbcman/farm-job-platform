@@ -726,6 +726,15 @@ router.post('/:id/apply', (req, res) => {
         }
     });
 
+    // DESIGN_V4: 지원 즉시 농민 연락처 공개 (InstantConnect 흐름 지원)
+    let contactInfo = null;
+    try {
+        const farmer = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.requesterId);
+        if (farmer?.phone) {
+            contactInfo = { farmerName: farmer.name || '농민', contact: farmer.phone };
+        }
+    } catch (e) { /* fail-safe: 연락처 없어도 지원은 완료 */ }
+
     // PHASE 29: 자동 선택 체크 — 지원자 ≥3명 AND 상위점수 ≥63점 이면 자동 매칭
     setImmediate(async () => {
         try {
@@ -738,7 +747,7 @@ router.post('/:id/apply', (req, res) => {
         }
     });
 
-    return res.status(201).json({ ok: true, application: app });
+    return res.status(201).json({ ok: true, application: app, ...contactInfo });
 });
 
 // ─── GET /api/jobs/:id/contact ────────────────────────────────

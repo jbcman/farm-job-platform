@@ -217,7 +217,7 @@ export default function HomePage({
           </p>
         </div>
 
-        {/* 모드 선택 버튼 — DESIGN_V3: 1차 CTA 강조 + 2차 보조 */}
+        {/* 모드 선택 버튼 — DESIGN_V4: 일자리 찾기 1차 강조 */}
         <div className="flex flex-col gap-2 mb-4">
           {/* PRIMARY: 작업자 — 일자리 찾기 (흰색, 강조) */}
           <button
@@ -225,7 +225,7 @@ export default function HomePage({
             className="w-full py-4 bg-white text-farm-green font-black text-lg rounded-2xl
                        shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
           >
-            🔥 지금 바로 일손 구하기
+            🔍 일자리 찾기
           </button>
           {/* SECONDARY: 농민 — 일손 구하기 (반투명) */}
           <button
@@ -238,11 +238,11 @@ export default function HomePage({
           </button>
         </div>
 
-        {/* 신뢰 요소 3포인트 — DESIGN_V3: 실적 기반 사회적 증거 */}
+        {/* 신뢰 요소 3포인트 — DESIGN_V4: AI 매칭 강조 */}
         <div className="flex gap-4 text-green-200 text-xs font-bold flex-wrap">
-          <span>⭐ 평균 4.8점</span>
-          <span>⚡ 평균 5분 연결</span>
-          <span>✔ 완료 1,240건</span>
+          <span>✔ AI 자동 추천</span>
+          <span>✔ 가까운 일자리 우선</span>
+          <span>✔ 난이도 맞춤</span>
         </div>
       </header>
 
@@ -365,8 +365,8 @@ export default function HomePage({
             {workers.length > 0 && (
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  {/* DESIGN_V3: 섹션 타이틀 → 행동 유도형 */}
-                  <p className="section-title mb-0">👨‍🌾 지금 투입 가능한 작업자</p>
+                  {/* DESIGN_V4: 섹션 타이틀 */}
+                  <p className="section-title mb-0">👨‍🌾 지금 바로 투입 가능한 작업자</p>
                   <span className="text-sm text-farm-green font-bold">{workers.length}명</span>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
@@ -591,33 +591,36 @@ export default function HomePage({
         </div>
       )}
 
-      {/* 하단 탭바 — DESIGN_V3: 4탭 통합 (홈/지도/내 지원/내 정보) */}
+      {/* 하단 탭바 — DESIGN_V4: 🏠 홈 / 📋 일자리 / 🗺️ 지도 / 👤 내 활동 */}
       <nav className="tabbar">
         {/* 🏠 홈 */}
         <button className="tab-btn">
           <span className="text-2xl leading-none text-farm-green">🏠</span>
           <span className="text-farm-green font-bold">홈</span>
         </button>
-        {/* 🗺️ 지도 */}
-        <button onClick={onViewMap} className="tab-btn">
-          <Map size={22} />
-          <span>지도</span>
-        </button>
-        {/* 📄 내 지원 — 농민: 내가 올린 일 / 작업자: 내 지원 */}
+        {/* 📋 일자리 — 농민: 내가 올린 일 / 작업자: 일자리 찾기 */}
         <button
-          onClick={mode === 'farmer' ? onViewMyJobs : onViewMyApplications}
+          onClick={mode === 'farmer' ? onViewMyJobs : onViewJobList}
           className="tab-btn relative"
         >
           <span className="relative inline-flex">
             <ClipboardList size={22} />
             <TabBadge count={mode === 'farmer' ? notif.pendingApps : notif.selectedApps} />
           </span>
-          <span>{mode === 'farmer' ? '내가 올린 일' : '내 지원'}</span>
+          <span>{mode === 'farmer' ? '내 공고' : '일자리'}</span>
         </button>
-        {/* 👤 내 정보 */}
-        <button onClick={onViewMyConnections} className="tab-btn">
+        {/* 🗺️ 지도 */}
+        <button onClick={onViewMap} className="tab-btn">
+          <Map size={22} />
+          <span>지도</span>
+        </button>
+        {/* 👤 내 활동 — 농민: 내 연결 / 작업자: 내 지원 */}
+        <button
+          onClick={mode === 'farmer' ? onViewMyConnections : onViewMyApplications}
+          className="tab-btn"
+        >
           <Link2 size={22} />
-          <span>내 정보</span>
+          <span>내 활동</span>
         </button>
       </nav>
     </div>

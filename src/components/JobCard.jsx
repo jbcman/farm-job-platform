@@ -19,7 +19,7 @@ function distLabel(km) {
 function ctaCopy(n) {
   if (n >= 3) return `지금 지원하기 (경쟁 ${n}명)`;
   if (n >= 1) return '지금 지원하기 (마감 임박)';
-  return '🔥 지금 바로 연결';
+  return '지금 바로 지원하기';
 }
 
 /** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
