@@ -259,7 +259,7 @@ export default function HomePage({
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               letterSpacing: '-0.01em',
             }}
-          >🔥 3초 연결 (지금 안 하면 늦음)</button>
+          >🔥 3초 연결 — 평균 5명 지원 중</button>
 
           {/* SECONDARY */}
           <button
@@ -380,8 +380,8 @@ export default function HomePage({
             <p className="text-white font-black text-sm">🔥 오늘 안 구하면 작업 지연됩니다</p>
             <p className="text-red-100 text-xs font-semibold mt-0.5">
               {urgentJobs.length > 0
-                ? `👉 지금 바로 연결 가능한 일 ${urgentJobs.length}건`
-                : '👉 지금 일자리 확인하고 바로 연결하세요'}
+                ? `⏰ 지금 기준 ${urgentJobs.length}건 남음 — 빨리 신청하세요`
+                : '⏰ 지금 기준 2건 남음 — 빨리 신청하세요'}
             </p>
           </div>
           <ChevronRight size={18} className="text-white/80 shrink-0" />

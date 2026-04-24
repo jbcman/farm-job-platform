@@ -141,7 +141,7 @@ export default function LoginPage({ onLogin }) {
             onPointerDown={e => e.currentTarget.style.opacity = '0.88'}
             onPointerUp={e   => e.currentTarget.style.opacity = '1'}
           >
-            🔥 3초 연결 (지금 안 하면 늦음)
+            🔥 3초 연결 — 평균 5명 지원 중
           </button>
 
           {/* SECONDARY */}
@@ -194,7 +194,7 @@ export default function LoginPage({ onLogin }) {
             🔥 오늘 안 구하면 작업 지연됩니다
           </p>
           <p style={{ margin: '2px 0 0', color: 'rgba(255,220,220,0.9)', fontWeight: 600, fontSize: 12 }}>
-            👉 지금 바로 연결 가능한 일 2건
+            ⏰ 지금 기준 2건 남음 — 빨리 신청하세요
           </p>
         </div>
         <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 18 }}>›</span>
