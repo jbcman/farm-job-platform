@@ -6,6 +6,7 @@ import { formatDriveTime } from '../utils/formatDriveTime.js';
 import { getMapPageUrl } from '../utils/mapLink.js';
 import { getSMSLink, getCallLink } from '../utils/contactLink.js';
 import { getUserSkillLevel, incrementApplyCount } from '../utils/userProfile.js';
+import { distBadgeColor, SHADOW } from '../config/designSystem.js';
 
 // ── 디자인 시스템 V2: 거리 체감 라벨 ─────────────────────────
 function distLabel(km) {
@@ -120,15 +121,16 @@ export default function JobCard({
   // DISTANCE_FIX: formatDistance — NaN/null 완전 방어, 서버값 우선, 클라이언트 폴백
   const distDisplay = formatDistance(job, userLocation);
 
-  // DISTANCE_FIX: 거리 배지 색상 (실제 km값 기준)
+  // BRAND_SYSTEM_V1: 거리 배지 색상 — designSystem.distBadgeColor 기반
   const distKm = (job.distKm != null && Number.isFinite(job.distKm)) ? job.distKm : null;
+  // v4: ≤3km → danger(red), ≤5km → accent(amber), >5km → info(blue)
   const distBadgeStyle = distKm !== null
-    ? distKm < 1
-      ? 'bg-red-50 text-red-600 font-bold'        // 1km 이내 → 빨강
-      : distKm < 3
-        ? 'bg-orange-50 text-orange-600 font-bold' // 3km 이내 → 주황
-        : 'bg-blue-50 text-blue-600 font-semibold' // 그 외 → 파랑
-    : 'bg-blue-50 text-blue-600 font-medium';      // 거리 미확인 → 연파랑
+    ? distKm <= 3
+      ? 'bg-red-50 text-red-600 font-bold'
+      : distKm <= 5
+        ? 'bg-amber-50 text-amber-600 font-bold'
+        : 'bg-blue-50 text-blue-600 font-semibold'
+    : 'bg-blue-50 text-blue-600 font-medium';
 
   // PHASE 18: 급구/오늘 카드 강조 클래스
   const urgentBorder = job.isUrgent && job.status === 'open'

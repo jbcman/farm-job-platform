@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Loader2, Bell, Zap } from 'lucide-react';
 import { login, setUserName } from '../utils/api.js';
 import { getOrCreateUser } from '../utils/userProfile.js';
+import Button from './ui/Button.jsx';
 
 const JOB_TYPES = [
   { key: '밭갈이',    emoji: '🚜' },
@@ -243,19 +244,13 @@ export default function LoginPage({ onLogin }) {
           <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</p>
         )}
 
-        {/* 시작하기 */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
-                     disabled:opacity-60 flex items-center justify-center gap-2
-                     shadow-lg active:scale-95 transition-transform"
-        >
+        {/* 시작하기 — BRAND_SYSTEM_V1: Button 컴포넌트 */}
+        <Button type="submit" disabled={loading} size="lg">
           {loading
             ? <><Loader2 size={20} className="animate-spin" /> 처리 중...</>
             : '지금 시작하기 →'
           }
-        </button>
+        </Button>
 
         <p className="text-center text-xs text-gray-400 pt-2">
           개인정보는 매칭 연결에만 사용됩니다
