@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MapPin, Clock, Maximize2, Zap, CheckCircle, Play, Flag, Star, Banknote, XCircle, RefreshCw, ImageIcon } from 'lucide-react';
 import { trackClientEvent } from '../utils/api.js';
 import { formatDistance } from '../utils/formatDistance.js';
@@ -16,11 +16,11 @@ function distLabel(km) {
   return `📍 ${km.toFixed(1)}km`;
 }
 
-// ── 디자인 시스템 V2: 경쟁 심리 CTA 텍스트 ──────────────────
+// ── HOMEPAGE_BRAND_POLISH_V1: 전환 최적화 CTA 텍스트 ──────────
 function ctaCopy(n) {
   if (n >= 3) return `지금 지원하기 (경쟁 ${n}명)`;
   if (n >= 1) return '지금 지원하기 (마감 임박)';
-  return '지금 바로 지원하기';
+  return '🔥 3초 연결 (바로 전화)';
 }
 
 /** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
@@ -139,6 +139,9 @@ export default function JobCard({
       ? 'border-l-4 border-l-farm-green'
       : '';
 
+  // HOMEPAGE_BRAND_POLISH_V1 STEP 7: 전화 유도 UX — 0.5초 "연결 중..." 로딩
+  const [connecting, setConnecting] = useState(false);
+
   // 지도 버튼 핸들러 — 카드 이벤트와 완전 분리
   const handleMapClick = (e) => {
     e.stopPropagation();
@@ -198,16 +201,17 @@ export default function JobCard({
         </div>
       )}
 
-      {/* PHASE 18: 급구 강조 배너 — 카드 최상단 */}
+      {/* STEP 6: 급구 강조 배너 — HOMEPAGE_BRAND_POLISH_V1 */}
       {!job.isSponsored && job.isUrgent && job.status === 'open' && (
         <div style={{
-          background: 'linear-gradient(90deg, #dc2626 0%, #ef4444 100%)',
-          color: '#fff', fontWeight: 800, fontSize: 12,
-          padding: '5px 12px', borderRadius: '8px 8px 0 0',
+          background: 'linear-gradient(90deg, #b91c1c 0%, #dc2626 100%)',
+          color: '#fff', fontWeight: 900, fontSize: 12,
+          padding: '6px 12px', borderRadius: '8px 8px 0 0',
           marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
           display: 'flex', alignItems: 'center', gap: 5, letterSpacing: 0.3,
+          boxShadow: '0 2px 6px rgba(185,28,28,0.3)',
         }}>
-          🔥 급구 — 즉시 연결 가능
+          🔥 지금 안 구하면 늦습니다
         </div>
       )}
 
@@ -424,14 +428,18 @@ export default function JobCard({
           <div className="flex gap-2">
             {/* PRIMARY: CTA — 디자인 V2 ctaCopy 패턴 */}
             <button
+              disabled={connecting}
               className={`flex-1 py-3 rounded-2xl font-black text-white text-base
                           flex items-center justify-center gap-2
-                          active:scale-95 transition-transform shadow-md
+                          transition-all shadow-md
+                          ${connecting ? 'opacity-80 scale-95' : 'active:scale-95'}
                           ${(job.isUrgent || (job.applicationCount ?? 0) >= 3)
                             ? 'bg-red-500' : 'bg-farm-green'}`}
               onClick={async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
+                if (connecting) return;
+
                 const skillLevel = getUserSkillLevel();
                 const link = getSMSLink(job, skillLevel);
 
@@ -444,7 +452,12 @@ export default function JobCard({
                   return;
                 }
 
-                // ① 자동 지원 + 상태 전환 (fail-safe: 실패해도 SMS 진행)
+                // STEP 7: 0.5초 "연결 중..." 로딩 → 전화번호 표시 + tel 링크
+                setConnecting(true);
+                incrementApplyCount();
+                try { trackClientEvent('contact_apply', { jobId: job.id, skillLevel }); } catch (_) {}
+
+                // ① 자동 지원 (fail-safe)
                 const storedId = localStorage.getItem('farm-userId') || 'anonymous';
                 const storedName = localStorage.getItem('farm-userName') || '작업자';
                 fetch(`/api/jobs/${job.id}/contact-apply`, {
@@ -453,15 +466,17 @@ export default function JobCard({
                   body: JSON.stringify({ workerId: storedId, workerName: storedName }),
                 }).catch(() => {});
 
-                // ② 이벤트 로그
-                incrementApplyCount();
-                try { trackClientEvent('contact_apply', { jobId: job.id, skillLevel }); } catch (_) {}
-
-                // ③ SMS 앱 오픈 (항상 실행)
-                window.location.href = link;
+                // ② 0.5초 후 SMS/전화 앱 오픈
+                setTimeout(() => {
+                  setConnecting(false);
+                  window.location.href = link;
+                }, 500);
               }}
             >
-              {ctaCopy(job.applicationCount ?? 0)}</button>
+              {connecting
+                ? <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />연결 중...</>
+                : ctaCopy(job.applicationCount ?? 0)
+              }</button>
 
             {/* SECONDARY: 📍 지도 */}
             <button

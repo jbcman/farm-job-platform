@@ -184,66 +184,85 @@ export default function HomePage({
   }, []);
 
   return (
-    <div className="min-h-screen bg-farm-bg pb-28">
+    <div className="min-h-screen bg-farm-bg" style={{ paddingBottom: 'calc(7rem + 56px)' }}>
 
       {/* 온보딩 오버레이 */}
       {showOnboard && <OnboardingOverlay onDone={() => setShowOnboard(false)} />}
 
-      {/* 헤더 */}
-      <header className="bg-farm-green px-4 pt-safe pt-5 pb-6">
-        {/* 브랜드 + GPS */}
-        <div className="flex items-center justify-between mb-4">
-          {/* BRAND_LOGO_V1: 텍스트 → 로고 이미지 */}
-          <img src="/logo.png" alt="농촌 일손" style={{ height: 36, width: 'auto', filter: 'brightness(0) invert(1) drop-shadow(0 1px 4px rgba(0,0,0,0.2))' }} />
-          <div className="flex items-center gap-1.5">
-            {gpsStatus === 'ok' && (
-              <span className="flex items-center gap-1 text-xs bg-white/20 text-green-100 rounded-full px-2 py-0.5">
-                <MapPin size={10} /> 내 위치
-              </span>
-            )}
-            {gpsStatus === 'denied' && (
-              <span className="text-xs text-green-300">전국 표시</span>
-            )}
-          </div>
+      {/* 헤더 — HOMEPAGE_BRAND_POLISH_V1 */}
+      <header className="bg-farm-green px-4 pt-safe pb-6 relative">
+
+        {/* GPS 뱃지 — 우측 상단 고정 */}
+        <div className="absolute top-4 right-4 flex items-center gap-1.5 pt-safe">
+          {gpsStatus === 'ok' && (
+            <span className="flex items-center gap-1 text-xs bg-white/20 text-green-100 rounded-full px-2 py-0.5">
+              <MapPin size={10} /> 내 위치
+            </span>
+          )}
+          {gpsStatus === 'denied' && (
+            <span className="text-xs text-green-300">전국 표시</span>
+          )}
         </div>
 
-        {/* 히어로 카피 — DESIGN_V3: Jalnan2 디스플레이 */}
-        <div className="mb-5">
-          <p className="text-white font-black text-2xl leading-snug mb-1"
-             style={{ fontFamily: "'Jalnan2', 'Noto Sans KR', sans-serif" }}>
-            AI가 연결하는<br />농촌 일자리
-          </p>
-          <p className="text-green-200 text-sm leading-relaxed">
-            위치 · 난이도 · 경험까지 자동 매칭 — 전화 돌릴 필요 없습니다
+        {/* ── STEP 1: 로고 중심 Hero ── */}
+        <div className="flex flex-col items-center text-center" style={{ marginTop: 24, marginBottom: 20 }}>
+          {/* 로고 */}
+          <img
+            src="/logo.png"
+            alt="농촌 일손"
+            style={{
+              width: 140,
+              height: 'auto',
+              marginBottom: 10,
+              mixBlendMode: 'multiply',
+              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
+            }}
+          />
+          {/* 브랜드명 */}
+          <h1
+            className="text-white font-black leading-tight"
+            style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 26, marginBottom: 6 }}
+          >
+            농촌 일손
+          </h1>
+          {/* 슬로건 */}
+          <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, lineHeight: 1.5 }}>
+            일손이 필요한 곳에, 필요한 사람이 함께
           </p>
         </div>
 
-        {/* 모드 선택 버튼 — DESIGN_V4: 일자리 찾기 1차 강조 */}
-        <div className="flex flex-col gap-2 mb-4">
-          {/* PRIMARY: 작업자 — 일자리 찾기 (흰색, 강조) */}
+        {/* ── STEP 2: 핵심 CTA (전환 최적화) ── */}
+        <div className="flex flex-col gap-2.5 mb-4">
+          {/* 1순위 CTA */}
           <button
-            onClick={() => { onModeChange('worker'); onViewJobList(); }}
+            onClick={() => {
+              try { trackClientEvent('cta_click', { type: 'primary', location: 'hero' }); } catch (_) {}
+              onModeChange('worker'); onViewJobList();
+            }}
             className="w-full py-4 bg-white text-farm-green font-black text-lg rounded-2xl
                        shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
           >
-            🔍 일자리 찾기
+            🔥 지금 바로 일손 연결
           </button>
-          {/* SECONDARY: 농민 — 일손 구하기 (반투명) */}
+          {/* 보조 CTA */}
           <button
-            onClick={() => { onModeChange('farmer'); onPostJob(); }}
+            onClick={() => {
+              try { trackClientEvent('cta_click', { type: 'secondary', location: 'hero' }); } catch (_) {}
+              onModeChange('farmer'); onPostJob();
+            }}
             className="w-full py-3 bg-white/10 text-white/80 font-bold text-sm rounded-2xl
                        border border-white/25 active:scale-95 transition-transform
                        flex items-center justify-center gap-2"
           >
-            ➕ 일손 구하기
+            🔍 일손 구하기 (농민)
           </button>
         </div>
 
-        {/* 신뢰 요소 3포인트 — DESIGN_V4: AI 매칭 강조 */}
-        <div className="flex gap-4 text-green-200 text-xs font-bold flex-wrap">
-          <span>✔ AI 자동 추천</span>
-          <span>✔ 가까운 일자리 우선</span>
-          <span>✔ 난이도 맞춤</span>
+        {/* ── STEP 3: 신뢰 스트립 (중앙 정렬) ── */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ AI 자동 추천</span>
+          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ 평균 5분 연결</span>
+          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ 완료 1,000건+</span>
         </div>
       </header>
 
@@ -422,22 +441,38 @@ export default function HomePage({
         {/* ── 작업자 모드 콘텐츠 ── */}
         {!loading && mode === 'worker' && (
           <>
-            {/* 바로 찾기 CTA — DESIGN_V3: 풀 너비 강조 */}
-            <button
-              onClick={onViewJobList}
-              className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
-                         shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
-              style={{ boxShadow: '0 5px 18px rgba(45,138,78,.45)' }}
-            >
-              🔥 3초 안에 일손 구하기
-            </button>
+            {/* ── STEP 4: 즉시 연결 가능 섹션 최상단 ── */}
+            {urgentJobs.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="section-title mb-0 flex items-center gap-1.5">
+                    🔥 지금 바로 연결 가능한 일
+                  </p>
+                  <button onClick={onViewJobList} className="text-sm text-farm-green font-bold flex items-center gap-0.5">
+                    전체 보기 <ChevronRight size={14} />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 -mt-2 mb-3">지금 전화하면 바로 연결됩니다</p>
+                <div className="space-y-3">
+                  {urgentJobs.slice(0, 3).map(job => (
+                    <JobCard
+                      key={job.id + '-urgent'}
+                      job={job}
+                      mode="worker"
+                      onApply={() => onViewJobList?.()}
+                      onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* Phase 6: 추천 섹션 (오늘 + 가까운 + 일당 우선) */}
             {recommended.length > 0 && (
               <section>
                 <div className="flex items-center justify-between mb-3">
                   <p className="section-title mb-0 flex items-center gap-1.5">
-                    <span>🔥</span> 오늘 근처 일
+                    <span>⭐</span> 오늘 근처 일
                   </p>
                   <button
                     onClick={onViewJobList}
@@ -460,7 +495,7 @@ export default function HomePage({
               </section>
             )}
 
-            {recommended.length === 0 && (
+            {recommended.length === 0 && urgentJobs.length === 0 && (
               <div className="card text-center py-10 text-gray-400">
                 <p className="text-4xl mb-2">🌿</p>
                 <p className="text-gray-500">아직 올라온 일이 없습니다</p>
@@ -591,6 +626,32 @@ export default function HomePage({
           )}
         </div>
       )}
+
+      {/* ── STEP 8: 하단 고정 CTA (탭바 위) ── */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 'calc(60px + max(env(safe-area-inset-bottom), 0.5rem))',
+          left: 0, right: 0,
+          background: '#2D8A4E',
+          height: 56,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 35,
+          boxShadow: '0 -2px 12px rgba(45,138,78,0.35)',
+          cursor: 'pointer',
+        }}
+        onClick={() => {
+          try { trackClientEvent('cta_click', { type: 'sticky_bottom', location: 'homepage' }); } catch (_) {}
+          if (mode === 'farmer') onPostJob?.();
+          else { onModeChange?.('worker'); onViewJobList?.(); }
+        }}
+      >
+        <span style={{ color: '#fff', fontSize: 16, fontWeight: 900, letterSpacing: 0.3 }}>
+          📞 지금 바로 일손 연결
+        </span>
+      </div>
 
       {/* 하단 탭바 — DESIGN_V4: 🏠 홈 / 📋 일자리 / 🗺️ 지도 / 👤 내 활동 */}
       <nav className="tabbar">
