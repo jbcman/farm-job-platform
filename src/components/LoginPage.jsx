@@ -89,18 +89,25 @@ export default function LoginPage({ onLogin }) {
 
   return (
     <div className="min-h-screen bg-farm-bg flex flex-col">
-      {/* 헤더 — BRAND_LOGO_V1 */}
-      <div className="bg-farm-green px-6 pt-14 pb-10 text-center">
-        {/* 로고 이미지 */}
-        <div className="flex justify-center mb-3">
+      {/* 헤더 — LOGIN_LOGO_POLISH */}
+      <div className="bg-farm-green px-6 pb-10 text-center">
+        {/* 로고 이미지 — 크기·여백·블렌드 조정 */}
+        <div className="flex justify-center" style={{ marginTop: 24, marginBottom: 16 }}>
           <img
             src="/logo.png"
             alt="농촌 일손 로고"
-            style={{ width: 160, height: 'auto', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.18))' }}
+            style={{
+              width: 150,
+              height: 'auto',
+              background: 'transparent',
+              /* 흰 배경 PNG를 녹색 헤더에 자연스럽게 녹임 */
+              mixBlendMode: 'multiply',
+              filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.15))',
+            }}
           />
         </div>
         {/* 슬로건 */}
-        <p className="text-green-100 text-sm font-semibold mt-1 tracking-wide">
+        <p className="text-green-100 text-sm font-semibold tracking-wide">
           일손이 필요한 곳에, 필요한 사람이 함께
         </p>
       </div>
