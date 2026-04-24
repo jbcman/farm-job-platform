@@ -10,7 +10,7 @@ const {
 } = require('../services/notificationService');
 const { trackEvent }              = require('../services/analyticsService');
 const { findMatchingWorkers }     = require('../services/matchingService');
-const { sendJobAlert, sendApplyAlert, sendDepartureReminder } = require('../services/kakaoService');
+const { sendJobAlert, sendApplyAlert, sendDepartureReminder, sendContactAlert } = require('../services/kakaoService');
 const { sortRecommendedJobs }          = require('../services/recommendationService');
 const { reengageUnselectedApplicants } = require('../services/reengageService');
 const { checkAndAutoSelect }           = require('../services/autoSelect');
@@ -23,6 +23,7 @@ const { estimateDifficulty }           = require('../services/imageDifficultySer
 const { classifyImage }                = require('../services/imageJobTypeService');
 const { sortJobs: aiSortJobs }        = require('../services/recommendService');
 const { findNearestWorkers }          = require('../services/matchService');
+const { createPayment, confirmPayment, refundPayment } = require('../services/paymentService');
 // autoMatchService 통합 완료 — matchingService로 일원화됨
 
 const router = express.Router();
@@ -811,6 +812,97 @@ router.post('/:id/contact', (req, res) => {
     return res.json({ ok: true, contactCount: row?.contactCount });
 });
 
+// ─── POST /api/jobs/:id/contact-apply — CONTACT_TO_MATCH_AUTOFLOW_V1 ───
+// 연락 클릭 → 자동 지원 생성 + 상태 전환 + Kakao 알림
+// idempotent: 동일 workerId 중복 호출 시 already:true 반환
+router.post('/:id/contact-apply', async (req, res) => {
+    const jobId    = req.params.id;
+    const workerId = req.body?.workerId || 'anonymous';
+    const now      = new Date().toISOString();
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    // ── 중복 방지 (idempotent) ─────────────────────────────────────
+    // 이미 in_progress/matched/done/closed 이고 같은 workerId면 이미 처리됨
+    if (
+        (job.status === 'in_progress' || job.status === 'matched') &&
+        job.selectedWorkerId === workerId
+    ) {
+        console.log(`[CONTACT_APPLY_SKIP] jobId=${jobId} workerId=${workerId} reason=already_matched`);
+        return res.json({ ok: true, already: true, status: job.status });
+    }
+
+    // 다른 작업자가 이미 진행 중이면 거부
+    if (job.status === 'in_progress' && job.selectedWorkerId && job.selectedWorkerId !== workerId) {
+        return res.status(409).json({ ok: false, error: '이미 다른 작업자가 진행 중이에요.' });
+    }
+
+    // ── 1. applications 레코드 생성 ───────────────────────────────
+    const appId = `app-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const existingApp = db.prepare(
+        "SELECT id FROM applications WHERE jobRequestId = ? AND workerId = ? AND status != 'cancelled'"
+    ).get(jobId, workerId);
+
+    if (!existingApp) {
+        db.prepare(`
+            INSERT INTO applications (id, jobRequestId, workerId, message, status, createdAt)
+            VALUES (?, ?, ?, ?, 'pending', ?)
+        `).run(appId, jobId, workerId, '바로 연락하기 (자동 지원)', now);
+        console.log(`[CONTACT_APPLY_APP] appId=${appId} jobId=${jobId} workerId=${workerId}`);
+    }
+
+    // ── 2. job 상태 → matched (농민이 작업 시작 버튼 누를 수 있도록) ─
+    db.prepare(`
+        UPDATE jobs
+        SET status           = 'matched',
+            selectedWorkerId = ?,
+            contactRevealed  = 1,
+            appliedAt        = ?,
+            scheduledAt      = ?,
+            contactCount     = COALESCE(contactCount, 0) + 1,
+            lastContactAt    = ?
+        WHERE id = ?
+    `).run(workerId, now, now, now, jobId);
+
+    console.log(`[CONTACT_APPLY_DONE] jobId=${jobId} workerId=${workerId} status=matched`);
+
+    // ── 3. Kakao 알림 (농민에게) — fail-safe ─────────────────────
+    const farmer = db.prepare('SELECT id, name, phone FROM users WHERE id = ?').get(job.requesterId);
+    sendContactAlert(
+        { ...job, farmerPhone: farmer?.phone },
+        { id: workerId, name: req.body?.workerName || '작업자' }
+    ).catch(() => {});
+
+    return res.json({ ok: true, already: false, status: 'matched' });
+});
+
+// ─── POST /api/jobs/:id/reschedule — PHASE_COMPLETE_SETTLEMENT_WS_V1 ───
+// 일정 변경 + Kakao 알림 + WS 브로드캐스트
+router.post('/:id/reschedule', (req, res) => {
+    const jobId       = req.params.id;
+    const { scheduledAt, requesterId } = req.body;
+
+    if (!scheduledAt) return res.status(400).json({ ok: false, error: 'scheduledAt이 필요해요.' });
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    db.prepare('UPDATE jobs SET scheduledAt = ? WHERE id = ?').run(scheduledAt, jobId);
+
+    // Kakao 알림 (콘솔 MOCK)
+    const msg = `[농촌일손]\n일정이 변경되었습니다.\n${job.category || '작업'} | ${job.locationText || ''}\n새 일정: ${scheduledAt}`;
+    console.log(`[SCHEDULE_NOTIFY] jobId=${jobId} newDate=${scheduledAt}`);
+    console.log(msg);
+
+    // WS 브로드캐스트
+    if (global.broadcast) {
+        global.broadcast({ type: 'job_rescheduled', jobId, scheduledAt });
+    }
+
+    return res.json({ ok: true, scheduledAt });
+});
+
 // ─── GET /api/jobs/:id/applicants (PHASE 28: 스마트 매칭 정렬) ──
 router.get('/:id/applicants', (req, res) => {
     const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
@@ -1074,7 +1166,40 @@ router.post('/:id/complete', (req, res) => {
         }
     }
 
-    db.prepare("UPDATE jobs SET status = 'done' WHERE id = ?").run(job.id);
+    // PHASE_COMPLETE_SETTLEMENT_WS_V1: 정산 필드 + completedAt
+    const completedAt = new Date().toISOString();
+    const payNum = (() => {
+        const raw = String(job.pay || '').replace(/[^0-9]/g, '');
+        return raw ? parseInt(raw, 10) : null;
+    })();
+
+    db.prepare(`
+        UPDATE jobs
+        SET status      = 'done',
+            completedAt = ?,
+            paid        = 1,
+            payAmount   = COALESCE(payAmount, ?)
+        WHERE id = ?
+    `).run(completedAt, payNum, job.id);
+
+    // PHASE_ADMIN_DASHBOARD_AI_V2: 작업자 완료 통계 갱신
+    if (job.selectedWorkerId) {
+        try {
+            const wRow = db.prepare('SELECT id, completedJobs FROM workers WHERE userId = ?').get(job.selectedWorkerId);
+            if (wRow) {
+                const newCompleted = (wRow.completedJobs || 0) + 1;
+                const totalApps   = db.prepare(
+                    "SELECT COUNT(*) AS n FROM applications WHERE workerId = ?"
+                ).get(wRow.id)?.n || 1;
+                const newSuccessRate = Math.round((newCompleted / Math.max(1, totalApps)) * 100) / 100;
+                db.prepare('UPDATE workers SET completedJobs = ?, successRate = ? WHERE id = ?')
+                  .run(newCompleted, newSuccessRate, wRow.id);
+                console.log(`[WORKER_STATS] workerId=${wRow.id} completedJobs=${newCompleted} successRate=${newSuccessRate}`);
+            }
+        } catch (e) {
+            console.warn('[WORKER_STATS_FAIL]', e.message);
+        }
+    }
 
     // 선택된 작업자 조회 → 알림
     const selApp = db.prepare(
@@ -1085,9 +1210,22 @@ router.post('/:id/complete', (req, res) => {
         if (worker) sendJobCompletedNotification(job, worker);
     }
 
-    console.log(`[JOB_COMPLETED] id=${job.id}`);
+    console.log(`[JOB_COMPLETED] id=${job.id} payAmount=${payNum} paid=1`);
+    // PHASE_PAYMENT_ESCROW_V1: 에스크로 정산 로그
+    if (job.paymentStatus === 'paid') {
+        console.log(`[SETTLEMENT_ESCROW] jobId=${job.id} paymentId=${job.paymentId} netAmount=${job.netAmount} fee=${job.fee} → 정산 완료`);
+    } else {
+        console.log(`[SETTLEMENT_WARNING] jobId=${job.id} paymentStatus=${job.paymentStatus ?? 'pending'} — 결제 없이 완료됨`);
+    }
+    console.log(`[SETTLEMENT] jobId=${job.id} payAmount=${payNum ?? 'unknown'} completedAt=${completedAt}`);
     trackEvent('job_completed', { jobId: job.id, userId: requesterId, meta: { category: job.category } });
-    return res.json({ ok: true, status: 'done' });
+
+    // WS 브로드캐스트
+    if (global.broadcast) {
+        global.broadcast({ type: 'job_completed', jobId: job.id, payAmount: payNum, completedAt });
+    }
+
+    return res.json({ ok: true, status: 'done', paid: true, payAmount: payNum, completedAt });
 });
 
 // ─── POST /api/jobs/:id/complete-work ────────────────────────
@@ -1240,6 +1378,132 @@ router.post('/:id/sponsor', (req, res) => {
         }
     } catch (e) {
         return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// ─── POST /api/jobs/:id/pay ─────────────────────────────────────
+// PHASE_PAYMENT_ESCROW_V1: 결제 예약 생성 (에스크로)
+// 매칭 완료 후 농민이 결제 시작 → paymentStatus='reserved'
+router.post('/:id/pay', (req, res) => {
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    // 이미 결제된 경우
+    if (job.paymentStatus === 'paid') {
+        return res.json({ ok: true, already: true, paymentStatus: 'paid' });
+    }
+    // 이미 예약된 경우 — paymentId만 반환
+    if (job.paymentStatus === 'reserved' && job.paymentId) {
+        return res.json({
+            ok: true,
+            already: true,
+            paymentStatus: 'reserved',
+            payment: { paymentId: job.paymentId, fee: job.fee, net: job.netAmount },
+        });
+    }
+
+    try {
+        const payment = createPayment(job);
+
+        db.prepare(`
+            UPDATE jobs
+            SET paymentStatus = 'reserved',
+                paymentId     = ?,
+                fee           = ?,
+                netAmount     = ?
+            WHERE id = ?
+        `).run(payment.paymentId, payment.fee, payment.net, job.id);
+
+        trackEvent('payment_reserved', { jobId: job.id, userId: req.body.requesterId || null });
+
+        return res.json({
+            ok:            true,
+            paymentStatus: 'reserved',
+            payment: {
+                paymentId: payment.paymentId,
+                amount:    payment.amount,
+                fee:       payment.fee,
+                net:       payment.net,
+            },
+        });
+    } catch (e) {
+        console.error('[PAYMENT_CREATE_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '결제 생성 오류: ' + e.message });
+    }
+});
+
+// ─── POST /api/jobs/:id/pay/confirm ────────────────────────────
+// PHASE_PAYMENT_ESCROW_V1: 결제 확정 → paymentStatus='paid'
+// (실결제: PG 웹훅 수신 후 자동 호출)
+router.post('/:id/pay/confirm', (req, res) => {
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    if (!job.paymentId) {
+        return res.status(400).json({ ok: false, error: '먼저 결제 요청을 생성해주세요. (/pay)' });
+    }
+    if (job.paymentStatus === 'paid') {
+        return res.json({ ok: true, already: true, paymentStatus: 'paid' });
+    }
+
+    try {
+        confirmPayment(job.paymentId);
+
+        db.prepare("UPDATE jobs SET paymentStatus = 'paid' WHERE id = ?").run(job.id);
+
+        console.log(`[PAYMENT_CONFIRMED] jobId=${job.id} paymentId=${job.paymentId} net=${job.netAmount}원`);
+        trackEvent('payment_confirmed', { jobId: job.id, userId: req.body.requesterId || null });
+
+        // WS 알림
+        if (global.broadcast) {
+            global.broadcast({ type: 'payment_confirmed', jobId: job.id, netAmount: job.netAmount });
+        }
+
+        return res.json({
+            ok:            true,
+            paymentStatus: 'paid',
+            netAmount:     job.netAmount,
+            fee:           job.fee,
+        });
+    } catch (e) {
+        console.error('[PAYMENT_CONFIRM_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '결제 확정 오류: ' + e.message });
+    }
+});
+
+// ─── POST /api/jobs/:id/refund ──────────────────────────────────
+// PHASE_PAYMENT_ESCROW_V1: 환불 처리 (분쟁 대비)
+router.post('/:id/refund', (req, res) => {
+    const { requesterId } = req.body || {};
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    if (!job.paymentId) {
+        return res.status(400).json({ ok: false, error: '결제 내역이 없어요.' });
+    }
+    if (job.paymentStatus === 'refunded') {
+        return res.json({ ok: true, already: true, paymentStatus: 'refunded' });
+    }
+    if (job.paymentStatus !== 'reserved' && job.paymentStatus !== 'paid') {
+        return res.status(400).json({ ok: false, error: `현재 상태(${job.paymentStatus})는 환불 불가해요.` });
+    }
+    // 이미 완료된 작업은 환불 불가
+    if (job.status === 'done') {
+        return res.status(400).json({ ok: false, error: '완료된 작업은 환불할 수 없어요.' });
+    }
+
+    try {
+        refundPayment(job.paymentId);
+
+        db.prepare("UPDATE jobs SET paymentStatus = 'refunded' WHERE id = ?").run(job.id);
+
+        console.log(`[PAYMENT_REFUNDED] jobId=${job.id} paymentId=${job.paymentId} requesterId=${requesterId || 'unknown'}`);
+        trackEvent('payment_refunded', { jobId: job.id, userId: requesterId || null });
+
+        return res.json({ ok: true, paymentStatus: 'refunded', paymentId: job.paymentId });
+    } catch (e) {
+        console.error('[PAYMENT_REFUND_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '환불 처리 오류: ' + e.message });
     }
 });
 

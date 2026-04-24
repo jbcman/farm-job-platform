@@ -39,6 +39,7 @@ const adminLogsRoutes         = require('./routes/adminLogs');
 const adminStreamRoutes       = require('./routes/adminStream');
 const adminSystemRoutes       = require('./routes/adminSystem');
 const { seed }                      = require('./seed');
+const { initWS }                    = require('./ws');
 const { recoverDepartureReminders } = require('./services/reminderRecovery');
 const { scheduleBehaviorCleanup }   = require('./services/behaviorCleanup');
 const { runAutoWinner }             = require('./services/autoWinnerService');
@@ -157,8 +158,12 @@ setInterval(() => {
 setInterval(() => { try { detect();     } catch (_) {} }, 10 * 60 * 1000);
 setInterval(() => { try { tryRecover(); } catch (_) {} },      60 * 1000);
 
-// ─── 서버 시작 ────────────────────────────────────────────────────
-app.listen(PORT, HOST, () => {
+// ─── 서버 시작 (WebSocket 공유) ──────────────────────────────────
+const http   = require('http');
+const server = http.createServer(app);
+initWS(server);   // global.broadcast 등록
+
+server.listen(PORT, HOST, () => {
     const localIp = getLocalIp();
     const kakaoMode = process.env.USE_KAKAO === 'true' ? 'REAL 🔴' : 'MOCK 🟡';
     const testMode  = process.env.KAKAO_TEST_MODE === 'true' ? 'ON' : 'OFF';

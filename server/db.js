@@ -307,6 +307,12 @@ db.exec(`
   );
 `);
 
+// PHASE_ADMIN_DASHBOARD_AI_V2: worker 완료 통계 확장
+try { db.exec("ALTER TABLE workers ADD COLUMN successRate   REAL    DEFAULT 0"); } catch (_) {}
+// users 테이블에도 동일 필드 (플랫폼 사용자 기반 장기 통계)
+try { db.exec("ALTER TABLE users ADD COLUMN completedJobs INTEGER DEFAULT 0"); } catch (_) {}
+try { db.exec("ALTER TABLE users ADD COLUMN successRate   REAL    DEFAULT 0"); } catch (_) {}
+
 // PHASE AUTO_WINNER: 실험 승자 결과 테이블
 db.exec(`
   CREATE TABLE IF NOT EXISTS experiment_results (
@@ -417,6 +423,12 @@ try { db.exec("ALTER TABLE users ADD COLUMN referralCount INTEGER DEFAULT 0"); }
 try { db.exec("ALTER TABLE users ADD COLUMN referralRewarded INTEGER DEFAULT 0"); } catch (_) {}
 // referralCode 유니크 인덱스 (중복 방지)
 try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral ON users(referralCode) WHERE referralCode IS NOT NULL"); } catch (_) {}
+
+// PHASE_PAYMENT_ESCROW_V1: 에스크로 결제 상태 필드
+try { db.exec("ALTER TABLE jobs ADD COLUMN paymentStatus TEXT DEFAULT 'pending'"); } catch (_) {}
+try { db.exec("ALTER TABLE jobs ADD COLUMN paymentId     TEXT DEFAULT NULL");       } catch (_) {}
+try { db.exec("ALTER TABLE jobs ADD COLUMN fee           INTEGER DEFAULT 0");       } catch (_) {}
+try { db.exec("ALTER TABLE jobs ADD COLUMN netAmount     INTEGER DEFAULT 0");       } catch (_) {}
 
 console.log(`[DB] SQLite 연결 완료 → ${DB_PATH}`);
 module.exports = db;

@@ -220,4 +220,137 @@ router.get('/stale-jobs', auth, (req, res) => {
     }
 });
 
+// ── GET /api/admin/revenue ──────────────────────────────────────
+// PHASE_REVENUE_DASHBOARD_V1: 일별 / 월별 매출 집계
+router.get('/revenue', auth, (req, res) => {
+    try {
+        const daily = db.prepare(`
+            SELECT
+                DATE(completedAt)          AS date,
+                COUNT(*)                   AS count,
+                COALESCE(SUM(payAmount),0) AS total,
+                COALESCE(SUM(fee),0)       AS fee,
+                COALESCE(SUM(netAmount),0) AS net
+            FROM jobs
+            WHERE paid = 1
+              AND completedAt IS NOT NULL
+            GROUP BY DATE(completedAt)
+            ORDER BY date ASC
+            LIMIT 90
+        `).all();
+
+        const monthly = db.prepare(`
+            SELECT
+                substr(completedAt, 1, 7)  AS month,
+                COUNT(*)                   AS count,
+                COALESCE(SUM(payAmount),0) AS total,
+                COALESCE(SUM(fee),0)       AS fee,
+                COALESCE(SUM(netAmount),0) AS net
+            FROM jobs
+            WHERE paid = 1
+              AND completedAt IS NOT NULL
+            GROUP BY substr(completedAt, 1, 7)
+            ORDER BY month ASC
+            LIMIT 24
+        `).all();
+
+        // 전체 누적 합산
+        const summary = db.prepare(`
+            SELECT
+                COUNT(*)                   AS totalCount,
+                COALESCE(SUM(payAmount),0) AS totalRevenue,
+                COALESCE(SUM(fee),0)       AS totalFee,
+                COALESCE(SUM(netAmount),0) AS totalNet
+            FROM jobs
+            WHERE paid = 1
+        `).get();
+
+        console.log(`[ADMIN_REVENUE] daily=${daily.length}건 monthly=${monthly.length}건 summary=${JSON.stringify(summary)}`);
+
+        return res.json({
+            ok: true,
+            daily,
+            monthly,
+            summary: {
+                totalCount:   n(summary?.totalCount),
+                totalRevenue: n(summary?.totalRevenue),
+                totalFee:     n(summary?.totalFee),
+                totalNet:     n(summary?.totalNet),
+            },
+        });
+    } catch (e) {
+        console.error('[ADMIN_REVENUE_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '매출 집계 오류: ' + e.message });
+    }
+});
+
+// ── GET /api/admin/stats ─────────────────────────────────────────
+// PHASE_ADMIN_DASHBOARD_AI_V2: 통합 운영 지표 (매출/매칭율/완료율)
+router.get('/stats', auth, (req, res) => {
+    try {
+        const totalJobs  = n(db.prepare("SELECT COUNT(*) AS n FROM jobs").get()?.n);
+        const completed  = n(db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'done'").get()?.n);
+        const inProgress = n(db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('matched','in_progress')").get()?.n);
+
+        const revRow = safeGet(() =>
+            db.prepare("SELECT SUM(payAmount) AS total FROM jobs WHERE paid = 1").get()
+        );
+        const revenue = n(revRow?.total);
+
+        const matchRate   = totalJobs > 0 ? Math.round((inProgress + completed) / totalJobs * 1000) / 10 : 0;
+        const completeRate = totalJobs > 0 ? Math.round(completed / totalJobs * 1000) / 10 : 0;
+
+        console.log(`[ADMIN_STATS] total=${totalJobs} done=${completed} inProg=${inProgress} rev=${revenue}`);
+
+        return res.json({
+            ok: true,
+            totalJobs,
+            completed,
+            inProgress,
+            revenue,
+            matchRate,    // %
+            completeRate, // %
+        });
+    } catch (e) {
+        console.error('[ADMIN_STATS_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '통계 조회 오류: ' + e.message });
+    }
+});
+
+// ── GET /api/admin/top-workers ───────────────────────────────────
+// PHASE_ADMIN_DASHBOARD_AI_V2: 완료 작업 기준 상위 작업자 TOP 5
+router.get('/top-workers', auth, (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+        const rows = db.prepare(`
+            SELECT
+                w.id,
+                COALESCE(u.name, w.name) AS name,
+                w.completedJobs,
+                w.rating,
+                COALESCE(w.successRate, 0) AS successRate,
+                w.categories
+            FROM workers w
+            LEFT JOIN users u ON w.userId = u.id
+            ORDER BY w.completedJobs DESC, w.rating DESC
+            LIMIT ?
+        `).all(limit);
+
+        const workers = rows.map(r => ({
+            id:            r.id,
+            name:          r.name || '이름 없음',
+            completedJobs: n(r.completedJobs),
+            rating:        r.rating != null ? Math.round(r.rating * 10) / 10 : 4.5,
+            successRate:   Math.round(n(r.successRate) * 1000) / 10, // % 변환
+            categories:    (() => { try { return JSON.parse(r.categories || '[]'); } catch(_) { return []; } })(),
+        }));
+
+        console.log(`[ADMIN_TOP_WORKERS] count=${workers.length}`);
+        return res.json({ ok: true, workers });
+    } catch (e) {
+        console.error('[ADMIN_TOP_WORKERS_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '작업자 조회 오류: ' + e.message });
+    }
+});
+
 module.exports = router;

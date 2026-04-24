@@ -4,6 +4,7 @@ import { getJobs, getMyJobs, getMyApplications, applyJob, startJob, completeJob,
 import { filterUrgentOnly } from '../utils/sortJobs.js';
 import { sortJobsByRecommend, RECOMMEND_BADGE_THRESHOLD } from '../utils/recommendJobs.js';
 import { getUserProfile, saveUserInteraction } from '../utils/userProfile.js';
+import { connectWS } from '../services/ws.js';
 import { useUserLocation } from '../hooks/useUserLocation.js';
 import JobCard from './JobCard.jsx';
 import ReviewModal from './ReviewModal.jsx';
@@ -96,6 +97,30 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   }, [myJobsMode, myApplicationsMode, userId, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
+
+  // PHASE_COMPLETE_SETTLEMENT_WS_V1: 실시간 WS 구독
+  useEffect(() => {
+    const handle = connectWS((data) => {
+      if (data.type === 'job_completed') {
+        setJobs(prev => prev.map(j =>
+          j.id === data.jobId
+            ? { ...j, status: 'done', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }
+            : j
+        ));
+      }
+      if (data.type === 'job_rescheduled') {
+        setJobs(prev => prev.map(j =>
+          j.id === data.jobId ? { ...j, scheduledAt: data.scheduledAt } : j
+        ));
+      }
+      if (data.type === 'job_matched') {
+        setJobs(prev => prev.map(j =>
+          j.id === data.jobId ? { ...j, status: 'matched', selectedWorkerId: data.workerId } : j
+        ));
+      }
+    });
+    return () => handle.close();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function showToast(msg) {
     setToast(msg);

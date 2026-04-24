@@ -112,4 +112,23 @@ function sortJobs(jobs, user = null) {
     return scored.sort((a, b) => b._aiScore - a._aiScore);
 }
 
-module.exports = { scoreJob, sortJobs, parsePay };
+// ─── 작업자 신뢰도 점수 ──────────────────────────────────────────
+/**
+ * scoreWorker — 작업자 AI 신뢰도 점수
+ *   rating(0~5) × 40  + completedJobs(경험치, 최대50) × 2  + successRate(0~1) × 30
+ *   최대: 200 + 100 + 30 = 330  (높을수록 신뢰 가능)
+ */
+function scoreWorker(worker) {
+    const rating      = Number(worker.rating        || 4.5);
+    const exp         = Math.min(Number(worker.completedJobs || 0), 50);
+    const successRate = Number(worker.successRate   || 0.5);
+    const score = rating * 40 + exp * 2 + successRate * 30;
+
+    console.log(
+        `[WORKER_SCORE] workerId=${worker.id}` +
+        ` rating=${rating} exp=${exp} successRate=${successRate} → ${score.toFixed(1)}`
+    );
+    return score;
+}
+
+module.exports = { scoreJob, sortJobs, parsePay, scoreWorker };

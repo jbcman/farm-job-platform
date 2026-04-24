@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw, AlertTriangle, Activity, BarChart2,
   Briefcase, Users, CheckCircle, XCircle, ArrowLeft,
+  TrendingUp, Star, Award,
 } from 'lucide-react';
 
 // ── API 헬퍼 ────────────────────────────────────────────────────
@@ -111,28 +112,53 @@ function KeyGate({ onSubmit }) {
   );
 }
 
+// ── 매출 포맷 ────────────────────────────────────────────────────
+function fmtRevenue(n) {
+  if (!n || n === 0) return '₩0';
+  if (n >= 100_000_000) return `₩${(n / 100_000_000).toFixed(1)}억`;
+  if (n >= 10_000)      return `₩${Math.round(n / 10_000)}만`;
+  return `₩${n.toLocaleString()}`;
+}
+
+// ── 별점 렌더 ────────────────────────────────────────────────────
+function StarRating({ rating }) {
+  const full = Math.round(rating || 0);
+  return (
+    <span className="text-amber-400 text-xs">
+      {'★'.repeat(Math.min(full, 5))}{'☆'.repeat(Math.max(0, 5 - full))}
+      <span className="text-gray-400 ml-1">{(rating || 0).toFixed(1)}</span>
+    </span>
+  );
+}
+
 // ── 메인 대시보드 ────────────────────────────────────────────────
 export default function AdminDashboard({ onBack }) {
-  const [adminKey,  setAdminKey]  = useState(() => sessionStorage.getItem('admin-key') || '');
-  const [showGate,  setShowGate]  = useState(false);
-  const [metrics,   setMetrics]   = useState(null);
-  const [activity,  setActivity]  = useState([]);
-  const [stale,     setStale]     = useState([]);
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState('');
-  const [lastFetch, setLastFetch] = useState(null);
+  const [adminKey,    setAdminKey]    = useState(() => sessionStorage.getItem('admin-key') || '');
+  const [showGate,    setShowGate]    = useState(false);
+  const [metrics,     setMetrics]     = useState(null);
+  const [stats,       setStats]       = useState(null);
+  const [topWorkers,  setTopWorkers]  = useState([]);
+  const [activity,    setActivity]    = useState([]);
+  const [stale,       setStale]       = useState([]);
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState('');
+  const [lastFetch,   setLastFetch]   = useState(null);
 
   const load = useCallback(async (key) => {
     const k = key ?? adminKey;
     setLoading(true);
     setError('');
     try {
-      const [m, a, s] = await Promise.all([
-        adminFetch('/admin/metrics',          k),
+      const [m, st, tw, a, s] = await Promise.all([
+        adminFetch('/admin/metrics',           k),
+        adminFetch('/admin/stats',             k),
+        adminFetch('/admin/top-workers',       k),
         adminFetch('/admin/activity?limit=20', k),
         adminFetch('/admin/stale-jobs',        k),
       ]);
       setMetrics(m);
+      setStats(st);
+      setTopWorkers(tw.workers || []);
       setActivity(a.activity || []);
       setStale(s.staleJobs   || []);
       setLastFetch(new Date());
@@ -196,6 +222,53 @@ export default function AdminDashboard({ onBack }) {
             ⚠️ {error}
           </div>
         )}
+
+        {/* ── 수익 대시보드 바로가기 ────────────────────────── */}
+        <a
+          href="/revenue"
+          className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r
+                     from-green-900/60 to-green-800/40 border border-green-700/50
+                     rounded-2xl hover:from-green-800/60 transition"
+        >
+          <div className="flex items-center gap-2">
+            <TrendingUp size={16} className="text-green-400" />
+            <span className="font-bold text-green-300 text-sm">💰 수익 대시보드</span>
+          </div>
+          <span className="text-green-500 text-xs">일별/월별 매출 →</span>
+        </a>
+
+        {/* ── 0. 핵심 운영 지표 (PHASE_ADMIN_DASHBOARD_AI_V2) ─ */}
+        <section>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <TrendingUp size={13} /> 핵심 운영 지표
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <KpiCard
+              label="누적 매출"
+              value={fmtRevenue(stats?.revenue)}
+              sub="정산 완료 기준"
+              color="green"
+            />
+            <KpiCard
+              label="전체 공고"
+              value={stats?.totalJobs ?? '—'}
+              sub={`진행중 ${stats?.inProgress ?? 0}건`}
+              color="blue"
+            />
+            <KpiCard
+              label="완료율"
+              value={stats?.completeRate != null ? `${stats.completeRate}%` : '—'}
+              sub="완료 / 전체"
+              color="amber"
+            />
+            <KpiCard
+              label="매칭율"
+              value={stats?.matchRate != null ? `${stats.matchRate}%` : '—'}
+              sub="매칭+완료 / 전체"
+              color="gray"
+            />
+          </div>
+        </section>
 
         {/* ── 1. 오늘 KPI ───────────────────────────────── */}
         <section>
@@ -279,6 +352,41 @@ export default function AdminDashboard({ onBack }) {
             </div>
           </section>
         )}
+
+        {/* ── 5-B. TOP 작업자 (PHASE_ADMIN_DASHBOARD_AI_V2) ─ */}
+        <section>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <Award size={13} /> AI 신뢰도 TOP 작업자
+          </p>
+          {topWorkers.length === 0 ? (
+            <p className="text-gray-600 text-sm text-center py-4">데이터 없음 (작업 완료 후 갱신)</p>
+          ) : (
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
+              {topWorkers.map((w, i) => (
+                <div key={w.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className={`text-lg font-black w-6 text-center ${
+                    i === 0 ? 'text-amber-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-amber-700' : 'text-gray-600'
+                  }`}>
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-200 truncate">{w.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <StarRating rating={w.rating} />
+                      {w.categories.length > 0 && (
+                        <span className="text-xs text-gray-500">{w.categories.slice(0, 2).join(' · ')}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-black text-green-400">{w.completedJobs}건</p>
+                    <p className="text-xs text-gray-500">성공률 {w.successRate}%</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* ── 6. 최근 활동 ──────────────────────────────── */}
         <section>

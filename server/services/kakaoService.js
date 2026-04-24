@@ -443,6 +443,45 @@ ${link}`;
 // ─── 부팅 시 모드 출력 ──────────────────────────────────────────
 console.log(`[KAKAO_SERVICE] mode=${IS_REAL ? 'REAL' : 'MOCK'} template_job_match=${TEMPLATE_JOB_MATCH || '(미설정)'}`);
 
+// ─── CONTACT_TO_MATCH_AUTOFLOW_V1: 연락 버튼 자동 알림 ──────────
+/**
+ * sendContactAlert — 작업자가 "바로 연락하기" 클릭 시 농민에게 알림
+ * @param {object} job     — { id, category, locationText, pay, date, requesterId }
+ * @param {object} worker  — { id, name? }
+ */
+async function sendContactAlert(job, worker) {
+    try {
+        const workerName = worker?.name || '작업자';
+        const category   = job?.category || '작업';
+        const location   = job?.locationText || '';
+        const msg = [
+            '[농촌일손]',
+            `${category} 의뢰에 ${workerName}님이 연락했습니다.`,
+            location ? `📍 ${location}` : '',
+            '',
+            '앱에서 확인해 주세요.',
+        ].filter(l => l !== null).join('\n');
+
+        if (IS_REAL) {
+            // 농민 전화번호 조회 (DB 의존성 최소화 — 호출자가 넘겨도 됨)
+            const farmerPhone = job.farmerPhone || null;
+            if (farmerPhone) {
+                await sendKakaoReal({ phone: farmerPhone }, job);
+            } else {
+                console.log('[CONTACT_ALERT_REAL_SKIP] 농민 전화번호 없음 → MOCK 대체');
+                console.log('[CONTACT_ALERT_MOCK]\n' + msg);
+            }
+        } else {
+            console.log('[CONTACT_ALERT_MOCK]');
+            console.log(msg);
+        }
+        return { ok: true };
+    } catch (err) {
+        console.error('[CONTACT_ALERT_ERROR]', err.message);
+        return { ok: false, error: err.message };
+    }
+}
+
 module.exports = {
     sendJobAlert,
     sendApplyAlert,
@@ -452,5 +491,6 @@ module.exports = {
     sendKakaoReal,
     sendKakaoMock,
     buildJobMatchTemplate,
+    sendContactAlert,
     sentCache,
 };

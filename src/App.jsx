@@ -15,6 +15,7 @@ import PayResultPage         from './components/PayResultPage.jsx';
 import OperatorPage          from './components/OperatorPage.jsx';
 import MapPage               from './pages/MapPage.jsx';
 import MapExplorePage        from './pages/MapExplorePage.jsx';
+import RevenueDashboard      from './pages/RevenueDashboard.jsx';
 import { getUserId, trackClientEvent, getNotifications } from './utils/api.js';
 import { getOrCreateUser } from './utils/userProfile.js';
 
@@ -42,6 +43,12 @@ import { getOrCreateUser } from './utils/userProfile.js';
 /** /admin 경로 감지 */
 function isAdminPath() {
   return window.location.pathname.startsWith('/admin');
+}
+
+/** /revenue 또는 /admin/revenue 경로 감지 — 수익 대시보드 */
+function isRevenuePath() {
+  const p = window.location.pathname;
+  return p.startsWith('/revenue') || p === '/admin/revenue';
 }
 
 /** /ops 경로 감지 — MVP 운영자 페이지 */
@@ -95,6 +102,15 @@ function parseDeeplinkSource() {
 }
 
 export default function App() {
+  // PHASE_REVENUE_DASHBOARD_V1: /revenue → 수익 대시보드 (로그인 게이트 우회)
+  if (isRevenuePath()) {
+    return (
+      <div className="max-w-lg mx-auto relative min-h-screen">
+        <RevenueDashboard onBack={() => { window.history.replaceState({}, '', '/admin'); window.location.reload(); }} />
+      </div>
+    );
+  }
+
   // Phase 9: /admin 경로 → 관리자 대시보드 직접 렌더 (로그인 게이트 우회)
   if (isAdminPath()) {
     return (

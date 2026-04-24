@@ -381,7 +381,7 @@ export default function JobCard({
           </button>
         ) : (
           <div className="flex gap-2 mt-2">
-            {/* PRIMARY: 📩 바로 연락하기 */}
+            {/* PRIMARY: 📩 바로 연락하기 — CONTACT_TO_MATCH_AUTOFLOW_V1 */}
             <button
               className={`flex-1 py-3 rounded-2xl font-black text-white text-base
                           flex items-center justify-center gap-2
@@ -393,17 +393,30 @@ export default function JobCard({
                 e.preventDefault();
                 const skillLevel = getUserSkillLevel();
                 const link = getSMSLink(job, skillLevel);
+
                 if (!link) {
-                  // 연락처 없음 → 지원 흐름으로 대신 연결
+                  // 연락처 없음 → 기존 지원 흐름
                   logBehavior(job, 'apply');
                   incrementApplyCount();
                   try { trackClientEvent('apply_click', { jobId: job.id, category: job.category }); } catch (_) {}
                   onApply?.(job);
                   return;
                 }
-                // 서버 연락 로그 (fire-and-forget)
-                fetch(`/api/jobs/${job.id}/contact`, { method: 'POST' }).catch(() => {});
-                try { trackClientEvent('sms_click', { jobId: job.id, skillLevel }); } catch (_) {}
+
+                // ① 자동 지원 + 상태 전환 (fail-safe: 실패해도 SMS 진행)
+                const storedId = localStorage.getItem('farm-userId') || 'anonymous';
+                const storedName = localStorage.getItem('farm-userName') || '작업자';
+                fetch(`/api/jobs/${job.id}/contact-apply`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ workerId: storedId, workerName: storedName }),
+                }).catch(() => {});
+
+                // ② 이벤트 로그
+                incrementApplyCount();
+                try { trackClientEvent('contact_apply', { jobId: job.id, skillLevel }); } catch (_) {}
+
+                // ③ SMS 앱 오픈 (항상 실행)
                 window.location.href = link;
               }}
             >
@@ -424,6 +437,16 @@ export default function JobCard({
             </button>
           </div>
         )
+      )}
+
+      {/* STEP 5: worker + matched → "연락 완료" 상태 배지 */}
+      {mode === 'worker' && job.status === 'matched' &&
+       job.selectedWorkerId === ((() => { try { return localStorage.getItem('farm-userId'); } catch(_){return null;} })()) && (
+        <div className="bg-green-50 border border-green-200 text-green-800
+                        px-4 py-3 rounded-2xl mt-2
+                        flex items-center gap-2 text-sm font-bold">
+          ✅ 연락 완료 — 농민 확인 대기 중
+        </div>
       )}
 
       {/* CASE: worker + matched/in_progress → 전화 + 문자 */}

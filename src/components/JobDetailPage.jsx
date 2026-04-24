@@ -391,6 +391,191 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
         )}
       </div>
 
+      {/* PHASE_PAYMENT_ESCROW_V1: 결제 버튼 (오너 + matched 상태) */}
+      {job.requesterId === userId && job.status === 'matched' && (
+        <div className="mx-4 mb-4 space-y-2">
+          {/* 결제 예약 (pending 상태) */}
+          {(!job.paymentStatus || job.paymentStatus === 'pending') && (
+            <button
+              onClick={async () => {
+                if (!window.confirm('💳 결제를 시작하시겠어요?\n(에스크로 — 작업 완료 후 자동 정산)')) return;
+                try {
+                  const res = await fetch(`/api/jobs/${job.id}/pay`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requesterId: userId }),
+                  });
+                  const data = await res.json();
+                  if (data.ok) {
+                    setJob(prev => ({ ...prev, paymentStatus: 'reserved', paymentId: data.payment?.paymentId, fee: data.payment?.fee, netAmount: data.payment?.net }));
+                    alert(`✅ 결제 요청이 생성됐어요!\n금액: ${(data.payment?.amount || 0).toLocaleString()}원\n수수료: ${(data.payment?.fee || 0).toLocaleString()}원\n작업자 수령: ${(data.payment?.net || 0).toLocaleString()}원`);
+                  } else {
+                    alert('⚠️ ' + (data.error || '결제 요청 실패'));
+                  }
+                } catch { alert('서버 연결 오류'); }
+              }}
+              className="w-full py-3 bg-blue-600 text-white font-black rounded-2xl
+                         flex items-center justify-center gap-2 active:scale-95 transition-transform shadow"
+            >
+              💳 결제하기 (에스크로)
+            </button>
+          )}
+
+          {/* 결제 확정 (reserved 상태) */}
+          {job.paymentStatus === 'reserved' && (
+            <div className="space-y-2">
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
+                <p className="text-xs text-blue-500 font-bold mb-1">🔒 결제 대기 중</p>
+                <p className="text-sm text-blue-800 font-black">결제 예약 완료</p>
+                {job.netAmount > 0 && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    작업자 수령 {(job.netAmount || 0).toLocaleString()}원 (수수료 {(job.fee || 0).toLocaleString()}원 제외)
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={async () => {
+                  if (!window.confirm('✅ 결제를 최종 확정하시겠어요?')) return;
+                  try {
+                    const res = await fetch(`/api/jobs/${job.id}/pay/confirm`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ requesterId: userId }),
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                      setJob(prev => ({ ...prev, paymentStatus: 'paid' }));
+                      alert('✅ 결제 확정 완료!\n작업이 진행될 수 있어요.');
+                    } else {
+                      alert('⚠️ ' + (data.error || '결제 확정 실패'));
+                    }
+                  } catch { alert('서버 연결 오류'); }
+                }}
+                className="w-full py-3 bg-green-600 text-white font-black rounded-2xl
+                           flex items-center justify-center gap-2 active:scale-95 transition-transform shadow"
+              >
+                ✅ 결제 확정
+              </button>
+              <button
+                onClick={async () => {
+                  if (!window.confirm('⚠️ 환불하시겠어요? 매칭이 취소될 수 있어요.')) return;
+                  try {
+                    const res = await fetch(`/api/jobs/${job.id}/refund`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ requesterId: userId }),
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                      setJob(prev => ({ ...prev, paymentStatus: 'refunded' }));
+                      alert('🔄 환불 처리됐어요.');
+                    } else {
+                      alert('⚠️ ' + (data.error || '환불 실패'));
+                    }
+                  } catch { alert('서버 연결 오류'); }
+                }}
+                className="w-full py-2.5 bg-gray-100 text-gray-600 font-bold rounded-2xl
+                           flex items-center justify-center gap-2 active:scale-95 transition-transform text-sm"
+              >
+                🔄 환불 신청
+              </button>
+            </div>
+          )}
+
+          {/* 결제 완료 배지 (paid) */}
+          {job.paymentStatus === 'paid' && (
+            <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+              <span className="text-xl">✅</span>
+              <div>
+                <p className="font-black text-green-800 text-sm">결제 확정 완료</p>
+                <p className="text-xs text-green-600">작업 진행 후 자동 정산됩니다</p>
+              </div>
+            </div>
+          )}
+
+          {/* 환불 완료 배지 */}
+          {job.paymentStatus === 'refunded' && (
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+              <span className="text-xl">🔄</span>
+              <div>
+                <p className="font-black text-gray-700 text-sm">환불 처리 완료</p>
+                <p className="text-xs text-gray-500">결제가 취소됐어요</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PHASE_COMPLETE_SETTLEMENT_WS_V1: 운영 버튼 (오너 + in_progress 상태) */}
+      {job.requesterId === userId && job.status === 'in_progress' && (
+        <div className="mx-4 mb-4 space-y-2">
+          {/* ✅ 작업 완료 + 자동 정산 */}
+          <button
+            onClick={async () => {
+              if (!window.confirm('작업을 완료 처리하고 정산하시겠어요?')) return;
+              try {
+                const res = await fetch(`/api/jobs/${job.id}/complete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ requesterId: userId }),
+                });
+                const data = await res.json();
+                if (data.ok) {
+                  setJob(prev => ({ ...prev, status: 'done', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }));
+                  alert(`✅ 완료 처리됐어요!\n${data.payAmount ? `💰 정산: ${data.payAmount.toLocaleString()}원` : ''}`);
+                } else {
+                  alert('⚠️ ' + (data.error || '완료 처리 실패'));
+                }
+              } catch { alert('서버 연결 오류'); }
+            }}
+            className="w-full py-3 bg-farm-green text-white font-black rounded-2xl
+                       flex items-center justify-center gap-2 active:scale-95 transition-transform shadow"
+          >
+            ✅ 작업 완료 + 자동 정산
+          </button>
+
+          {/* 📅 일정 변경 */}
+          <button
+            onClick={async () => {
+              const newDate = window.prompt('새 일정을 입력하세요 (예: 2026-05-01 오전 9시)');
+              if (!newDate?.trim()) return;
+              try {
+                const res = await fetch(`/api/jobs/${job.id}/reschedule`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ scheduledAt: newDate.trim(), requesterId: userId }),
+                });
+                const data = await res.json();
+                if (data.ok) {
+                  setJob(prev => ({ ...prev, scheduledAt: data.scheduledAt }));
+                  alert(`📅 일정이 변경됐어요!\n${data.scheduledAt}`);
+                } else {
+                  alert('⚠️ ' + (data.error || '일정 변경 실패'));
+                }
+              } catch { alert('서버 연결 오류'); }
+            }}
+            className="w-full py-3 bg-blue-50 text-blue-700 font-bold rounded-2xl border border-blue-200
+                       flex items-center justify-center gap-2 active:scale-95 transition-transform"
+          >
+            📅 일정 변경 → 자동 알림
+          </button>
+        </div>
+      )}
+
+      {/* 완료 + 정산 완료 배지 */}
+      {job.status === 'done' && job.paid && (
+        <div className="mx-4 mb-4 bg-green-50 border border-green-200 rounded-2xl px-4 py-3
+                        flex items-center gap-3">
+          <span className="text-2xl">💰</span>
+          <div>
+            <p className="font-black text-green-800 text-sm">정산 완료</p>
+            {job.payAmount && (
+              <p className="text-green-600 text-xs font-bold">{job.payAmount.toLocaleString()}원 지급 완료</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* STEP 5: 하단 고정 CTA — STEP 8: 손가락 누르기 쉬운 크기 */}
       {!isClosed && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100
