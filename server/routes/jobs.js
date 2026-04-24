@@ -530,30 +530,50 @@ router.get('/nearby', (req, res) => {
 
 // ─── GET /api/jobs/map ────────────────────────────────────────
 // 지도 마커용 경량 데이터 (open + 실제 GPS 좌표만)
+// GEO_AI_PAID: isSponsored + aiScore 포함, 스폰서 우선 정렬
 router.get('/map', (req, res) => {
     const { lat, lon } = req.query;
     const userLat = lat ? parseFloat(lat) : null;
     const userLon = lon ? parseFloat(lon) : null;
     const today   = new Date().toISOString().slice(0, 10);
+    const now     = Date.now();
 
     const rows = db.prepare(`
         SELECT id, category, locationText, pay, date, latitude, longitude,
-               isUrgent, areaPyeong, areaSize, areaUnit, farmImages, imageUrl,
-               farmAddress
+               isUrgent, isUrgentPaid, areaPyeong, areaSize, areaUnit,
+               farmImages, imageUrl, farmAddress, difficulty
         FROM   jobs
         WHERE  status   = 'open'
           AND  latitude  IS NOT NULL
           AND  longitude IS NOT NULL
           AND  NOT (latitude = 37.5 AND longitude = 127.0)
-    `).all().map(r => ({ ...r, isUrgent: !!r.isUrgent }));
+    `).all().map(r => ({ ...r, isUrgent: !!r.isUrgent, isUrgentPaid: !!r.isUrgentPaid }));
+
+    // 스폰서 ID 셋 (만료 안 된 것만)
+    const sponsoredIds = new Set(
+        db.prepare('SELECT jobId FROM sponsored_jobs WHERE expiresAt > ?').all(now).map(r => r.jobId)
+    );
 
     const markers = rows.map(job => {
         const dist = (userLat && userLon)
             ? distanceKm(userLat, userLon, job.latitude, job.longitude)
             : null;
-        // PHASE 26: 첫 번째 이미지 → 팝업 썸네일
-        const imgs    = parseFarmImages(job.farmImages);
+        const imgs     = parseFarmImages(job.farmImages);
         const thumbUrl = imgs[0] || job.imageUrl || null;
+        const isSpon   = sponsoredIds.has(job.id);
+        const isToday  = !!(job.date && job.date.slice(0, 10) === today);
+
+        // ── AI 추천 점수 계산 (GEO_AI_PAID) ──
+        // 스폰서(+50) > 급구유료(+35) > 급구(+20) > 오늘(+15) > 거리 근접(최대+20)
+        let aiScore = 0;
+        if (isSpon)              aiScore += 50;
+        if (job.isUrgentPaid)    aiScore += 35;
+        if (job.isUrgent)        aiScore += 20;
+        if (isToday)             aiScore += 15;
+        if (dist !== null)       aiScore += Math.max(0, 20 - Math.floor(dist));
+        // 난이도 낮을수록 접근성 ↑ (+최대 10)
+        if (job.difficulty != null) aiScore += Math.round((1 - job.difficulty) * 10);
+
         return {
             id:           job.id,
             category:     job.category,
@@ -562,24 +582,22 @@ router.get('/map', (req, res) => {
             date:         job.date,
             lat:          job.latitude,
             lng:          job.longitude,
-            isToday:      !!(job.date && job.date.slice(0, 10) === today),
+            isToday,
             isUrgent:     job.isUrgent,
+            isUrgentPaid: job.isUrgentPaid,
+            isSponsored:  isSpon,
+            aiScore,
             distKm:       dist !== null ? Math.round(dist * 10) / 10 : null,
-            // PHASE 26
             areaPyeong:   job.areaPyeong || null,
             thumbUrl,
-            // PHASE MAP_FIX
             farmAddress:  job.farmAddress || null,
         };
     });
 
-    // 오늘 → 거리 순 정렬
-    markers.sort((a, b) => {
-        if (a.isToday !== b.isToday) return a.isToday ? -1 : 1;
-        return (a.distKm ?? 9999) - (b.distKm ?? 9999);
-    });
+    // GEO_AI_PAID: AI 점수 내림차순 정렬 (스폰서 자동 상단)
+    markers.sort((a, b) => b.aiScore - a.aiScore);
 
-    console.log(`[MAP_DATA_FETCH] count=${markers.length} gps=${userLat ? 'on' : 'off'}`);
+    console.log(`[MAP_DATA_FETCH] count=${markers.length} sponsored=${[...sponsoredIds].length} gps=${userLat ? 'on' : 'off'}`);
     return res.json({ ok: true, markers });
 });
 
