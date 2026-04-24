@@ -365,21 +365,23 @@ export default function HomePage({
         </div>
       )}
 
-      {/* 🔥 긴급 배너 — DESIGN_V3: 풀 너비 빨간 그라디언트 */}
-      {!loading && urgentJobs.length > 0 && (
+      {/* 🔥 긴급 배너 — FINAL_CONVERSION: 항상 표시 */}
+      {!loading && (
         <button
           onClick={mode === 'farmer' ? onViewMyJobs : onViewJobList}
           className="w-full flex items-center justify-between active:opacity-90 transition-opacity"
           style={{
             background: 'linear-gradient(90deg,#b91c1c,#dc2626)',
-            padding: '10px 16px',
-            boxShadow: '0 3px 10px rgba(185,28,28,.35)',
+            padding: '11px 16px',
+            boxShadow: '0 3px 12px rgba(185,28,28,.40)',
           }}
         >
           <div className="text-left">
             <p className="text-white font-black text-sm">🔥 오늘 안 구하면 작업 지연됩니다</p>
             <p className="text-red-100 text-xs font-semibold mt-0.5">
-              👉 지금 바로 연결 가능한 일 {urgentJobs.length}건
+              {urgentJobs.length > 0
+                ? `👉 지금 바로 연결 가능한 일 ${urgentJobs.length}건`
+                : '👉 지금 일자리 확인하고 바로 연결하세요'}
             </p>
           </div>
           <ChevronRight size={18} className="text-white/80 shrink-0" />

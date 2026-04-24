@@ -18,9 +18,9 @@ function distLabel(km) {
 
 // ── CTA 텍스트 ──────────────────────────────────────────────────
 function ctaCopy(n) {
-  if (n >= 3) return `🔥 지금 연결 (경쟁 ${n}명)`;
-  if (n >= 1) return '🔥 지금 연결 (마감 임박)';
-  return '🔥 지금 연결';
+  if (n >= 3) return `🔥 3초 연결 (경쟁 ${n}명, 지금 안 하면 늦음)`;
+  if (n >= 1) return '🔥 3초 연결 (지금 안 하면 늦음)';
+  return '🔥 3초 연결 (지금 안 하면 늦음)';
 }
 
 /** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
@@ -230,6 +230,23 @@ export default function JobCard({
           boxShadow: '0 2px 6px rgba(185,28,28,0.3)',
         }}>
           🔥 지금 안 구하면 늦습니다
+        </div>
+      )}
+
+      {/* FINAL_CONVERSION: 오늘 지원 몰리는 공고 스트립 (worker + open, 스폰서·급구 없는 일반 공고) */}
+      {mode === 'worker' && job.status === 'open' && !job.isSponsored && !job.isUrgent && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
+          background: 'linear-gradient(90deg,#7c3aed,#4f46e5)',
+          padding: '5px 14px', borderRadius: '8px 8px 0 0',
+          fontSize: 11, fontWeight: 800, color: '#fff',
+          letterSpacing: '0.02em',
+        }}>
+          <span>🔥 오늘 지원 몰리는 공고</span>
+          {(job.applicationCount ?? 0) > 0 && (
+            <span style={{ opacity: 0.82, fontWeight: 700 }}>· {job.applicationCount}명 지원 중</span>
+          )}
         </div>
       )}
 
