@@ -89,27 +89,85 @@ export default function LoginPage({ onLogin }) {
 
   return (
     <div className="min-h-screen bg-farm-bg flex flex-col">
-      {/* 헤더 — LOGIN_LOGO_POLISH */}
-      <div className="bg-farm-green px-6 pb-10 text-center">
-        {/* 로고 이미지 — 크기·여백·블렌드 조정 */}
-        <div className="flex justify-center" style={{ marginTop: 24, marginBottom: 16 }}>
-          <img
-            src="/logo.png"
-            alt="농촌 일손 로고"
-            style={{
-              width: 150,
-              height: 'auto',
-              background: 'transparent',
-              /* 흰 배경 PNG를 녹색 헤더에 자연스럽게 녹임 */
-              mixBlendMode: 'multiply',
-              filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.15))',
-            }}
-          />
-        </div>
-        {/* 슬로건 */}
-        <p className="text-green-100 text-sm font-semibold tracking-wide">
-          일손이 필요한 곳에, 필요한 사람이 함께
+      {/* 헤더 — 텍스트 중심 (로고 없음) */}
+      <div className="bg-farm-green px-6 pb-10 text-center" style={{ paddingTop: 36 }}>
+        {/* 브랜드 라벨 */}
+        <p style={{
+          color: 'rgba(255,255,255,0.6)',
+          fontSize: 11, fontWeight: 700,
+          letterSpacing: '0.1em', textTransform: 'uppercase',
+          marginBottom: 10,
+        }}>
+          농촌 일손
         </p>
+
+        {/* 메인 헤드라인 */}
+        <h1 style={{
+          fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
+          fontSize: 26, fontWeight: 900,
+          color: '#fff', lineHeight: 1.25,
+          margin: '0 0 10px',
+        }}>
+          🔥 급할 때 바로<br/>일손 연결
+        </h1>
+
+        {/* 서브 */}
+        <p style={{
+          color: 'rgba(255,255,255,0.72)',
+          fontSize: 13, lineHeight: 1.5,
+          margin: '0 0 22px',
+        }}>
+          평균 5분 내 연결됩니다
+        </p>
+
+        {/* CTA 버튼 2개 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => {
+              const u = getOrCreateUser();
+              onLogin(u);
+            }}
+            style={{
+              width: '100%', height: 52,
+              background: '#fff', color: '#2d8a4e',
+              border: 'none', borderRadius: 14,
+              fontWeight: 900, fontSize: 16,
+              cursor: 'pointer',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.20)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}
+          >
+            🔥 지금 바로 연결
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const u = getOrCreateUser();
+              onLogin(u);
+            }}
+            style={{
+              width: '100%', height: 44,
+              background: 'transparent', color: 'rgba(255,255,255,0.88)',
+              border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 14,
+              fontWeight: 700, fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            🔍 일자리 보기
+          </button>
+        </div>
+
+        {/* 신뢰 스트립 */}
+        <div style={{
+          display: 'flex', justifyContent: 'center', gap: 14, marginTop: 16,
+          color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700,
+        }}>
+          <span>⚡ 평균 5분 연결</span>
+          <span>✔ 완료 1,240건</span>
+          <span>⭐ 만족도 4.8</span>
+        </div>
       </div>
 
       {/* 폼 */}
@@ -263,22 +321,20 @@ export default function LoginPage({ onLogin }) {
           개인정보는 매칭 연결에만 사용됩니다
         </p>
 
-        {/* ── Phase 14: 빠른 시작 (테스트/데모용) ── */}
+        {/* 빠른 시작 — 이름 없이 둘러보기 */}
         <div className="border-t border-gray-100 pt-5">
-          <p className="text-center text-xs text-gray-400 mb-3">또는 정보 없이 둘러보기</p>
+          <p className="text-center text-xs text-gray-400 mb-3">또는 정보 없이 바로 둘러보기</p>
           <button
             type="button"
             onClick={() => {
-              // PHASE 21: getOrCreateUser() → 재방문 시 동일 ID 재사용 (내 지원 유지)
               const u = getOrCreateUser();
-              console.log('[QUICK_START] userId=' + u.id);
               onLogin(u);
             }}
             className="w-full py-3.5 border-2 border-gray-200 bg-white text-gray-600
                        font-bold text-sm rounded-2xl flex items-center justify-center gap-2
                        active:scale-95 transition-transform hover:border-farm-green hover:text-farm-green"
           >
-            <Zap size={16} /> 🚀 빠른 시작 (이름 없이 둘러보기)
+            <Zap size={16} /> 빠른 시작 (이름 없이)
           </button>
         </div>
       </form>
