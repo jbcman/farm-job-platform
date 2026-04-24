@@ -175,21 +175,40 @@ export default function BoostButton({
         )}
       </button>
 
-      {/* 이점 텍스트 */}
+      {/* 시간 압박 + 이점 텍스트 */}
       {status === 'idle' && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: 14,
-          marginTop: 8,
-          fontSize: 11,
-          color: '#6b7280',
-          fontWeight: 600,
-        }}>
-          <span>⭐ 추천 1순위 노출</span>
-          <span>👥 지원자 3배↑</span>
-          <span>⏱ {hours}시간</span>
-        </div>
+        <>
+          {/* ⏰ 평균 2시간 내 매칭 — 강조 한 줄 */}
+          <div style={{
+            textAlign: 'center',
+            marginTop: 9,
+            padding: '6px 12px',
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            borderRadius: 9,
+            fontSize: 12,
+            fontWeight: 800,
+            color: '#15803d',
+            letterSpacing: '-0.01em',
+          }}>
+            ⏰ 평균 2시간 내 매칭 완료
+          </div>
+
+          {/* 이점 칩 */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 12,
+            marginTop: 7,
+            fontSize: 11,
+            color: '#6b7280',
+            fontWeight: 600,
+          }}>
+            <span>⭐ 추천 1순위</span>
+            <span>👥 지원자 3배↑</span>
+            <span>⏱ {hours}시간</span>
+          </div>
+        </>
       )}
 
       {/* 에러 메시지 */}

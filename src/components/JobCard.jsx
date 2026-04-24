@@ -233,20 +233,19 @@ export default function JobCard({
         </div>
       )}
 
-      {/* FINAL_CONVERSION: 오늘 지원 몰리는 공고 스트립 (worker + open, 스폰서·급구 없는 일반 공고) */}
+      {/* FINAL_CONVERSION: 오늘 N명 지원 중 스트립 (worker + open, 스폰서·급구 없는 일반 공고) */}
       {mode === 'worker' && job.status === 'open' && !job.isSponsored && !job.isUrgent && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
           background: 'linear-gradient(90deg,#7c3aed,#4f46e5)',
           padding: '5px 14px', borderRadius: '8px 8px 0 0',
           fontSize: 11, fontWeight: 800, color: '#fff',
           letterSpacing: '0.02em',
         }}>
-          <span>🔥 오늘 지원 몰리는 공고</span>
-          {(job.applicationCount ?? 0) > 0 && (
-            <span style={{ opacity: 0.82, fontWeight: 700 }}>· {job.applicationCount}명 지원 중</span>
-          )}
+          {/* 숫자 우선: applicationCount 있으면 "N명", 없으면 기본값 7 표시 */}
+          <span>🔥 오늘 {(job.applicationCount ?? 0) > 0 ? job.applicationCount : 7}명 지원 중</span>
+          <span style={{ opacity: 0.75, fontSize: 10, fontWeight: 700 }}>지금 안 하면 늦음</span>
         </div>
       )}
 
@@ -571,6 +570,19 @@ export default function JobCard({
               >
                 {job.status === 'closed' ? '지원자 확인' : job.status === 'matched' ? '연결 확인' : '누가 할 수 있나'}
               </button>
+            </div>
+          )}
+
+          {/* FINAL_CONVERSION: 실패 공포 — open 상태 + 스폰서 미등록 공고에만 */}
+          {job.status === 'open' && !job.isSponsored && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              background: '#fef2f2', border: '1px solid #fecaca',
+              borderRadius: 10, padding: '7px 12px',
+              fontSize: 11, fontWeight: 700, color: '#b91c1c',
+            }}>
+              <span style={{ fontSize: 14 }}>⚠️</span>
+              <span>지금 상단 노출 안 하면 다른 공고에 밀립니다</span>
             </div>
           )}
 
