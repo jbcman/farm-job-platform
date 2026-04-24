@@ -204,72 +204,86 @@ export default function HomePage({
           )}
         </div>
 
-        {/* ── STEP 1: 로고 중심 Hero ── */}
-        <div className="flex flex-col items-center text-center" style={{ marginTop: 24, marginBottom: 20 }}>
-          {/* 로고 */}
-          <img
-            src="/logo.png"
-            alt="농촌 일손"
-            style={{
-              width: 140,
-              height: 'auto',
-              marginBottom: 10,
-              mixBlendMode: 'multiply',
-              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
-            }}
-          />
-          {/* v4 Hero 타이틀 */}
-          <h1
-            className="text-white font-black leading-tight text-center"
-            style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 24, marginBottom: 5 }}
-          >
-            AI가 연결하는<br/>농촌 일자리
+        {/* ── HERO: 텍스트 중심 (로고 없음) ── */}
+        <div style={{ marginTop: 28, marginBottom: 24, textAlign: 'center' }}>
+          {/* 브랜드 라벨 */}
+          <p style={{
+            color: 'rgba(255,255,255,0.65)',
+            fontSize: 12, fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            marginBottom: 8,
+          }}>
+            농촌 일손
+          </p>
+
+          {/* 메인 헤드라인 */}
+          <h1 style={{
+            fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
+            fontSize: 28,
+            fontWeight: 900,
+            color: '#fff',
+            lineHeight: 1.25,
+            margin: '0 0 10px',
+          }}>
+            급할 때 바로<br/>일손 연결
           </h1>
-          {/* v4 서브 슬로건 */}
-          <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 1.6, textAlign: 'center' }}>
-            위치·난이도·경험 자동 매칭 — 전화 돌릴 필요 없음
+
+          {/* 서브 */}
+          <p style={{
+            color: 'rgba(255,255,255,0.72)',
+            fontSize: 13,
+            lineHeight: 1.6,
+            margin: 0,
+          }}>
+            평균 5분 내 연결됩니다
           </p>
         </div>
 
-        {/* ── v4 STEP 2: 핵심 CTA ── */}
-        <div className="flex flex-col gap-2.5 mb-4">
-          {/* 1순위 CTA */}
+        {/* ── CTA 버튼 ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+          {/* PRIMARY */}
           <button
             onClick={() => {
               try { trackClientEvent('cta_click', { type: 'primary', location: 'hero' }); } catch (_) {}
               onModeChange('worker'); onViewJobList();
             }}
             style={{
-              width: '100%', height: 52,
+              width: '100%', height: 54,
               background: '#fff', color: '#2d8a4e',
-              border: 'none', borderRadius: 16, padding: '0 16px',
+              border: 'none', borderRadius: 16,
               fontWeight: 900, fontSize: 17,
               fontFamily: "'Noto Sans KR',sans-serif",
               cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.20)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              letterSpacing: '-0.01em',
             }}
-          >🔥 지금 바로 일손 연결</button>
-          {/* 보조 CTA */}
+          >🔥 지금 바로 연결</button>
+
+          {/* SECONDARY */}
           <button
             onClick={() => {
               try { trackClientEvent('cta_click', { type: 'secondary', location: 'hero' }); } catch (_) {}
-              onModeChange('farmer'); onPostJob();
+              onModeChange('worker'); onViewJobList();
             }}
             style={{
-              width: '100%', height: 46,
-              background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)',
-              border: '2px solid rgba(255,255,255,0.28)', borderRadius: 16,
-              fontWeight: 600, fontSize: 14,
+              width: '100%', height: 48,
+              background: 'transparent', color: 'rgba(255,255,255,0.9)',
+              border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 16,
+              fontWeight: 700, fontSize: 15,
               fontFamily: "'Noto Sans KR',sans-serif",
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
-          >➕ 일손 구하기 (농민)</button>
+          >🔍 일자리 둘러보기</button>
         </div>
 
-        {/* ── v4 신뢰 스트립 ── */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: 700, flexWrap: 'wrap' }}>
+        {/* ── 신뢰 스트립 ── */}
+        <div style={{
+          display: 'flex', justifyContent: 'center', gap: 16,
+          color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: 700,
+        }}>
           <span>⚡ 평균 5분 연결</span>
           <span>✔ 완료 1,240건</span>
           <span>⭐ 만족도 4.8</span>

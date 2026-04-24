@@ -16,11 +16,11 @@ function distLabel(km) {
   return `📍 ${km.toFixed(1)}km`;
 }
 
-// ── HOMEPAGE_BRAND_POLISH_V1: 전환 최적화 CTA 텍스트 ──────────
+// ── CTA 텍스트 ──────────────────────────────────────────────────
 function ctaCopy(n) {
-  if (n >= 3) return `지금 지원하기 (경쟁 ${n}명)`;
-  if (n >= 1) return '지금 지원하기 (마감 임박)';
-  return '🔥 3초 연결 (바로 전화)';
+  if (n >= 3) return `🔥 지금 연결 (경쟁 ${n}명)`;
+  if (n >= 1) return '🔥 지금 연결 (마감 임박)';
+  return '🔥 지금 연결';
 }
 
 /** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
@@ -301,46 +301,16 @@ export default function JobCard({
         </div>
       )}
 
-      {/* 요청자 + PHASE 22 신뢰도 + BRAND_UI AI 추천 배지 */}
+      {/* 요청자 + 별점 (컴팩트) */}
       <div className="flex items-center gap-2 mb-1.5">
-        <p className="text-sm text-gray-500">{job.requesterName} 님의 요청</p>
-        {/* AI 추천 배지 — 디자인 V2: farm-ai 색상 */}
-        <span className="text-xs text-farm-ai bg-indigo-50 rounded-full px-2 py-0.5 font-semibold">
-          ✦ AI 추천
-        </span>
-        {job.avgRating != null && job.ratingCount > 0 ? (
-          <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600
-                           bg-amber-50 rounded-full px-2 py-0.5">
+        <p className="text-xs text-gray-400">{job.requesterName}</p>
+        {job.avgRating != null && job.ratingCount > 0 && (
+          <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600">
             <Star size={10} className="fill-amber-400 text-amber-400" />
             {job.avgRating.toFixed(1)}
-            <span className="text-gray-400 font-normal">({job.ratingCount}회)</span>
-            {job.ratingCount >= 10 && (
-              <span className="ml-0.5 text-red-500">🔥</span>
-            )}
-          </span>
-        ) : (
-          <span className="text-xs bg-blue-50 text-blue-500 rounded-full px-2 py-0.5 font-medium">
-            🆕 신규
           </span>
         )}
       </div>
-
-      {/* ── 디자인 V2: 신뢰 시그널 행 ── */}
-      {mode === 'worker' && job.status === 'open' && (
-        <div className="flex items-center gap-2 mb-2 text-xs text-gray-400 flex-wrap">
-          {job.avgRating != null && job.ratingCount > 0 && (
-            <span>⭐ {job.avgRating.toFixed(1)} (후기 {job.ratingCount})</span>
-          )}
-          {(job.completedJobs ?? 0) > 0 && (
-            <span>✔ 최근 {job.completedJobs}건 완료</span>
-          )}
-          <span>⚡ 평균 5분 연결</span>
-          {/* 거리 체감 라벨 */}
-          {distLabel(job.distKm) && (
-            <span className="text-farm-green font-semibold">{distLabel(job.distKm)}</span>
-          )}
-        </div>
-      )}
 
       {/* 정보 행 */}
       <div className="flex gap-3 mb-4">
@@ -398,29 +368,12 @@ export default function JobCard({
         ) : null}
       </div>
 
-      {/* 메모 */}
+      {/* 메모 — 1줄만 */}
       {job.note && (
-        <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-3 py-2 mb-4 line-clamp-2">
+        <p className="text-xs text-gray-400 mb-3 line-clamp-1">
           {job.note}
         </p>
       )}
-
-      {/* PHASE IMAGE_JOBTYPE_AI: AI 태그 (파싱 안정화) */}
-      {(() => {
-        let tags = [];
-        try { tags = job.tags ? JSON.parse(job.tags) : []; } catch (_) { tags = []; }
-        if (!Array.isArray(tags)) tags = [];
-        if (tags.length === 0) return null;
-        return (
-          <div className="flex flex-wrap gap-1 mb-3">
-            {tags.map(t => (
-              <span key={t} className="text-xs bg-farm-light text-farm-green rounded-full px-2 py-0.5 font-medium">
-                #{t}
-              </span>
-            ))}
-          </div>
-        );
-      })()}
 
       {/* ── 작업자 모드 액션 — ACTION_BUTTON_SIMPLIFY_V2 ── */}
 
