@@ -87,7 +87,7 @@ export default function HomePage({
 
   // BRAND_UI: SEO 타이틀
   useEffect(() => {
-    document.title = '농촌 일손 — AI 농촌 일자리 매칭';
+    document.title = '농촌 일손';
   }, []);
 
   // 최초 1회 온보딩
@@ -193,7 +193,8 @@ export default function HomePage({
       <header className="bg-farm-green px-4 pt-safe pt-5 pb-6">
         {/* 브랜드 + GPS */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-black text-white tracking-tight" style={{ fontFamily: "'Jalnan2', 'Noto Sans KR', sans-serif" }}>🌾 농촌 일손</h1>
+          {/* BRAND_LOGO_V1: 텍스트 → 로고 이미지 */}
+          <img src="/logo.png" alt="농촌 일손" style={{ height: 36, width: 'auto', filter: 'brightness(0) invert(1) drop-shadow(0 1px 4px rgba(0,0,0,0.2))' }} />
           <div className="flex items-center gap-1.5">
             {gpsStatus === 'ok' && (
               <span className="flex items-center gap-1 text-xs bg-white/20 text-green-100 rounded-full px-2 py-0.5">
