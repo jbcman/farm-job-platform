@@ -200,16 +200,22 @@ export default function JobCard({
         </div>
       )}
 
-      {/* PHASE SCALE: 스폰서 공고 배너 (최상단, 급구보다 우선) */}
+      {/* BOOST_CONVERSION: 스폰서 배너 — "지원자 몰리는 공고" 강조 */}
       {job.isSponsored && job.status === 'open' && (
         <div style={{
-          background: 'linear-gradient(90deg, #b45309 0%, #d97706 100%)',
-          color: '#fff', fontWeight: 800, fontSize: 12,
-          padding: '5px 12px', borderRadius: '8px 8px 0 0',
+          background: 'linear-gradient(90deg,#f97316 0%,#dc2626 100%)',
+          color: '#fff', fontWeight: 900, fontSize: 12,
+          padding: '7px 14px', borderRadius: '8px 8px 0 0',
           marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
-          display: 'flex', alignItems: 'center', gap: 5, letterSpacing: 0.3,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          boxShadow: '0 2px 8px rgba(220,38,38,0.30)',
         }}>
-          ⭐ 추천 공고 — 검증된 농민이 올린 공고예요
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            🔥 지원자 몰리는 공고
+          </span>
+          <span style={{ fontSize: 10, opacity: 0.88, fontWeight: 700, letterSpacing: '0.04em' }}>
+            추천 1순위
+          </span>
         </div>
       )}
 

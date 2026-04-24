@@ -47,22 +47,36 @@ function fmtDist(km) {
 }
 
 // ── 작업 마커 아이콘 ───────────────────────────────────────────
+// BOOST_CONVERSION: 스폰서 마커 압도적 강조 (크기+glow+애니메이션)
 function makeJobIcon(isToday, isUrgent, isSponsored) {
-  // 스폰서: 황금 ⭐  /  긴급: 빨강 🔥  /  오늘: 초록 🌾  /  기본: 파랑 🌾
-  const bg    = isSponsored ? '#d97706'
-              : isUrgent    ? '#dc2626'
-              : isToday     ? '#16a34a'
-              :               '#2563eb';
-  const emoji = isSponsored ? '⭐' : isUrgent ? '🔥' : '🌾';
-  const ring  = isSponsored ? '3px solid #fef08a' : '2px solid #fff';
-  const glow  = isSponsored ? '0 0 0 2px #fbbf24, 0 2px 8px rgba(217,119,6,.55)'
-                            : '0 2px 6px rgba(0,0,0,.4)';
+  if (isSponsored) {
+    // 스폰서: 44px, 오렌지→레드 그라디언트, 이중 링, 펄스 클래스
+    return L.divIcon({
+      html: `
+        <div class="boost-pulse-ring"></div>
+        <div style="
+          position:relative;z-index:2;
+          background:linear-gradient(135deg,#f97316,#dc2626);
+          color:#fff;font-size:20px;
+          width:44px;height:44px;border-radius:50%;
+          display:flex;align-items:center;justify-content:center;
+          border:3px solid #fff;
+          box-shadow:0 0 0 3px rgba(249,115,22,0.45),
+                     0 4px 16px rgba(220,38,38,0.6);
+        ">🔥</div>
+      `,
+      className: 'boost-marker',
+      iconSize: [44, 44], iconAnchor: [22, 22],
+    });
+  }
+  const bg    = isUrgent ? '#dc2626' : isToday ? '#16a34a' : '#2563eb';
+  const emoji = isUrgent ? '🔥' : '🌾';
   return L.divIcon({
     html: `<div style="
       background:${bg};color:#fff;font-size:15px;
       width:34px;height:34px;border-radius:50%;
       display:flex;align-items:center;justify-content:center;
-      border:${ring};box-shadow:${glow};
+      border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);
     ">${emoji}</div>`,
     className: '', iconSize: [34, 34], iconAnchor: [17, 17],
   });
@@ -190,6 +204,20 @@ export default function MapExplorePage() {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100dvh' }}>
 
+      {/* BOOST_CONVERSION: 스폰서 마커 펄스 + 지도 전역 스타일 */}
+      <style>{`
+        .boost-marker { overflow: visible !important; background: none !important; border: none !important; }
+        .boost-pulse-ring {
+          position: absolute; inset: -6px; border-radius: 50%; z-index: 1;
+          border: 2.5px solid rgba(249,115,22,0.6);
+          animation: boostMarkerPulse 1.6s ease-in-out infinite;
+        }
+        @keyframes boostMarkerPulse {
+          0%,100% { transform: scale(1);    opacity: .7; }
+          50%      { transform: scale(1.35); opacity: .1; }
+        }
+      `}</style>
+
       {/* 상단 컨트롤 */}
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000, display: 'flex', gap: 8 }}>
         <button
@@ -256,15 +284,17 @@ export default function MapExplorePage() {
                 style={{ background: 'none', border: 'none', fontSize: 18, color: '#9ca3af', cursor: 'pointer', lineHeight: 1 }}
               >✕</button>
             </div>
-            {/* 스폰서 배지 */}
+            {/* 스폰서 배지 — BOOST_CONVERSION */}
             {selected.isSponsored && (
               <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                background: '#fffbeb', border: '1px solid #fbbf24',
-                borderRadius: 9999, padding: '3px 10px', marginBottom: 10,
-                fontSize: 12, fontWeight: 800, color: '#92400e',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'linear-gradient(90deg,#fff7ed,#fef3c7)',
+                border: '1.5px solid #f97316',
+                borderRadius: 9999, padding: '4px 12px', marginBottom: 10,
+                fontSize: 12, fontWeight: 900, color: '#c2410c',
+                boxShadow: '0 2px 8px rgba(249,115,22,0.2)',
               }}>
-                ⭐ 스폰서 · AI 추천 {selected.aiScore ?? '-'}점
+                🔥 지원자 몰리는 공고 · 추천 1순위
               </div>
             )}
 
