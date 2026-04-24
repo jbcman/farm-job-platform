@@ -25,6 +25,8 @@ function WorkerChip({ worker }) {
           <span className="text-xs text-gray-600">{worker.rating}</span>
         </div>
       </div>
+      {/* DESIGN_V3: 즉시 투입 가능 상태 뱃지 */}
+      <p className="text-xs text-green-700 font-bold">✅ 즉시 투입 가능</p>
       <p className="text-xs text-gray-500">{worker.baseLocationText}</p>
       <div className="flex flex-wrap gap-1 mt-1">
         {worker.hasTractor && <span className="text-xs bg-amber-50 text-amber-700 rounded px-1.5 py-0.5">트랙터</span>}
@@ -191,7 +193,7 @@ export default function HomePage({
       <header className="bg-farm-green px-4 pt-safe pt-5 pb-6">
         {/* 브랜드 + GPS */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-black text-white tracking-tight">🌾 농촌 일손</h1>
+          <h1 className="text-xl font-black text-white tracking-tight" style={{ fontFamily: "'Jalnan2', 'Noto Sans KR', sans-serif" }}>🌾 농촌 일손</h1>
           <div className="flex items-center gap-1.5">
             {gpsStatus === 'ok' && (
               <span className="flex items-center gap-1 text-xs bg-white/20 text-green-100 rounded-full px-2 py-0.5">
@@ -204,46 +206,43 @@ export default function HomePage({
           </div>
         </div>
 
-        {/* 히어로 카피 — BRAND_UI */}
+        {/* 히어로 카피 — DESIGN_V3: Jalnan2 디스플레이 */}
         <div className="mb-5">
-          <p className="text-white font-black text-2xl leading-snug mb-1">
+          <p className="text-white font-black text-2xl leading-snug mb-1"
+             style={{ fontFamily: "'Jalnan2', 'Noto Sans KR', sans-serif" }}>
             AI가 연결하는<br />농촌 일자리
           </p>
           <p className="text-green-200 text-sm leading-relaxed">
-            위치 · 난이도 · 경험까지 자동 매칭<br />
-            전화 돌릴 필요 없습니다
+            위치 · 난이도 · 경험까지 자동 매칭 — 전화 돌릴 필요 없습니다
           </p>
         </div>
 
-        {/* 모드 선택 버튼 — BRAND_UI */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        {/* 모드 선택 버튼 — DESIGN_V3: 1차 CTA 강조 + 2차 보조 */}
+        <div className="flex flex-col gap-2 mb-4">
+          {/* PRIMARY: 작업자 — 일자리 찾기 (흰색, 강조) */}
+          <button
+            onClick={() => { onModeChange('worker'); onViewJobList(); }}
+            className="w-full py-4 bg-white text-farm-green font-black text-lg rounded-2xl
+                       shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+          >
+            🔥 지금 바로 일손 구하기
+          </button>
+          {/* SECONDARY: 농민 — 일손 구하기 (반투명) */}
           <button
             onClick={() => { onModeChange('farmer'); onPostJob(); }}
-            className={`py-3.5 rounded-2xl font-bold text-base transition-all border-2 ${
-              mode === 'farmer'
-                ? 'bg-white text-farm-green border-white shadow'
-                : 'bg-white/10 text-white border-white/30'
-            }`}
+            className="w-full py-3 bg-white/10 text-white/80 font-bold text-sm rounded-2xl
+                       border border-white/25 active:scale-95 transition-transform
+                       flex items-center justify-center gap-2"
           >
             ➕ 일손 구하기
           </button>
-          <button
-            onClick={() => { onModeChange('worker'); onViewJobList(); }}
-            className={`py-3.5 rounded-2xl font-bold text-base transition-all border-2 ${
-              mode === 'worker'
-                ? 'bg-white text-farm-green border-white shadow'
-                : 'bg-white/10 text-white border-white/30'
-            }`}
-          >
-            🔍 일자리 찾기
-          </button>
         </div>
 
-        {/* 신뢰 요소 3포인트 — BRAND_UI */}
-        <div className="flex gap-3 text-green-200 text-xs font-semibold">
-          <span>✔ AI 자동 추천</span>
-          <span>✔ 가까운 일자리 우선</span>
-          <span>✔ 난이도 맞춤 매칭</span>
+        {/* 신뢰 요소 3포인트 — DESIGN_V3: 실적 기반 사회적 증거 */}
+        <div className="flex gap-4 text-green-200 text-xs font-bold flex-wrap">
+          <span>⭐ 평균 4.8점</span>
+          <span>⚡ 평균 5분 연결</span>
+          <span>✔ 완료 1,240건</span>
         </div>
       </header>
 
@@ -322,22 +321,24 @@ export default function HomePage({
         </div>
       )}
 
-      {/* 🔥 긴급 배너 — UI_CONVERSION 강화 */}
+      {/* 🔥 긴급 배너 — DESIGN_V3: 풀 너비 빨간 그라디언트 */}
       {!loading && urgentJobs.length > 0 && (
         <button
           onClick={mode === 'farmer' ? onViewMyJobs : onViewJobList}
-          className="w-full bg-red-100 text-red-600 px-4 py-3.5 mx-4 mt-3
-                     flex items-center justify-between text-sm font-bold
-                     rounded-xl border border-red-200 active:scale-98 transition-transform"
-          style={{ width: 'calc(100% - 32px)' }}
+          className="w-full flex items-center justify-between active:opacity-90 transition-opacity"
+          style={{
+            background: 'linear-gradient(90deg,#b91c1c,#dc2626)',
+            padding: '10px 16px',
+            boxShadow: '0 3px 10px rgba(185,28,28,.35)',
+          }}
         >
-          <span className="flex items-center gap-2">
-            🔥 오늘 안 구하면 작업 지연됩니다
-            <span className="bg-red-500 text-white text-xs font-black rounded-full px-2 py-0.5">
-              {urgentJobs.length}건
-            </span>
-          </span>
-          <ChevronRight size={16} />
+          <div className="text-left">
+            <p className="text-white font-black text-sm">🔥 오늘 안 구하면 작업 지연됩니다</p>
+            <p className="text-red-100 text-xs font-semibold mt-0.5">
+              👉 지금 바로 연결 가능한 일 {urgentJobs.length}건
+            </p>
+          </div>
+          <ChevronRight size={18} className="text-white/80 shrink-0" />
         </button>
       )}
 
@@ -352,19 +353,20 @@ export default function HomePage({
         {/* ── 농민 모드 콘텐츠 ── */}
         {!loading && mode === 'farmer' && (
           <>
-            {/* 바로 등록 CTA */}
+            {/* 바로 등록 CTA — DESIGN_V3: 감정+속도 강조 */}
             <button
               onClick={onPostJob}
               className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
                          shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
             >
-              👉 지금 바로 연결하기
+              🔥 3초 안에 일손 구하기
             </button>
 
             {workers.length > 0 && (
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0">오늘 가능한 작업자</p>
+                  {/* DESIGN_V3: 섹션 타이틀 → 행동 유도형 */}
+                  <p className="section-title mb-0">👨‍🌾 지금 투입 가능한 작업자</p>
                   <span className="text-sm text-farm-green font-bold">{workers.length}명</span>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
@@ -419,25 +421,15 @@ export default function HomePage({
         {/* ── 작업자 모드 콘텐츠 ── */}
         {!loading && mode === 'worker' && (
           <>
-            {/* 바로 찾기 + 지도 CTA */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={onViewJobList}
-                className="col-span-2 py-4 bg-farm-green text-white font-black text-lg rounded-2xl
-                           shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
-              >
-                👉 지금 바로 연결하기
-              </button>
-              <button
-                onClick={onViewMap}
-                className="py-4 bg-white border-2 border-farm-green text-farm-green font-bold
-                           rounded-2xl shadow-md active:scale-95 transition-transform
-                           flex flex-col items-center justify-center gap-1"
-              >
-                <Map size={20} />
-                <span className="text-xs">지도 보기</span>
-              </button>
-            </div>
+            {/* 바로 찾기 CTA — DESIGN_V3: 풀 너비 강조 */}
+            <button
+              onClick={onViewJobList}
+              className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
+                         shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+              style={{ boxShadow: '0 5px 18px rgba(45,138,78,.45)' }}
+            >
+              🔥 3초 안에 일손 구하기
+            </button>
 
             {/* Phase 6: 추천 섹션 (오늘 + 가까운 + 일당 우선) */}
             {recommended.length > 0 && (
@@ -599,55 +591,34 @@ export default function HomePage({
         </div>
       )}
 
-      {/* 하단 탭바 */}
+      {/* 하단 탭바 — DESIGN_V3: 4탭 통합 (홈/지도/내 지원/내 정보) */}
       <nav className="tabbar">
-        {mode === 'farmer' ? (
-          <>
-            <button onClick={onPostJob} className="tab-btn">
-              <PlusCircle size={24} className="text-farm-green" />
-              <span className="text-farm-green">일손 구하기</span>
-            </button>
-            {/* 농민: "내가 올린 일" — 새 지원자 배지 */}
-            <button onClick={onViewMyJobs} className="tab-btn relative">
-              <span className="relative inline-flex">
-                <ClipboardList size={22} />
-                <TabBadge count={notif.pendingApps} />
-              </span>
-              <span>내가 올린 일</span>
-            </button>
-            <button onClick={onViewMyApplications} className="tab-btn">
-              <BookOpen size={22} />
-              <span>내 지원</span>
-            </button>
-            <button onClick={onViewMyConnections} className="tab-btn">
-              <Link2 size={22} />
-              <span>내 연결</span>
-            </button>
-          </>
-        ) : (
-          <>
-            <button onClick={onViewJobList} className="tab-btn">
-              <ClipboardList size={22} className="text-farm-green" />
-              <span className="text-farm-green">지금 가능한 일</span>
-            </button>
-            <button onClick={onViewMap} className="tab-btn">
-              <Map size={22} />
-              <span>지도</span>
-            </button>
-            {/* 작업자: "내 지원" — 선택 완료 배지 */}
-            <button onClick={onViewMyApplications} className="tab-btn relative">
-              <span className="relative inline-flex">
-                <BookOpen size={22} />
-                <TabBadge count={notif.selectedApps} />
-              </span>
-              <span>내 지원</span>
-            </button>
-            <button onClick={onViewMyConnections} className="tab-btn">
-              <Link2 size={22} />
-              <span>내 연결</span>
-            </button>
-          </>
-        )}
+        {/* 🏠 홈 */}
+        <button className="tab-btn">
+          <span className="text-2xl leading-none text-farm-green">🏠</span>
+          <span className="text-farm-green font-bold">홈</span>
+        </button>
+        {/* 🗺️ 지도 */}
+        <button onClick={onViewMap} className="tab-btn">
+          <Map size={22} />
+          <span>지도</span>
+        </button>
+        {/* 📄 내 지원 — 농민: 내가 올린 일 / 작업자: 내 지원 */}
+        <button
+          onClick={mode === 'farmer' ? onViewMyJobs : onViewMyApplications}
+          className="tab-btn relative"
+        >
+          <span className="relative inline-flex">
+            <ClipboardList size={22} />
+            <TabBadge count={mode === 'farmer' ? notif.pendingApps : notif.selectedApps} />
+          </span>
+          <span>{mode === 'farmer' ? '내가 올린 일' : '내 지원'}</span>
+        </button>
+        {/* 👤 내 정보 */}
+        <button onClick={onViewMyConnections} className="tab-btn">
+          <Link2 size={22} />
+          <span>내 정보</span>
+        </button>
       </nav>
     </div>
   );

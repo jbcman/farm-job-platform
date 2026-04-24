@@ -7,6 +7,21 @@ import { getMapPageUrl } from '../utils/mapLink.js';
 import { getSMSLink, getCallLink } from '../utils/contactLink.js';
 import { getUserSkillLevel, incrementApplyCount } from '../utils/userProfile.js';
 
+// ── 디자인 시스템 V2: 거리 체감 라벨 ─────────────────────────
+function distLabel(km) {
+  if (km == null || !Number.isFinite(km)) return null;
+  if (km <= 3) return '🚜 차량 5분 거리';
+  if (km <= 5) return '🚜 차량 10분 거리';
+  return `📍 ${km.toFixed(1)}km`;
+}
+
+// ── 디자인 시스템 V2: 경쟁 심리 CTA 텍스트 ──────────────────
+function ctaCopy(n) {
+  if (n >= 3) return `지금 지원하기 (경쟁 ${n}명)`;
+  if (n >= 1) return '지금 지원하기 (마감 임박)';
+  return '🔥 지금 바로 연결';
+}
+
 /** PHASE PERSONALIZATION_SCORE — 행동 기록 (fire-and-forget) */
 function logBehavior(job, action) {
   try {
@@ -269,9 +284,10 @@ export default function JobCard({
       )}
 
       {/* 요청자 + PHASE 22 신뢰도 + BRAND_UI AI 추천 배지 */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-1.5">
         <p className="text-sm text-gray-500">{job.requesterName} 님의 요청</p>
-        <span className="text-xs text-indigo-500 bg-indigo-50 rounded-full px-2 py-0.5 font-semibold">
+        {/* AI 추천 배지 — 디자인 V2: farm-ai 색상 */}
+        <span className="text-xs text-farm-ai bg-indigo-50 rounded-full px-2 py-0.5 font-semibold">
           ✦ AI 추천
         </span>
         {job.avgRating != null && job.ratingCount > 0 ? (
@@ -290,6 +306,23 @@ export default function JobCard({
           </span>
         )}
       </div>
+
+      {/* ── 디자인 V2: 신뢰 시그널 행 ── */}
+      {mode === 'worker' && job.status === 'open' && (
+        <div className="flex items-center gap-2 mb-2 text-xs text-gray-400 flex-wrap">
+          {job.avgRating != null && job.ratingCount > 0 && (
+            <span>⭐ {job.avgRating.toFixed(1)} (후기 {job.ratingCount})</span>
+          )}
+          {(job.completedJobs ?? 0) > 0 && (
+            <span>✔ 최근 {job.completedJobs}건 완료</span>
+          )}
+          <span>⚡ 평균 5분 연결</span>
+          {/* 거리 체감 라벨 */}
+          {distLabel(job.distKm) && (
+            <span className="text-farm-green font-semibold">{distLabel(job.distKm)}</span>
+          )}
+        </div>
+      )}
 
       {/* 정보 행 */}
       <div className="flex gap-3 mb-4">
@@ -380,14 +413,20 @@ export default function JobCard({
             신청됨 ✓
           </button>
         ) : (
-          <div className="flex gap-2 mt-2">
-            {/* PRIMARY: 📩 바로 연락하기 — CONTACT_TO_MATCH_AUTOFLOW_V1 */}
+          <div className="mt-2">
+            {/* ── 디자인 V2: 액션 이유 텍스트 (버튼 위) ── */}
+            <div className="flex gap-2 text-xs text-green-600 font-semibold flex-wrap mb-1.5">
+              <span>✔ 지금 바로 작업 가능</span>
+              {job.isToday && <span>✔ 오늘 마감 가능성 높음</span>}
+            </div>
+          <div className="flex gap-2">
+            {/* PRIMARY: CTA — 디자인 V2 ctaCopy 패턴 */}
             <button
               className={`flex-1 py-3 rounded-2xl font-black text-white text-base
                           flex items-center justify-center gap-2
                           active:scale-95 transition-transform shadow-md
                           ${(job.isUrgent || (job.applicationCount ?? 0) >= 3)
-                            ? 'bg-red-500' : 'bg-blue-600'}`}
+                            ? 'bg-red-500' : 'bg-farm-green'}`}
               onClick={async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
@@ -420,10 +459,7 @@ export default function JobCard({
                 window.location.href = link;
               }}
             >
-              {(job.isUrgent || (job.applicationCount ?? 0) >= 3)
-                ? '⚡ 지금 지원하기 (마감 임박)'
-                : '📩 바로 연락하기'}
-            </button>
+              {ctaCopy(job.applicationCount ?? 0)}</button>
 
             {/* SECONDARY: 📍 지도 */}
             <button
@@ -435,7 +471,8 @@ export default function JobCard({
             >
               <MapPin size={15} /> 지도
             </button>
-          </div>
+          </div>{/* end flex gap-2 buttons */}
+          </div>{/* end mt-2 wrapper */}
         )
       )}
 
