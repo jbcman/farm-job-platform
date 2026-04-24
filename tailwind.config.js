@@ -12,6 +12,7 @@ export default {
           orange: '#ea580c',
           earth:  '#78350f',
           bg:     '#f7fdf9',
+          ai:     '#6366f1',
         },
       },
       fontSize: {

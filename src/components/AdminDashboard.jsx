@@ -139,6 +139,7 @@ export default function AdminDashboard({ onBack }) {
   const [stats,       setStats]       = useState(null);
   const [topWorkers,  setTopWorkers]  = useState([]);
   const [activity,    setActivity]    = useState([]);
+  const [todayRevenue,setTodayRevenue]= useState(null); // DESIGN_V3: 오늘 매출
   const [stale,       setStale]       = useState([]);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState('');
@@ -149,17 +150,26 @@ export default function AdminDashboard({ onBack }) {
     setLoading(true);
     setError('');
     try {
-      const [m, st, tw, a, s] = await Promise.all([
+      const [m, st, tw, a, s, rev] = await Promise.all([
         adminFetch('/admin/metrics',           k),
         adminFetch('/admin/stats',             k),
         adminFetch('/admin/top-workers',       k),
         adminFetch('/admin/activity?limit=20', k),
         adminFetch('/admin/stale-jobs',        k),
+        adminFetch('/admin/revenue',           k).catch(() => null), // DESIGN_V3: 오늘 매출
       ]);
       setMetrics(m);
       setStats(st);
       setTopWorkers(tw.workers || []);
       setActivity(a.activity || []);
+      // DESIGN_V3: 오늘 매출 — daily 배열에서 오늘 날짜 엔트리 추출
+      if (rev?.daily?.length) {
+        const today = new Date().toISOString().slice(0, 10);
+        const todayRow = rev.daily.find(r => r.date === today);
+        setTodayRevenue(todayRow ? todayRow.total : 0);
+      } else {
+        setTodayRevenue(0);
+      }
       setStale(s.staleJobs   || []);
       setLastFetch(new Date());
       setShowGate(false);
@@ -237,17 +247,24 @@ export default function AdminDashboard({ onBack }) {
           <span className="text-green-500 text-xs">일별/월별 매출 →</span>
         </a>
 
-        {/* ── 0. 핵심 운영 지표 (PHASE_ADMIN_DASHBOARD_AI_V2) ─ */}
+        {/* ── 0. 핵심 운영 지표 (PHASE_ADMIN_DASHBOARD_AI_V2 + DESIGN_V3) ─ */}
         <section>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
             <TrendingUp size={13} /> 핵심 운영 지표
           </p>
           <div className="grid grid-cols-2 gap-3">
+            {/* DESIGN_V3: 💰 오늘 매출 — 사업 관점 1순위 */}
+            <KpiCard
+              label="💰 오늘 매출"
+              value={todayRevenue !== null ? fmtRevenue(todayRevenue) : '—'}
+              sub="오늘 paid=1 기준"
+              color="green"
+            />
             <KpiCard
               label="누적 매출"
               value={fmtRevenue(stats?.revenue)}
               sub="정산 완료 기준"
-              color="green"
+              color="amber"
             />
             <KpiCard
               label="전체 공고"
@@ -259,12 +276,6 @@ export default function AdminDashboard({ onBack }) {
               label="완료율"
               value={stats?.completeRate != null ? `${stats.completeRate}%` : '—'}
               sub="완료 / 전체"
-              color="amber"
-            />
-            <KpiCard
-              label="매칭율"
-              value={stats?.matchRate != null ? `${stats.matchRate}%` : '—'}
-              sub="매칭+완료 / 전체"
               color="gray"
             />
           </div>
