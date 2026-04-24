@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Sparkles, Camera, Loader2, CheckCircle, Zap, MapPin, Navigation, Flame } from 'lucide-react';
+import { ArrowLeft, Sparkles, Camera, Loader2, CheckCircle, Zap, MapPin, Navigation, Flame, Search } from 'lucide-react';
 import { createJob, smartAssist, getUserId, getUserName, trackClientEvent, sponsorJob, getUrgentPrice, createPayment, confirmPayment } from '../utils/api.js';
 
 const CATEGORIES = [
@@ -41,6 +41,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [gpsStatus,   setGpsStatus]   = useState('idle'); // idle | acquiring | ok | denied
   // PHASE MAP_FIX: GPS 없을 때 폴백 농지 주소
   const [farmAddress, setFarmAddress] = useState('');
+  // DESIGN_V2: 주소 → 좌표 변환 상태
+  const [geocodeStatus, setGeocodeStatus] = useState('idle'); // idle | loading | ok | error
   const [submitting,    setSubmitting]    = useState(false);
   const [done,          setDone]          = useState(false);
   const [error,         setError]         = useState('');
@@ -92,6 +94,31 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     setFarmImages(prev => prev.filter((_, i) => i !== idx));
     setImgPreviews(prev => prev.filter((_, i) => i !== idx));
   }
+
+  // DESIGN_V2: 주소 → 좌표 변환 (서버 /api/geocode 경유)
+  const handleGeocodeAddress = useCallback(async () => {
+    if (!farmAddress.trim()) return;
+    setGeocodeStatus('loading');
+    try {
+      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(farmAddress.trim())}`);
+      const data = await res.json();
+      if (!res.ok || !data.lat) throw new Error('주소를 찾을 수 없어요');
+      setGpsLat(data.lat);
+      setGpsLng(data.lng);
+      setGeoStatus('ok');
+      setGeocodeStatus('ok');
+      try {
+        localStorage.setItem('userLocation', JSON.stringify({ lat: data.lat, lon: data.lng }));
+      } catch (_) {}
+      try { trackClientEvent('geocode_success', { address: farmAddress.trim() }); } catch (_) {}
+    } catch (e) {
+      setGeocodeStatus('error');
+      try { trackClientEvent('geocode_fail', { address: farmAddress.trim() }); } catch (_) {}
+    }
+  }, [farmAddress]);
+
+  // alias for geocodeStatus so the rest of the code doesn't break
+  // (gpsStatus already exists; we expose geocodeStatus separately)
 
   // PHASE 25: GPS 획득 — 재사용 가능 함수 (버튼에서도 호출)
   const acquireGps = useCallback(() => {
@@ -393,22 +420,50 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
             📍 위치 좌표가 있어야 지도에 정확히 표시돼요
           </p>
 
-          {/* PHASE MAP_FIX: GPS 미확인 시 농지 주소 직접 입력 */}
+          {/* PHASE MAP_FIX / DESIGN_V2: GPS 미확인 시 농지 주소 직접 입력 + 위치 찾기 */}
           {gpsStatus !== 'ok' && (
             <div className="mt-3">
               <p className="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
                 <MapPin size={11} className="text-farm-green" />
                 농지 주소 입력 <span className="font-normal text-gray-400">(GPS 대신 사용)</span>
               </p>
-              <input
-                className="input text-sm"
-                placeholder="예: 경기 화성시 서신면 홍법리 123"
-                value={farmAddress}
-                onChange={e => setFarmAddress(e.target.value)}
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                주소로 지도에 자동 표시해드려요
-              </p>
+              <div className="flex gap-2">
+                <input
+                  className="input text-sm flex-1"
+                  placeholder="예: 경기 화성시 서신면 홍법리 123"
+                  value={farmAddress}
+                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); }}
+                  onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
+                />
+                <button
+                  type="button"
+                  onClick={handleGeocodeAddress}
+                  disabled={geocodeStatus === 'loading' || !farmAddress.trim()}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2
+                             bg-farm-green text-white text-xs font-bold rounded-xl
+                             disabled:opacity-50 active:scale-95 transition-transform"
+                >
+                  {geocodeStatus === 'loading'
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : <Search size={13} />}
+                  위치 찾기
+                </button>
+              </div>
+              {geocodeStatus === 'ok' && (
+                <p className="text-xs text-green-600 font-semibold mt-1 flex items-center gap-1">
+                  <CheckCircle size={11} /> 위치 확인됨 — 지도에 정확히 표시됩니다
+                </p>
+              )}
+              {geocodeStatus === 'error' && (
+                <p className="text-xs text-red-500 font-semibold mt-1">
+                  ⚠️ 주소를 찾을 수 없어요. 더 자세히 입력해주세요.
+                </p>
+              )}
+              {geocodeStatus === 'idle' && (
+                <p className="text-xs text-gray-400 mt-1">
+                  주소 입력 후 "위치 찾기"를 눌러 지도에 표시하세요
+                </p>
+              )}
             </div>
           )}
         </section>
