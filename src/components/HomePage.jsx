@@ -226,7 +226,7 @@ export default function HomePage({
             lineHeight: 1.25,
             margin: '0 0 10px',
           }}>
-            급할 때 바로<br/>일손 연결
+            🔥 급할 때 바로<br/>일손 연결
           </h1>
 
           {/* 서브 */}
@@ -259,7 +259,7 @@ export default function HomePage({
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               letterSpacing: '-0.01em',
             }}
-          >🔥 지금 바로 연결</button>
+          >🔥 3초 연결 (지금 안 하면 늦음)</button>
 
           {/* SECONDARY */}
           <button
@@ -268,9 +268,9 @@ export default function HomePage({
               onModeChange('worker'); onViewJobList();
             }}
             style={{
-              width: '100%', height: 48,
+              width: '100%', height: 46,
               background: 'transparent', color: 'rgba(255,255,255,0.9)',
-              border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 16,
+              border: '1.5px solid rgba(255,255,255,0.32)', borderRadius: 14,
               fontWeight: 700, fontSize: 15,
               fontFamily: "'Noto Sans KR',sans-serif",
               cursor: 'pointer',
@@ -281,12 +281,12 @@ export default function HomePage({
 
         {/* ── 신뢰 스트립 ── */}
         <div style={{
-          display: 'flex', justifyContent: 'center', gap: 16,
-          color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: 700,
+          display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap',
+          color: 'rgba(255,255,255,0.70)', fontSize: 11, fontWeight: 700,
         }}>
+          <span>⭐ 평균 4.8점</span>
           <span>⚡ 평균 5분 연결</span>
           <span>✔ 완료 1,240건</span>
-          <span>⭐ 만족도 4.8</span>
         </div>
       </header>
 

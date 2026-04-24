@@ -89,86 +89,116 @@ export default function LoginPage({ onLogin }) {
 
   return (
     <div className="min-h-screen bg-farm-bg flex flex-col">
-      {/* 헤더 — 텍스트 중심 (로고 없음) */}
-      <div className="bg-farm-green px-6 pb-10 text-center" style={{ paddingTop: 36 }}>
-        {/* 브랜드 라벨 */}
+      {/* ══ HERO (CONVERSION MAX) ══ */}
+      <div style={{
+        background: '#2d8a4e',
+        padding: '40px 20px 28px',
+        textAlign: 'center',
+      }}>
+        {/* STEP 2: 브랜드 라벨 */}
         <p style={{
-          color: 'rgba(255,255,255,0.6)',
+          color: 'rgba(255,255,255,0.55)',
           fontSize: 11, fontWeight: 700,
-          letterSpacing: '0.1em', textTransform: 'uppercase',
-          marginBottom: 10,
-        }}>
-          농촌 일손
-        </p>
+          letterSpacing: '0.12em', textTransform: 'uppercase',
+          margin: '0 0 12px',
+        }}>농촌 일손</p>
 
-        {/* 메인 헤드라인 */}
+        {/* STEP 2: 메인 헤드라인 */}
         <h1 style={{
           fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
-          fontSize: 26, fontWeight: 900,
-          color: '#fff', lineHeight: 1.25,
+          fontSize: 28, fontWeight: 900,
+          color: '#fff', lineHeight: 1.22,
           margin: '0 0 10px',
         }}>
           🔥 급할 때 바로<br/>일손 연결
         </h1>
 
-        {/* 서브 */}
+        {/* STEP 2: 서브 */}
         <p style={{
-          color: 'rgba(255,255,255,0.72)',
+          color: 'rgba(255,255,255,0.70)',
           fontSize: 13, lineHeight: 1.5,
-          margin: '0 0 22px',
+          margin: '0 0 24px',
         }}>
           평균 5분 내 연결됩니다
         </p>
 
-        {/* CTA 버튼 2개 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* STEP 3: CTA 버튼 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+          {/* PRIMARY */}
           <button
             type="button"
-            onClick={() => {
-              const u = getOrCreateUser();
-              onLogin(u);
-            }}
+            onClick={() => { const u = getOrCreateUser(); onLogin(u); }}
             style={{
-              width: '100%', height: 52,
+              width: '100%', height: 54,
               background: '#fff', color: '#2d8a4e',
               border: 'none', borderRadius: 14,
               fontWeight: 900, fontSize: 16,
               cursor: 'pointer',
-              boxShadow: '0 6px 20px rgba(0,0,0,0.20)',
+              boxShadow: '0 6px 22px rgba(0,0,0,0.22)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              letterSpacing: '-0.01em',
             }}
+            onPointerDown={e => e.currentTarget.style.opacity = '0.88'}
+            onPointerUp={e   => e.currentTarget.style.opacity = '1'}
           >
-            🔥 지금 바로 연결
+            🔥 3초 연결 (지금 안 하면 늦음)
           </button>
+
+          {/* SECONDARY */}
           <button
             type="button"
-            onClick={() => {
-              const u = getOrCreateUser();
-              onLogin(u);
-            }}
+            onClick={() => { const u = getOrCreateUser(); onLogin(u); }}
             style={{
-              width: '100%', height: 44,
-              background: 'transparent', color: 'rgba(255,255,255,0.88)',
-              border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 14,
+              width: '100%', height: 46,
+              background: 'transparent', color: 'rgba(255,255,255,0.90)',
+              border: '1.5px solid rgba(255,255,255,0.32)', borderRadius: 14,
               fontWeight: 700, fontSize: 14,
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
+            onPointerDown={e => e.currentTarget.style.opacity = '0.72'}
+            onPointerUp={e   => e.currentTarget.style.opacity = '1'}
           >
-            🔍 일자리 보기
+            🔍 일자리 둘러보기
           </button>
         </div>
 
-        {/* 신뢰 스트립 */}
+        {/* STEP 4: 신뢰 요소 */}
         <div style={{
-          display: 'flex', justifyContent: 'center', gap: 14, marginTop: 16,
-          color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: 700,
+          display: 'flex', justifyContent: 'center',
+          gap: 12, flexWrap: 'wrap',
+          color: 'rgba(255,255,255,0.62)',
+          fontSize: 11, fontWeight: 700,
         }}>
+          <span>⭐ 평균 4.8점</span>
           <span>⚡ 평균 5분 연결</span>
           <span>✔ 완료 1,240건</span>
-          <span>⭐ 만족도 4.8</span>
         </div>
       </div>
+
+      {/* STEP 5: 긴급 배너 */}
+      <button
+        type="button"
+        onClick={() => { const u = getOrCreateUser(); onLogin(u); }}
+        style={{
+          width: '100%',
+          background: 'linear-gradient(90deg,#b91c1c,#dc2626)',
+          border: 'none', cursor: 'pointer',
+          padding: '11px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          boxShadow: '0 3px 12px rgba(185,28,28,0.40)',
+        }}
+      >
+        <div style={{ textAlign: 'left' }}>
+          <p style={{ margin: 0, color: '#fff', fontWeight: 900, fontSize: 13 }}>
+            🔥 오늘 안 구하면 작업 지연됩니다
+          </p>
+          <p style={{ margin: '2px 0 0', color: 'rgba(255,220,220,0.9)', fontWeight: 600, fontSize: 12 }}>
+            👉 지금 바로 연결 가능한 일 2건
+          </p>
+        </div>
+        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 18 }}>›</span>
+      </button>
 
       {/* 폼 */}
       <form onSubmit={handleSubmit} className="flex-1 px-5 pt-8 pb-10 space-y-5">
