@@ -325,18 +325,26 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     });
   }, [displayJobs, isPublicList, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // v4: sort state
+  const [sortBy, setSortBy] = useState('거리순');
+
   return (
     <div className="min-h-screen bg-farm-bg pb-8">
-      {/* 헤더 */}
-      <header className="bg-white px-4 pt-safe pt-4 pb-3 border-b border-gray-100 sticky top-0 z-30">
-        <div className="flex items-center gap-3 mb-3">
-          <button onClick={onBack} className="p-1 text-gray-600">
-            <ArrowLeft size={24} />
+      {/* ── v4 헤더: 녹색 배경 + 검색바 + 필터 칩 ── */}
+      <header className="pt-safe sticky top-0 z-30"
+        style={{ background: '#2d8a4e' }}>
+
+        {/* 상단: 뒤로가기 + 타이틀 + 건수 */}
+        <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+          <button onClick={onBack} className="p-1 text-white active:scale-90 transition-transform">
+            <ArrowLeft size={22} />
           </button>
-          <div>
-            <h1 className="text-lg font-bold text-gray-800">{title}</h1>
+          <div className="flex-1">
+            <h1 style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 18, color: '#fff', margin: 0 }}>
+              {title}
+            </h1>
             {!myJobsMode && !myApplicationsMode && (loc || gpsLoc) && (
-              <p className="text-xs text-farm-green flex items-center gap-0.5 -mt-0.5">
+              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 3 }}>
                 {nearbyMode
                   ? <><Navigation size={10} /> {radius}km 내 결과</>
                   : <><MapPin size={10} /> 내 위치 기준</>
@@ -344,73 +352,139 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               </p>
             )}
           </div>
-          <span className="ml-auto text-sm text-gray-400">{listCount}건</span>
+          <span style={{ background: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.9)', borderRadius: 9999, padding: '3px 10px', fontSize: 11, fontWeight: 700 }}>
+            📍 {listCount}건
+          </span>
         </div>
 
-        {/* 카테고리 필터 + PHASE 18 급구 필터 (작업자 목록에서만) */}
+        {/* 검색바 (작업자 공개 목록 전용) */}
         {!myJobsMode && !myApplicationsMode && (
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {/* PHASE NEARBY_MATCH: 내 근처 일자리 버튼 — 가장 앞 고정 */}
+          <div className="px-4 pb-2">
+            <div style={{
+              background: 'rgba(255,255,255,0.15)',
+              borderRadius: 12,
+              padding: '9px 13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              border: '1px solid rgba(255,255,255,0.2)',
+            }}>
+              <span style={{ fontSize: 14 }}>🔍</span>
+              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>지역 또는 작업 종류 검색</span>
+            </div>
+          </div>
+        )}
+
+        {/* 필터 칩: 내 근처 + 반경 + 🔥급구 + 카테고리 (작업자 공개 목록) */}
+        {!myJobsMode && !myApplicationsMode && (
+          <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-none">
+            {/* 내 근처 */}
             <button
               onClick={handleNearby}
               disabled={nearbyLoading}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold transition-colors border ${
-                nearbyMode
-                  ? 'bg-farm-green text-white border-farm-green shadow-sm'
-                  : 'bg-green-50 text-farm-green border-green-200'
-              } disabled:opacity-60`}
+              style={{
+                flexShrink: 0,
+                padding: '5px 12px',
+                borderRadius: 9999,
+                fontWeight: 700,
+                fontSize: 12,
+                background: nearbyMode ? '#fff' : 'transparent',
+                color: nearbyMode ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                border: nearbyMode ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 4,
+                opacity: nearbyLoading ? 0.6 : 1,
+              }}
             >
-              {nearbyLoading
-                ? <Loader2 size={12} className="animate-spin" />
-                : <Navigation size={12} />
-              }
+              {nearbyLoading ? <Loader2 size={11} className="animate-spin" /> : <Navigation size={11} />}
               {nearbyMode ? '전체 보기' : '내 근처'}
             </button>
 
-            {/* FINAL BOOST: 반경 선택 — nearbyMode 활성 시만 표시 */}
+            {/* 반경 선택 */}
             {nearbyMode && [3, 5, 10].map(km => (
               <button
                 key={km}
                 onClick={() => handleRadiusChange(km)}
                 disabled={nearbyLoading}
-                className={`shrink-0 px-2.5 py-1.5 rounded-full text-xs font-bold transition-colors border ${
-                  radius === km
-                    ? 'bg-farm-green text-white border-farm-green'
-                    : 'bg-white text-farm-green border-green-200'
-                } disabled:opacity-50`}
-              >
-                {km}km
-              </button>
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 10px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 11,
+                  background: radius === km ? '#fff' : 'transparent',
+                  color: radius === km ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                  border: radius === km ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                }}
+              >{km}km</button>
             ))}
 
-            {/* 🔥 급구 필터 토글 — 카테고리 필터 앞에 고정 */}
+            {/* 🔥 급구 */}
             <button
               onClick={() => setUrgentOnly(v => !v)}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-bold transition-colors border ${
-                urgentOnly
-                  ? 'bg-red-500 text-white border-red-500'
-                  : urgentCount > 0
-                    ? 'bg-red-50 text-red-600 border-red-200'
-                    : 'bg-gray-100 text-gray-400 border-gray-100'
-              }`}
-            >
-              🔥 급구{urgentCount > 0 && !urgentOnly ? ` ${urgentCount}` : ''}
-            </button>
+              style={{
+                flexShrink: 0,
+                padding: '5px 12px',
+                borderRadius: 9999,
+                fontWeight: 700,
+                fontSize: 12,
+                background: urgentOnly ? '#dc2626' : 'transparent',
+                color: urgentOnly ? '#fff' : 'rgba(255,255,255,0.85)',
+                border: urgentOnly ? '2px solid #dc2626' : '2px solid rgba(255,255,255,0.4)',
+                cursor: 'pointer',
+              }}
+            >🔥 급구{urgentCount > 0 && !urgentOnly ? ` ${urgentCount}` : ''}</button>
 
+            {/* 카테고리 */}
             {CATEGORIES.map(cat => (
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-                  category === cat ? 'bg-farm-green text-white' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {cat}
-              </button>
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 12px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: category === cat ? '#fff' : 'transparent',
+                  color: category === cat ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                  border: category === cat ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                }}
+              >{cat}</button>
             ))}
           </div>
         )}
       </header>
+
+      {/* ── v4 정렬 바 (작업자 공개 목록 전용) ── */}
+      {!myJobsMode && !myApplicationsMode && (
+        <div style={{
+          background: '#fff',
+          padding: '8px 16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '1px solid #f0f0f0',
+        }}>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>{listCount}개의 일자리</span>
+          <div style={{ display: 'flex', gap: 12 }}>
+            {['거리순', '급구 우선', '일당 높은순'].map(s => (
+              <button
+                key={s}
+                onClick={() => setSortBy(s)}
+                style={{
+                  fontSize: 12,
+                  color: sortBy === s ? '#2d8a4e' : '#9ca3af',
+                  fontWeight: sortBy === s ? 800 : 400,
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                }}
+              >{s}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 토스트 */}
       {toast && (

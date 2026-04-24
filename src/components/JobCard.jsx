@@ -178,13 +178,25 @@ export default function JobCard({
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             onError={e => { e.target.parentElement.style.display = 'none'; }}
           />
-          {/* 카테고리 아이콘 오버레이 */}
-          <span style={{
-            position: 'absolute', top: 8, left: 10,
-            fontSize: 22, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
-          }}>
-            {emoji}
-          </span>
+          {/* v4: 🤖 AI 배지 TOP-LEFT */}
+          <div style={{
+            position: 'absolute', top: 8, left: 8,
+            background: '#4f46e5', color: '#fff',
+            borderRadius: 9999, padding: '3px 9px',
+            fontSize: 10, fontWeight: 900,
+            boxShadow: '0 2px 8px rgba(79,70,229,0.5)',
+            display: 'flex', alignItems: 'center', gap: 3,
+          }}>🤖 AI 추천</div>
+          {/* v4: 경쟁자 수 배지 BOTTOM-RIGHT */}
+          {(job.applicationCount ?? 0) > 0 && (
+            <div style={{
+              position: 'absolute', bottom: 6, right: 8,
+              background: 'rgba(0,0,0,0.55)', color: '#fff',
+              borderRadius: 9999, padding: '2px 8px',
+              fontSize: 10, fontWeight: 700,
+              display: 'flex', alignItems: 'center', gap: 3,
+            }}>👥 경쟁 {job.applicationCount}명</div>
+          )}
         </div>
       )}
 

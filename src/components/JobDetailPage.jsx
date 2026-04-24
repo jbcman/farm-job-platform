@@ -576,38 +576,105 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
         </div>
       )}
 
-      {/* STEP 5: 하단 고정 CTA — STEP 8: 손가락 누르기 쉬운 크기 */}
+      {/* v4 STEP 8: 하단 고정 CTA — 📞 지금 바로 연결 */}
       {!isClosed && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100
-                        px-4 pt-3 pb-safe pb-4 z-30 max-w-lg mx-auto">
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: '#fff', borderTop: '1px solid #f0f0f0',
+          padding: '12px 16px max(env(safe-area-inset-bottom),16px)',
+          zIndex: 30,
+          maxWidth: 512, margin: '0 auto',
+        }}>
+          {/* v4 신뢰 배지 — 위 */}
+          {!applied && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>⚡ 평균 5분 연결</span>
+              <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✔ 즉시 작업 가능</span>
+              {(job.applicationCount ?? 0) > 0 && (
+                <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>
+                  🔥 경쟁 {job.applicationCount}명
+                </span>
+              )}
+            </div>
+          )}
+
           {applyErr && (
             <p className="text-xs text-red-500 text-center mb-2">{applyErr}</p>
           )}
 
           {applied ? (
-            <div className="flex items-center justify-center gap-2 py-4 bg-green-50
-                            rounded-2xl border-2 border-farm-green">
-              <CheckCircle size={20} className="text-farm-green" />
-              <span className="font-black text-farm-green text-lg">지원 완료!</span>
+            /* v4: 연락처 공개 카드 */
+            <div style={{
+              background: '#f0fdf4',
+              borderRadius: 14,
+              padding: '14px 16px',
+              textAlign: 'center',
+              border: '1px solid #bbf7d0',
+            }}>
+              <p style={{ color: '#15803d', fontWeight: 900, fontSize: 15, marginBottom: 4 }}>
+                ✅ 연락처 공개됨!
+              </p>
+              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                농민이 곧 연락드립니다. 먼저 전화해도 좋아요.
+              </p>
+              {job.contact && (
+                <a
+                  href={`tel:${job.contact}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    color: '#2d8a4e', fontWeight: 800, fontSize: 17, textDecoration: 'none',
+                  }}
+                >📞 {job.contact}</a>
+              )}
+              {!job.contact && (
+                <p style={{ color: '#2d8a4e', fontWeight: 700, fontSize: 14 }}>
+                  지원 완료 — 농민 확인 대기 중
+                </p>
+              )}
             </div>
           ) : (
+            /* v4: 강조 CTA — 급구면 red gradient, 일반이면 green */
             <button
               onClick={handleApply}
               disabled={applying}
-              className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
-                         shadow-lg active:scale-95 transition-transform
-                         disabled:opacity-60 flex items-center justify-center gap-2"
+              style={{
+                width: '100%',
+                height: 52,
+                background: (job.isUrgent || (job.applicationCount ?? 0) >= 3)
+                  ? 'linear-gradient(90deg,#b91c1c,#dc2626)'
+                  : '#2d8a4e',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 14,
+                fontWeight: 900,
+                fontSize: 17,
+                fontFamily: "'Noto Sans KR',sans-serif",
+                cursor: applying ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 7,
+                boxShadow: (job.isUrgent || (job.applicationCount ?? 0) >= 3)
+                  ? '0 4px 16px rgba(185,28,28,0.38)'
+                  : '0 4px 16px rgba(45,138,78,0.38)',
+                opacity: applying ? 0.7 : 1,
+                transition: 'transform 0.1s',
+              }}
             >
               {applying
-                ? <><Loader2 size={20} className="animate-spin" /> 지원 중...</>
-                : '👉 바로 지원하기'
+                ? <><Loader2 size={20} className="animate-spin" /> 연결 중...</>
+                : (job.isUrgent || (job.applicationCount ?? 0) >= 3)
+                  ? '🔥 지금 바로 연결 (마감 임박)'
+                  : '📞 지금 바로 연결'
               }
             </button>
           )}
 
-          <p className="text-center text-xs text-gray-400 mt-2">
-            지원 후 농민이 연락드릴 거예요
-          </p>
+          {!applied && (
+            <p style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', marginTop: 7 }}>
+              지원 즉시 농민 연락처가 공개됩니다
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -218,20 +218,20 @@ export default function HomePage({
               filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
             }}
           />
-          {/* 브랜드명 */}
+          {/* v4 Hero 타이틀 */}
           <h1
-            className="text-white font-black leading-tight"
-            style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 26, marginBottom: 6 }}
+            className="text-white font-black leading-tight text-center"
+            style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 24, marginBottom: 5 }}
           >
-            농촌 일손
+            AI가 연결하는<br/>농촌 일자리
           </h1>
-          {/* 슬로건 */}
-          <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, lineHeight: 1.5 }}>
-            일손이 필요한 곳에, 필요한 사람이 함께
+          {/* v4 서브 슬로건 */}
+          <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 1.6, textAlign: 'center' }}>
+            위치·난이도·경험 자동 매칭 — 전화 돌릴 필요 없음
           </p>
         </div>
 
-        {/* ── STEP 2: 핵심 CTA (전환 최적화) ── */}
+        {/* ── v4 STEP 2: 핵심 CTA ── */}
         <div className="flex flex-col gap-2.5 mb-4">
           {/* 1순위 CTA */}
           <button
@@ -239,30 +239,40 @@ export default function HomePage({
               try { trackClientEvent('cta_click', { type: 'primary', location: 'hero' }); } catch (_) {}
               onModeChange('worker'); onViewJobList();
             }}
-            className="w-full py-4 bg-white text-farm-green font-black text-lg rounded-2xl
-                       shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
-          >
-            🔥 지금 바로 일손 연결
-          </button>
+            style={{
+              width: '100%', height: 52,
+              background: '#fff', color: '#2d8a4e',
+              border: 'none', borderRadius: 16, padding: '0 16px',
+              fontWeight: 900, fontSize: 17,
+              fontFamily: "'Noto Sans KR',sans-serif",
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}
+          >🔥 지금 바로 일손 연결</button>
           {/* 보조 CTA */}
           <button
             onClick={() => {
               try { trackClientEvent('cta_click', { type: 'secondary', location: 'hero' }); } catch (_) {}
               onModeChange('farmer'); onPostJob();
             }}
-            className="w-full py-3 bg-white/10 text-white/80 font-bold text-sm rounded-2xl
-                       border border-white/25 active:scale-95 transition-transform
-                       flex items-center justify-center gap-2"
-          >
-            🔍 일손 구하기 (농민)
-          </button>
+            style={{
+              width: '100%', height: 46,
+              background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)',
+              border: '2px solid rgba(255,255,255,0.28)', borderRadius: 16,
+              fontWeight: 600, fontSize: 14,
+              fontFamily: "'Noto Sans KR',sans-serif",
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >➕ 일손 구하기 (농민)</button>
         </div>
 
-        {/* ── STEP 3: 신뢰 스트립 (중앙 정렬) ── */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ AI 자동 추천</span>
-          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ 평균 5분 연결</span>
-          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ 완료 1,000건+</span>
+        {/* ── v4 신뢰 스트립 ── */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: 700, flexWrap: 'wrap' }}>
+          <span>⚡ 평균 5분 연결</span>
+          <span>✔ 완료 1,240건</span>
+          <span>⭐ 만족도 4.8</span>
         </div>
       </header>
 
