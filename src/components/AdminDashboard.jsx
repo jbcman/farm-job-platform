@@ -4,6 +4,10 @@ import {
   Briefcase, Users, CheckCircle, XCircle, ArrowLeft,
   TrendingUp, Star, Award,
 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, Cell,
+} from 'recharts';
 
 // ── API 헬퍼 ────────────────────────────────────────────────────
 async function adminFetch(path, key) {
@@ -144,6 +148,10 @@ export default function AdminDashboard({ onBack }) {
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState('');
   const [lastFetch,   setLastFetch]   = useState(null);
+  // ANALYTICS_TAB: 전환 퍼널
+  const [activeTab,   setActiveTab]   = useState('ops'); // 'ops' | 'analytics'
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   const load = useCallback(async (key) => {
     const k = key ?? adminKey;
@@ -192,6 +200,26 @@ export default function AdminDashboard({ onBack }) {
     load(k);
   }
 
+  // ANALYTICS_TAB: 퍼널 데이터 로드
+  const loadAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    try {
+      const [statsRes, summaryRes] = await Promise.all([
+        fetch('/api/analytics/stats').then(r => r.json()),
+        fetch('/api/analytics/summary').then(r => r.json()),
+      ]);
+      setAnalyticsData({ stats: statsRes, summary: summaryRes });
+    } catch (e) {
+      console.error('[ANALYTICS_TAB]', e);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'analytics') loadAnalytics();
+  }, [activeTab, loadAnalytics]);
+
   if (showGate) return <KeyGate onSubmit={handleKeySubmit} />;
 
   const m = metrics;
@@ -226,6 +254,26 @@ export default function AdminDashboard({ onBack }) {
         </div>
       </header>
 
+      {/* ── ANALYTICS_TAB: 탭 전환 ── */}
+      <div className="bg-gray-900 border-b border-gray-800 sticky top-[65px] z-20">
+        <div className="max-w-2xl mx-auto px-4 flex gap-1 pt-1">
+          {[
+            { key: 'ops',       label: '🌾 운영', icon: BarChart2 },
+            { key: 'analytics', label: '📊 전환 분석', icon: Activity },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
+                activeTab === t.key
+                  ? 'border-farm-green text-farm-green'
+                  : 'border-transparent text-gray-500 hover:text-gray-300'
+              }`}
+            >{t.label}</button>
+          ))}
+        </div>
+      </div>
+
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-6">
         {error && (
           <div className="bg-red-900/40 border border-red-700 rounded-2xl px-4 py-3 text-red-300 text-sm">
@@ -233,6 +281,13 @@ export default function AdminDashboard({ onBack }) {
           </div>
         )}
 
+        {/* ══ ANALYTICS TAB ══════════════════════════════════════════ */}
+        {activeTab === 'analytics' && (
+          <AnalyticsTab data={analyticsData} loading={analyticsLoading} onRefresh={loadAnalytics} />
+        )}
+
+        {activeTab !== 'analytics' && (
+          <>
         {/* ── 수익 대시보드 바로가기 ────────────────────────── */}
         <a
           href="/revenue"
@@ -422,7 +477,158 @@ export default function AdminDashboard({ onBack }) {
             ))}
           </div>
         </section>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ANALYTICS TAB — 전환 퍼널 + 이벤트 분포
+// ══════════════════════════════════════════════════════════════════
+function AnalyticsTab({ data, loading, onRefresh }) {
+  if (loading || !data) {
+    return (
+      <div className="flex items-center justify-center py-20 text-gray-500">
+        <RefreshCw size={22} className="animate-spin mr-2" />
+        <span>분석 데이터 로딩 중...</span>
+      </div>
+    );
+  }
+
+  const { stats, summary } = data;
+  const funnel    = stats?.funnel    || {};
+  const conv      = stats?.conversion || {};
+  const events    = summary?.events   || [];
+  const totalEv   = summary?.total    || 0;
+
+  // 퍼널 차트 데이터
+  const funnelData = [
+    { name: '페이지뷰', value: funnel.page_view     || 0, color: '#6366f1' },
+    { name: 'CTA 클릭', value: funnel.cta_click     || 0, color: '#2563eb' },
+    { name: '상세보기', value: funnel.detail_view   || 0, color: '#0891b2' },
+    { name: '지원하기', value: funnel.apply_click   || 0, color: '#059669' },
+    { name: '즉시연결', value: funnel.contact_apply || 0, color: '#16a34a' },
+    { name: '전화클릭', value: funnel.call_click    || 0, color: '#dc2626' },
+    { name: 'SMS',      value: funnel.sms_click     || 0, color: '#f59e0b' },
+    { name: '카카오톡', value: funnel.kakao_click   || 0, color: '#FEE500' },
+  ].filter(d => d.value > 0);
+
+  // 전환율 카드
+  const convCards = [
+    { label: 'CTA → 상세보기', value: conv.cta_to_detail,    color: 'blue'  },
+    { label: '상세 → 지원',   value: conv.detail_to_apply,  color: 'green' },
+    { label: '지원 → 연락',   value: conv.apply_to_contact, color: 'amber' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-black text-white text-base">📊 전환 퍼널 분석</p>
+          <p className="text-xs text-gray-500 mt-0.5">총 이벤트: {totalEv.toLocaleString()}건</p>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 rounded-xl text-sm text-gray-300"
+        >
+          <RefreshCw size={14} />새로고침
+        </button>
+      </div>
+
+      {/* 전환율 카드 3개 */}
+      <div className="grid grid-cols-3 gap-3">
+        {convCards.map(c => {
+          const colors = {
+            blue:  'bg-blue-900/40  border-blue-700/50  text-blue-300',
+            green: 'bg-green-900/40 border-green-700/50 text-green-300',
+            amber: 'bg-amber-900/40 border-amber-700/50 text-amber-300',
+          };
+          return (
+            <div key={c.label} className={`rounded-2xl border p-3 ${colors[c.color]}`}>
+              <p className="text-xs opacity-70 mb-1 leading-tight">{c.label}</p>
+              <p className="text-2xl font-black">{c.value || 'N/A'}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 퍼널 막대 차트 */}
+      {funnelData.length > 0 ? (
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
+            클릭/전환 퍼널
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={funnelData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 11 }} />
+              <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ background: '#1f2937', border: '1px solid #374151', borderRadius: 10 }}
+                labelStyle={{ color: '#e5e7eb', fontWeight: 700 }}
+                itemStyle={{ color: '#a3e635' }}
+              />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                {funnelData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 text-center text-gray-500">
+          <p className="text-3xl mb-2">📉</p>
+          <p className="font-semibold">아직 이벤트 데이터가 없어요</p>
+          <p className="text-xs mt-1">앱을 사용하면 자동으로 집계됩니다</p>
+        </div>
+      )}
+
+      {/* 개별 수치 */}
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 space-y-2">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">이벤트별 수치</p>
+        {[
+          { label: '📍 지도뷰',      val: funnel.map_view        || 0 },
+          { label: '🔗 공유 클릭',   val: funnel.share_click     || 0 },
+          { label: '🧭 길찾기',      val: funnel.direction_click || 0 },
+          { label: '💬 카카오 채팅', val: funnel.kakao_click     || 0 },
+        ].map(r => (
+          <div key={r.label} className="flex items-center justify-between">
+            <span className="text-sm text-gray-400">{r.label}</span>
+            <span className="text-sm font-bold text-gray-200">{r.val.toLocaleString()}건</span>
+          </div>
+        ))}
+      </div>
+
+      {/* 이벤트 TOP 10 */}
+      {events.length > 0 && (
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+            이벤트 TOP {Math.min(events.length, 10)}
+          </p>
+          <div className="space-y-2">
+            {events.slice(0, 10).map((ev, i) => {
+              const pct = totalEv > 0 ? Math.round((ev.count / totalEv) * 100) : 0;
+              return (
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-300 font-medium">{ev.event}</span>
+                    <span className="text-gray-500">{ev.count.toLocaleString()}건 ({pct}%)</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-1.5">
+                    <div
+                      className="h-1.5 rounded-full bg-farm-green"
+                      style={{ width: `${Math.max(2, pct)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -67,6 +67,11 @@ const ALLOWED_EVENTS = new Set([
     'pay_intent_positive',   // "효과 좋았어요" 선택
     'pay_mark_paid',         // 결제 완료 처리
     'pay_remind_view',       // 홈 결제 리마인드 배너 노출
+    // KAKAO_CHANNEL: 채팅 전환 추적
+    'kakao_chat_click',      // KakaoButton 클릭
+    // CTA 클릭 추적 (HOMEPAGE_BRAND_POLISH)
+    'cta_click',
+    'contact_apply',         // 즉시 SMS/전화 연결 지원
 ]);
 
 // ─── POST /api/analytics/event ────────────────────────────────
@@ -103,35 +108,47 @@ router.get('/stats', (_req, res) => {
     const get = (event) =>
         db.prepare("SELECT COUNT(*) as n FROM analytics WHERE event = ?").get(event)?.n || 0;
 
-    const applyClick  = get('apply_click')  + get('job_apply');   // 카드 + 상세 둘 다 집계
-    const callClick   = get('call_click')   + get('call_clicked');
-    const smsClick    = get('sms_click');
-    const dirClick    = get('direction_click') + get('nav_kakao') + get('nav_naver');
-    const shareClick  = get('share_click')  + get('share_kakao') + get('share_native') + get('share_clipboard');
-    const detailView  = get('job_detail_view');
-    const mapView     = get('map_view') + get('map_view_open') + get('map_marker_click');
+    const applyClick   = get('apply_click')  + get('job_apply');   // 카드 + 상세 둘 다 집계
+    const callClick    = get('call_click')   + get('call_clicked');
+    const smsClick     = get('sms_click');
+    const kakaoClick   = get('kakao_chat_click');
+    const contactApply = get('contact_apply');
+    const ctaClick     = get('cta_click');
+    const dirClick     = get('direction_click') + get('nav_kakao') + get('nav_naver');
+    const shareClick   = get('share_click')  + get('share_kakao') + get('share_native') + get('share_clipboard');
+    const detailView   = get('job_detail_view');
+    const mapView      = get('map_view') + get('map_view_open') + get('map_marker_click');
+    const pageView     = get('page_view') + get('mobile_visit');
 
     const convApplyToCall = applyClick > 0
-        ? Math.round((callClick / applyClick) * 100)
+        ? Math.round(((callClick + kakaoClick) / applyClick) * 100)
         : null;
     const convDetailToApply = detailView > 0
         ? Math.round((applyClick / detailView) * 100)
+        : null;
+    const convCtaToDetail = ctaClick > 0
+        ? Math.round((detailView / ctaClick) * 100)
         : null;
 
     return res.json({
         ok: true,
         funnel: {
+            page_view:        pageView,
+            cta_click:        ctaClick,
             detail_view:      detailView,
             apply_click:      applyClick,
+            contact_apply:    contactApply,
             call_click:       callClick,
             sms_click:        smsClick,
+            kakao_click:      kakaoClick,
             direction_click:  dirClick,
             map_view:         mapView,
             share_click:      shareClick,
         },
         conversion: {
-            detail_to_apply:  convDetailToApply !== null ? `${convDetailToApply}%` : 'N/A',
-            apply_to_call:    convApplyToCall   !== null ? `${convApplyToCall}%`   : 'N/A',
+            cta_to_detail:    convCtaToDetail    !== null ? `${convCtaToDetail}%`    : 'N/A',
+            detail_to_apply:  convDetailToApply  !== null ? `${convDetailToApply}%`  : 'N/A',
+            apply_to_contact: convApplyToCall    !== null ? `${convApplyToCall}%`    : 'N/A',
         },
     });
 });
