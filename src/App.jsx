@@ -40,6 +40,15 @@ import { getOrCreateUser } from './utils/userProfile.js';
  *   → 온보딩/로그인 우회, localStorage 정상 저장, 무한 리로드 없음
  */
 
+// STEP 2: 개발 모드 모바일 환경 권장 경고 (1회)
+if (import.meta.env.DEV && typeof navigator !== 'undefined') {
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (!isMobile) {
+    console.warn('⚠ [FARM UX V2] 모바일 환경에서 테스트 권장 — 전환율 측정 정확도↑');
+    console.log('  크롬 DevTools → Toggle device toolbar (Ctrl+Shift+M) → 모바일 시뮬레이션');
+  }
+}
+
 /** /admin 경로 감지 */
 function isAdminPath() {
   return window.location.pathname.startsWith('/admin');

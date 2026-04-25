@@ -189,6 +189,25 @@ export default function HomePage({
       {/* 온보딩 오버레이 */}
       {showOnboard && <OnboardingOverlay onDone={() => setShowOnboard(false)} />}
 
+      {/* STEP 4: 개발 모드 전용 테스트 안내 배너 */}
+      {isDev && (
+        <div style={{
+          background: '#1e40af', color: '#fff',
+          fontSize: 12, fontWeight: 700,
+          padding: '7px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8,
+        }}>
+          <span>📊 현재 테스트 중 — 전화 버튼을 눌러주세요</span>
+          <span
+            style={{ fontSize: 11, opacity: 0.8, whiteSpace: 'nowrap', cursor: 'pointer' }}
+            onClick={() => { try { window.farm?.report(); } catch (_) {} }}
+          >
+            farm.report() →
+          </span>
+        </div>
+      )}
+
       {/* ══ UX_V2 HERO ══ */}
       <header className="bg-farm-green px-4 pt-safe pb-5 relative">
 
