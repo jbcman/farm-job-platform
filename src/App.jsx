@@ -179,6 +179,8 @@ export default function App() {
   const [deepSource,  setDeepSource]  = useState('direct');
   // Phase 11: 재등록용 prefill
   const [prefillJob,  setPrefillJob]  = useState(null);
+  // BACK_NAV: job-detail에서 돌아갈 이전 페이지 추적
+  const [prevPage,    setPrevPage]    = useState('home');
 
   // 앱 시작 시 로컬스토리지 확인 + 딥링크 감지 + Phase 14 외부 자동 진입
   useEffect(() => {
@@ -252,6 +254,7 @@ export default function App() {
   }, [userId]);
 
   function navigate(p, extras = {}) {
+    if (p === 'job-detail') setPrevPage(page); // 이전 페이지 저장
     if (extras.job)     setSelectedJob(extras.job);
     if (extras.jobId)   setDeepJobId(extras.jobId);
     if (extras.source)  setDeepSource(extras.source);
@@ -414,7 +417,14 @@ export default function App() {
       {page === 'job-detail' && (
         <JobDetailPage
           jobId={deepJobId}
-          onBack={goHome}
+          onBack={() => {
+            // 이전 페이지로 복귀 (리스트 → 상세 → 뒤로 = 리스트)
+            if (prevPage && prevPage !== 'home' && prevPage !== 'job-detail') {
+              setPage(prevPage);
+            } else {
+              goHome();
+            }
+          }}
           source={deepSource}
           onCopyJob={handleCopyJob}
         />

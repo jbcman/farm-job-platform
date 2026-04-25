@@ -382,7 +382,12 @@ export default function MapExplorePage() {
             {/* 버튼 */}
             <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={() => { getOrCreateUser(); window.location.href = `/jobs/${selected.id}`; }}
+                onClick={() => {
+                  getOrCreateUser();
+                  // 브라우저 history에 /map-explore 추가 → 뒤로가기 시 지도 복귀
+                  window.history.pushState(null, '', '/map-explore');
+                  window.location.href = `/jobs/${selected.id}`;
+                }}
                 style={{
                   flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
                   background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 14,

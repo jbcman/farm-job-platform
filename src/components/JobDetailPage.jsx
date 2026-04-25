@@ -157,7 +157,7 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
       <header className="bg-white px-4 pt-safe pt-4 pb-4 border-b border-gray-100 sticky top-0 z-30 flex items-center gap-3">
         <button onClick={onBack} className="flex items-center gap-1 text-gray-600 active:scale-90 transition-transform">
           <ArrowLeft size={20} />
-          <span style={{ fontSize: 13, fontWeight: 700 }}>홈</span>
+          <span style={{ fontSize: 13, fontWeight: 700 }}>뒤로</span>
         </button>
         <h1 className="text-lg font-bold text-gray-800 flex-1 truncate">
           {emoji} {job.category}
