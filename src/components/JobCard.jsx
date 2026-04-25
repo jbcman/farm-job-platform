@@ -9,6 +9,7 @@ import { getUserSkillLevel, incrementApplyCount } from '../utils/userProfile.js'
 import { distBadgeColor, SHADOW } from '../config/designSystem.js';
 import CallButton from './common/CallButton.jsx';
 import { logView, logDetail } from '../utils/conversionTracker.js';
+import { estimateWork } from '../utils/workEstimator.js';
 
 // ── 디자인 시스템 V2: 거리 체감 라벨 ─────────────────────────
 function distLabel(km) {
@@ -185,6 +186,7 @@ export default function JobCard({
     const equipIcon  = resolveEquipmentIcon(job);
     const region     = job.locationText ? job.locationText.split(' ').slice(0, 2).join(' ') : null;
     const isUrgentNow = job.isUrgent || job.isToday || false;
+    const workEst     = estimateWork(job.areaPyeong, job.category);
 
     return (
       <div
@@ -241,7 +243,7 @@ export default function JobCard({
           )}
         </div>
 
-        {/* STEP 4: 즉시성 트리거 */}
+        {/* STEP 4: 즉시성 트리거 + 작업 시간 추정 */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
           {isUrgentNow ? (
             <span style={{
@@ -259,6 +261,11 @@ export default function JobCard({
             </span>
           )}
 
+          {/* STEP 2/3: 작업 시간 추정 (메인) */}
+          {workEst.label && (
+            <span className="work-time">{workEst.label}</span>
+          )}
+
           {/* STEP 5: 숫자 트리거 — applicantCount 존재 시 */}
           {(job.applicationCount ?? 0) > 0 && (
             <span style={{
@@ -269,6 +276,14 @@ export default function JobCard({
             </span>
           )}
         </div>
+
+        {/* STEP 3: 평수 보조 표시 */}
+        {job.areaPyeong && (
+          <div className="work-area">
+            🌾 {job.areaPyeong.toLocaleString()}평
+            {workEst.sublabel && <span style={{ marginLeft: 6, color: '#9ca3af' }}>({workEst.sublabel})</span>}
+          </div>
+        )}
 
         {/* STEP 2/10: CallButton — 전화 CTA 주인공 */}
         <CallButton
@@ -527,6 +542,9 @@ export default function JobCard({
             <div className="flex items-center gap-1.5">
               <Maximize2 size={14} className="text-farm-green shrink-0" />
               <span className="font-semibold text-farm-green">{areaDisplay}</span>
+              {(() => { const w = estimateWork(job.areaPyeong, job.category); return w.label ? (
+                <span className="work-time" style={{ marginLeft: 2 }}>{w.label}</span>
+              ) : null; })()}
             </div>
           )}
           {driveMinLabel && (

@@ -14,6 +14,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MAP_CONFIG } from '../config/mapConfig.js';
 import { getKakaoNaviLink } from '../utils/mapLink.js';
+import { estimateWork } from '../utils/workEstimator.js';
 
 // Vite 환경 Leaflet 기본 마커 아이콘 경로 복구
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -48,37 +49,63 @@ function fmtDist(km) {
 
 // ── 작업 마커 아이콘 ───────────────────────────────────────────
 // BOOST_CONVERSION: 스폰서 마커 압도적 강조 (크기+glow+애니메이션)
-function makeJobIcon(isToday, isUrgent, isSponsored) {
+// JOB_INFO_ENHANCE: pay + workLabel 레이어 추가
+function makeJobIcon(isToday, isUrgent, isSponsored, pay, workLabel) {
+  const payHtml = pay
+    ? `<div style="font-size:10px;font-weight:900;color:#fff;white-space:nowrap;
+                   text-shadow:0 1px 2px rgba(0,0,0,.5);line-height:1;margin-bottom:2px;">
+         💰${pay}
+       </div>`
+    : '';
+  const labelHtml = workLabel
+    ? `<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.9);
+                   white-space:nowrap;margin-top:2px;line-height:1;">
+         ${workLabel}
+       </div>`
+    : '';
+
   if (isSponsored) {
-    // 스폰서: 44px, 오렌지→레드 그라디언트, 이중 링, 펄스 클래스
     return L.divIcon({
       html: `
-        <div class="boost-pulse-ring"></div>
-        <div style="
-          position:relative;z-index:2;
-          background:linear-gradient(135deg,#f97316,#dc2626);
-          color:#fff;font-size:20px;
-          width:44px;height:44px;border-radius:50%;
-          display:flex;align-items:center;justify-content:center;
-          border:3px solid #fff;
-          box-shadow:0 0 0 3px rgba(249,115,22,0.45),
-                     0 4px 16px rgba(220,38,38,0.6);
-        ">🔥</div>
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          ${payHtml}
+          <div class="boost-pulse-ring" style="position:absolute;"></div>
+          <div style="
+            position:relative;z-index:2;
+            background:linear-gradient(135deg,#f97316,#dc2626);
+            color:#fff;font-size:20px;
+            width:44px;height:44px;border-radius:50%;
+            display:flex;align-items:center;justify-content:center;
+            border:3px solid #fff;
+            box-shadow:0 0 0 3px rgba(249,115,22,0.45),0 4px 16px rgba(220,38,38,0.6);
+          ">🔥</div>
+          ${labelHtml}
+        </div>
       `,
       className: 'boost-marker',
-      iconSize: [44, 44], iconAnchor: [22, 22],
+      iconSize: [56, pay || workLabel ? 72 : 44],
+      iconAnchor: [28, pay ? 44 : 22],
     });
   }
+
   const bg    = isUrgent ? '#dc2626' : isToday ? '#16a34a' : '#2563eb';
   const emoji = isUrgent ? '🔥' : '🌾';
   return L.divIcon({
-    html: `<div style="
-      background:${bg};color:#fff;font-size:15px;
-      width:34px;height:34px;border-radius:50%;
-      display:flex;align-items:center;justify-content:center;
-      border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);
-    ">${emoji}</div>`,
-    className: '', iconSize: [34, 34], iconAnchor: [17, 17],
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        ${payHtml}
+        <div style="
+          background:${bg};color:#fff;font-size:15px;
+          width:34px;height:34px;border-radius:50%;
+          display:flex;align-items:center;justify-content:center;
+          border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);
+        ">${emoji}</div>
+        ${labelHtml}
+      </div>
+    `,
+    className: '',
+    iconSize: [50, pay || workLabel ? 60 : 34],
+    iconAnchor: [25, pay ? 40 : 17],
   });
 }
 
@@ -113,7 +140,10 @@ export default function MapExplorePage() {
 
       data.markers.forEach(job => {
         if (job.lat == null || job.lng == null) return;
-        const marker = L.marker([job.lat, job.lng], { icon: makeJobIcon(job.isToday, job.isUrgent, job.isSponsored) });
+        const { label: wLabel } = estimateWork(job.areaPyeong, job.category);
+        const marker = L.marker([job.lat, job.lng], {
+          icon: makeJobIcon(job.isToday, job.isUrgent, job.isSponsored, job.pay, wLabel),
+        });
         marker.addTo(map);
         marker.on('click', () => setSelected(job));
         markersRef.current.push(marker);
