@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, Maximize2, Zap, CheckCircle, Play, Flag, Star, Banknote, XCircle, RefreshCw, ImageIcon } from 'lucide-react';
 import { trackClientEvent } from '../utils/api.js';
 import { formatDistance } from '../utils/formatDistance.js';
@@ -8,6 +8,7 @@ import { getSMSLink, getCallLink } from '../utils/contactLink.js';
 import { getUserSkillLevel, incrementApplyCount } from '../utils/userProfile.js';
 import { distBadgeColor, SHADOW } from '../config/designSystem.js';
 import CallButton from './common/CallButton.jsx';
+import { logView, logDetail } from '../utils/conversionTracker.js';
 
 // ── 디자인 시스템 V2: 거리 체감 라벨 ─────────────────────────
 function distLabel(km) {
@@ -154,6 +155,14 @@ export default function JobCard({
   // HOMEPAGE_BRAND_POLISH_V1 STEP 7: 전화 유도 UX — 0.5초 "연결 중..." 로딩
   const [connecting, setConnecting] = useState(false);
 
+  // UX_V2 STEP 1: 카드 노출 로그 (worker+open 전환율 측정)
+  useEffect(() => {
+    if (mode === 'worker' && job.status === 'open' && !applied) {
+      logView(job.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
   // 지도 버튼 핸들러 — 카드 이벤트와 완전 분리
   const handleMapClick = (e) => {
     e.stopPropagation();
@@ -222,13 +231,42 @@ export default function JobCard({
         </div>
 
         {/* STEP 8: 거리/이동 + 장비 아이콘 */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {driveLabel && (
             <span style={{ fontSize: 16, fontWeight: 700, color: '#374151' }}>{driveLabel}</span>
           )}
           <span style={{ fontSize: 22 }}>{equipIcon}</span>
           {job.date && (
             <span style={{ fontSize: 14, color: '#9ca3af' }}>📅 {job.date}</span>
+          )}
+        </div>
+
+        {/* STEP 4: 즉시성 트리거 */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+          {isUrgentNow ? (
+            <span style={{
+              fontSize: 13, fontWeight: 800, color: '#15803d',
+              background: '#dcfce7', borderRadius: 8, padding: '4px 10px',
+            }}>
+              ⏰ 오늘 바로 시작 가능
+            </span>
+          ) : (
+            <span style={{
+              fontSize: 13, fontWeight: 700, color: '#6b7280',
+              background: '#f3f4f6', borderRadius: 8, padding: '4px 10px',
+            }}>
+              ⏰ 지금 바로 가능
+            </span>
+          )}
+
+          {/* STEP 5: 숫자 트리거 — applicantCount 존재 시 */}
+          {(job.applicationCount ?? 0) > 0 && (
+            <span style={{
+              fontSize: 13, fontWeight: 800, color: '#b91c1c',
+              background: '#fef2f2', borderRadius: 8, padding: '4px 10px',
+            }}>
+              🔥 현재 {job.applicationCount}명 확인 중
+            </span>
           )}
         </div>
 
@@ -257,7 +295,7 @@ export default function JobCard({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            console.log('[DETAIL_CLICK]', job.id);
+            logDetail(job.id);
             logBehavior(job, 'view');
             onViewDetail?.(job);
           }}

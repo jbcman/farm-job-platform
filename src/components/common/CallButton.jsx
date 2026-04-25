@@ -2,35 +2,53 @@
  * CallButton — 전화 연결 CTA (UX_V2 핵심 컴포넌트)
  *
  * Props:
- *   phone   : string           — 전화번호 (있으면 직접 tel: 연결)
- *   jobId   : string|number    — 추적용
- *   onFallback : fn?           — phone 없을 때 호출 (기존 지원 플로우)
- *   label   : string?          — 버튼 텍스트 override
- *   variant : 'A'|'B'          — A/B 문구 테스트
- *   disabled: bool
- *   style   : object
+ *   phone      : string           — 전화번호 (있으면 직접 tel: 연결)
+ *   jobId      : string|number    — 추적용
+ *   onFallback : fn?              — phone 없을 때 호출 (기존 지원 플로우)
+ *   label      : string?          — 버튼 텍스트 override
+ *   variant    : 'A'|'B'|null     — null이면 마운트 시 랜덤 배정
+ *   disabled   : bool
+ *   style      : object
+ *
+ * A/B 테스트:
+ *   variant A → "📞 지금 전화하기"
+ *   variant B → "🔥 바로 연결 (전화)"
+ *   variant 미지정(null) → Math.random() < 0.5 으로 자동 배정 (마운트 시 고정)
  */
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { trackClientEvent } from '../../utils/api.js';
+import { logCall, logVariant } from '../../utils/conversionTracker.js';
 
 export default function CallButton({
   phone,
   jobId,
   onFallback,
   label,
-  variant    = 'A',
+  variant    = null,   // null → 자동 랜덤 배정
   disabled   = false,
   style      = {},
 }) {
-  const defaultLabel = variant === 'B'
+  // ── A/B variant: prop 없으면 마운트 시 랜덤 고정 (re-render 불변) ──
+  const variantRef    = useRef(variant || (Math.random() < 0.5 ? 'A' : 'B'));
+  const activeVariant = variantRef.current;
+
+  // ── 마운트 시 variant 배정 로그 (1회) ──
+  useEffect(() => {
+    logVariant(jobId, activeVariant);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── 버튼 텍스트 ──
+  const defaultLabel = activeVariant === 'B'
     ? '🔥 바로 연결 (전화)'
     : '📞 지금 전화하기';
 
   const displayLabel = label || defaultLabel;
 
+  // ── 클릭 핸들러 ──
   function handleClick(e) {
-    console.log('[CALL_CLICK]', jobId);
-    try { trackClientEvent('call_click', { jobId, variant, hasPhone: !!phone }); } catch (_) {}
+    logCall(jobId, activeVariant);
+    try { trackClientEvent('call_click', { jobId, variant: activeVariant, hasPhone: !!phone }); } catch (_) {}
 
     if (!phone) {
       e.preventDefault();
