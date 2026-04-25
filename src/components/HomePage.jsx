@@ -189,104 +189,64 @@ export default function HomePage({
       {/* 온보딩 오버레이 */}
       {showOnboard && <OnboardingOverlay onDone={() => setShowOnboard(false)} />}
 
-      {/* 헤더 — HOMEPAGE_BRAND_POLISH_V1 */}
-      <header className="bg-farm-green px-4 pt-safe pb-6 relative">
+      {/* ══ UX_V2 HERO ══ */}
+      <header className="bg-farm-green px-4 pt-safe pb-5 relative">
 
-        {/* GPS 뱃지 — 우측 상단 고정 */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 pt-safe">
+        {/* GPS 뱃지 */}
+        <div className="absolute top-3 right-4 pt-safe">
           {gpsStatus === 'ok' && (
             <span className="flex items-center gap-1 text-xs bg-white/20 text-green-100 rounded-full px-2 py-0.5">
               <MapPin size={10} /> 내 위치
             </span>
           )}
-          {gpsStatus === 'denied' && (
-            <span className="text-xs text-green-300">전국 표시</span>
-          )}
         </div>
 
-        {/* ── HERO: 텍스트 중심 (로고 없음) ── */}
-        <div style={{ marginTop: 28, marginBottom: 24, textAlign: 'center' }}>
-          {/* 브랜드 라벨 */}
-          <p style={{
-            color: 'rgba(255,255,255,0.65)',
-            fontSize: 12, fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            marginBottom: 8,
-          }}>
-            농촌 일손
+        {/* 브랜드 + 헤드라인 */}
+        <div style={{ paddingTop: 28, paddingBottom: 20, textAlign: 'center' }}>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 700,
+                       letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px' }}>
+            🌾 농촌 일손
           </p>
-
-          {/* 메인 헤드라인 */}
-          <h1 style={{
-            fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
-            fontSize: 28,
-            fontWeight: 900,
-            color: '#fff',
-            lineHeight: 1.25,
-            margin: '0 0 10px',
-          }}>
-            🔥 급할 때 바로<br/>일손 연결
+          <h1 style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
+                        fontSize: 28, fontWeight: 900, color: '#fff',
+                        lineHeight: 1.22, margin: 0 }}>
+            급할 때 바로<br/>일손 연결
           </h1>
-
-          {/* 서브 */}
-          <p style={{
-            color: 'rgba(255,255,255,0.72)',
-            fontSize: 13,
-            lineHeight: 1.6,
-            margin: 0,
-          }}>
-            평균 5분 내 연결됩니다
-          </p>
         </div>
 
-        {/* ── CTA 버튼 ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-          {/* PRIMARY */}
+        {/* UX_V2 STEP 3: 버튼 2개 — 72px / 22px */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button
             onClick={() => {
-              try { trackClientEvent('cta_click', { type: 'primary', location: 'hero' }); } catch (_) {}
+              try { trackClientEvent('cta_click', { type: 'find_job', location: 'hero' }); } catch (_) {}
               onModeChange('worker'); onViewJobList();
             }}
             style={{
-              width: '100%', height: 54,
-              background: '#fff', color: '#2d8a4e',
-              border: 'none', borderRadius: 16,
-              fontWeight: 900, fontSize: 17,
-              fontFamily: "'Noto Sans KR',sans-serif",
+              width: '100%', height: 72,
+              background: '#fff', color: '#ff4d00',
+              border: 'none', borderRadius: 14,
+              fontWeight: 900, fontSize: 22,
               cursor: 'pointer',
-              boxShadow: '0 6px 20px rgba(0,0,0,0.20)',
+              boxShadow: '0 6px 22px rgba(0,0,0,0.22)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              letterSpacing: '-0.01em',
+              marginBottom: 0,
             }}
-          >🔥 3초 연결 — 평균 5명 지원 중</button>
+          >👉 일자리 찾기</button>
 
-          {/* SECONDARY */}
           <button
             onClick={() => {
-              try { trackClientEvent('cta_click', { type: 'secondary', location: 'hero' }); } catch (_) {}
-              onModeChange('worker'); onViewJobList();
+              try { trackClientEvent('cta_click', { type: 'find_worker', location: 'hero' }); } catch (_) {}
+              onModeChange('farmer'); onPostJob();
             }}
             style={{
-              width: '100%', height: 46,
-              background: 'transparent', color: 'rgba(255,255,255,0.9)',
-              border: '1.5px solid rgba(255,255,255,0.32)', borderRadius: 14,
-              fontWeight: 700, fontSize: 15,
-              fontFamily: "'Noto Sans KR',sans-serif",
+              width: '100%', height: 72,
+              background: 'rgba(255,255,255,0.14)', color: '#fff',
+              border: '2px solid rgba(255,255,255,0.30)', borderRadius: 14,
+              fontWeight: 900, fontSize: 22,
               cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}
-          >🔍 일자리 둘러보기</button>
-        </div>
-
-        {/* ── 신뢰 스트립 ── */}
-        <div style={{
-          display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap',
-          color: 'rgba(255,255,255,0.70)', fontSize: 11, fontWeight: 700,
-        }}>
-          <span>⭐ 평균 4.8점</span>
-          <span>⚡ 평균 5분 연결</span>
-          <span>✔ 완료 1,240건</span>
+          >👉 사람 구하기</button>
         </div>
       </header>
 
@@ -467,56 +427,27 @@ export default function HomePage({
         {/* ── 작업자 모드 콘텐츠 ── */}
         {!loading && mode === 'worker' && (
           <>
-            {/* ── STEP 4: 즉시 연결 가능 섹션 최상단 ── */}
-            {urgentJobs.length > 0 && (
+            {/* UX_V2: 🔥 지금 바로 가능한 일 — 최대 5개 */}
+            {(urgentJobs.length > 0 || recommended.length > 0) && (
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0 flex items-center gap-1.5">
-                    🔥 지금 바로 연결 가능한 일
-                  </p>
+                  <p className="section-title mb-0">🔥 지금 바로 가능한 일</p>
                   <button onClick={onViewJobList} className="text-sm text-farm-green font-bold flex items-center gap-0.5">
                     전체 보기 <ChevronRight size={14} />
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 -mt-2 mb-3">지금 전화하면 바로 연결됩니다</p>
                 <div className="space-y-3">
-                  {urgentJobs.slice(0, 3).map(job => (
-                    <JobCard
-                      key={job.id + '-urgent'}
-                      job={job}
-                      mode="worker"
-                      onApply={() => onViewJobList?.()}
-                      onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Phase 6: 추천 섹션 (오늘 + 가까운 + 일당 우선) */}
-            {recommended.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0 flex items-center gap-1.5">
-                    <span>⭐</span> 오늘 근처 일
-                  </p>
-                  <button
-                    onClick={onViewJobList}
-                    className="text-sm text-farm-green font-bold flex items-center gap-0.5"
-                  >
-                    전체 보기 <ChevronRight size={14} />
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {recommended.map(job => (
-                    <JobCard
-                      key={job.id}
-                      job={job}
-                      mode="worker"
-                      onApply={() => onViewJobList?.()}
-                      onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
-                    />
-                  ))}
+                  {[...urgentJobs, ...recommended.filter(j => !urgentJobs.find(u => u.id === j.id))]
+                    .slice(0, 5)
+                    .map(job => (
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        mode="worker"
+                        onApply={() => onViewJobList?.()}
+                        onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
+                      />
+                    ))}
                 </div>
               </section>
             )}

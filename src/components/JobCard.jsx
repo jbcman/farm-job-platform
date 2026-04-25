@@ -7,6 +7,7 @@ import { getMapPageUrl } from '../utils/mapLink.js';
 import { getSMSLink, getCallLink } from '../utils/contactLink.js';
 import { getUserSkillLevel, incrementApplyCount } from '../utils/userProfile.js';
 import { distBadgeColor, SHADOW } from '../config/designSystem.js';
+import CallButton from './common/CallButton.jsx';
 
 // ── 디자인 시스템 V2: 거리 체감 라벨 ─────────────────────────
 function distLabel(km) {
@@ -46,6 +47,17 @@ const CATEGORY_EMOJI = {
   '밭갈이': '🚜', '로터리': '🔄', '두둑': '⛰️',
   '방제': '💊', '수확 일손': '🌾', '예초': '✂️',
 };
+
+// UX_V2 STEP 7: 장비 타입 → 아이콘
+const EQUIPMENT_ICON = {
+  tractor: '🚜', drone: '🚁', sprayer: '🚁',
+  forklift: '🏗️', excavator: '⛏️', none: '🧤',
+};
+// 카테고리 기반 폴백
+function resolveEquipmentIcon(job) {
+  if (job.equipmentType && EQUIPMENT_ICON[job.equipmentType]) return EQUIPMENT_ICON[job.equipmentType];
+  return CATEGORY_EMOJI[job.category] || '🧤';
+}
 
 // PHASE IMAGE_JOBTYPE_AI: autoJobType 아이콘 (같은 맵 재사용)
 const JOB_ICONS = CATEGORY_EMOJI;
@@ -154,6 +166,115 @@ export default function JobCard({
     }
     window.location.href = url;
   };
+
+  // ══ UX_V2: worker + open → 심플 전화 카드 ══
+  if (mode === 'worker' && job.status === 'open' && !applied) {
+    const phone      = job.phone || job.contact || job.phoneFull || job.farmerPhone || null;
+    const callLink   = getCallLink(job);
+    const driveLabel = formatDriveTime(job) ||
+                       (distKm != null ? `🚗 ${distKm < 1 ? `${Math.round(distKm*1000)}m` : `${distKm.toFixed(1)}km`}` : null);
+    const equipIcon  = resolveEquipmentIcon(job);
+    const region     = job.locationText ? job.locationText.split(' ').slice(0, 2).join(' ') : null;
+    const isUrgentNow = job.isUrgent || job.isToday || false;
+
+    return (
+      <div
+        className={`card animate-fade-in ${urgentBorder}`}
+        style={{ padding: '14px 16px' }}
+      >
+        {/* STEP 9: 긴급 태그 */}
+        {isUrgentNow && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            background: 'linear-gradient(90deg,#b91c1c,#dc2626)',
+            color: '#fff', fontWeight: 900, fontSize: 12,
+            borderRadius: 9999, padding: '3px 10px', marginBottom: 10,
+          }}>
+            🔥 지금 필요
+          </div>
+        )}
+
+        {/* 스폰서 배너 */}
+        {job.isSponsored && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'linear-gradient(90deg,#f97316,#dc2626)',
+            color: '#fff', fontWeight: 900, fontSize: 11,
+            borderRadius: 8, padding: '4px 10px', marginBottom: 10,
+          }}>
+            <span>🔥 지원자 몰리는 공고</span>
+            <span style={{ opacity: 0.85 }}>추천 1순위</span>
+          </div>
+        )}
+
+        {/* 가격 + 지역 */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+          {job.pay && (
+            <span style={{ fontSize: 28, fontWeight: 900, color: '#15803d', lineHeight: 1 }}>
+              💰 {job.pay}
+            </span>
+          )}
+          {region && (
+            <span style={{ fontSize: 15, color: '#6b7280', fontWeight: 600 }}>
+              📍 {region}
+            </span>
+          )}
+        </div>
+
+        {/* STEP 8: 거리/이동 + 장비 아이콘 */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          {driveLabel && (
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#374151' }}>{driveLabel}</span>
+          )}
+          <span style={{ fontSize: 22 }}>{equipIcon}</span>
+          {job.date && (
+            <span style={{ fontSize: 14, color: '#9ca3af' }}>📅 {job.date}</span>
+          )}
+        </div>
+
+        {/* STEP 2/10: CallButton — 전화 CTA 주인공 */}
+        <CallButton
+          phone={callLink ? (phone || 'has_link') : null}
+          jobId={job.id}
+          onFallback={() => {
+            // 연락처 없음 → SMS 지원 흐름
+            incrementApplyCount();
+            try { trackClientEvent('contact_apply', { jobId: job.id }); } catch (_) {}
+            const storedId   = localStorage.getItem('farm-userId') || 'anonymous';
+            const storedName = localStorage.getItem('farm-userName') || '작업자';
+            fetch(`/api/jobs/${job.id}/contact-apply`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ workerId: storedId, workerName: storedName }),
+            }).catch(() => {});
+            const sms = getSMSLink(job, getUserSkillLevel());
+            if (sms) setTimeout(() => { window.location.href = sms; }, 500);
+            else onApply?.(job);
+          }}
+        />
+
+        {/* STEP 5/6: 상세 — Secondary, 작게, 채팅 없음 */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log('[DETAIL_CLICK]', job.id);
+            logBehavior(job, 'view');
+            onViewDetail?.(job);
+          }}
+          style={{
+            display: 'block', width: '100%',
+            marginTop: 8, padding: '6px 0',
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 13, color: '#9ca3af', textDecoration: 'underline',
+            textAlign: 'center',
+          }}
+        >
+          상세보기
+        </button>
+      </div>
+    );
+  }
+  // ══ END UX_V2 ══
 
   return (
     <div
