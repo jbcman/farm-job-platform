@@ -50,16 +50,6 @@ export default function CallButton({
     logCall(jobId, activeVariant);
     try { trackClientEvent('call_click', { jobId, variant: activeVariant, hasPhone: !!phone }); } catch (_) {}
 
-    // STEP 7: 개발 모드 — 실제 전화 방지 + 로그만 유지
-    if (import.meta.env.DEV) {
-      e.preventDefault();
-      console.log(
-        `%c📞 [DEV] 전화 클릭 시뮬레이션 — jobId: ${jobId} | variant: ${activeVariant} | phone: ${phone || 'none'}`,
-        'background:#1e40af;color:#fff;padding:3px 8px;border-radius:4px;font-weight:bold'
-      );
-      return;
-    }
-
     if (!phone) {
       e.preventDefault();
       onFallback?.();
