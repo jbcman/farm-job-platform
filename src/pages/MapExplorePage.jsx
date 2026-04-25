@@ -15,6 +15,7 @@ import 'leaflet/dist/leaflet.css';
 import { MAP_CONFIG } from '../config/mapConfig.js';
 import { getKakaoNaviLink } from '../utils/mapLink.js';
 import { estimateWork } from '../utils/workEstimator.js';
+import { getOrCreateUser } from '../utils/userProfile.js';
 
 // Vite 환경 Leaflet 기본 마커 아이콘 경로 복구
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -202,7 +203,15 @@ export default function MapExplorePage() {
         fetchMarkers({ lat, lng });
       },
       () => {
-        // GPS 거부 → 기본 중심 기준 조회
+        // GPS 거부 → localStorage 저장 위치 우선, 없으면 기본 중심
+        try {
+          const stored = JSON.parse(localStorage.getItem('userLocation') || 'null');
+          if (stored?.lat && stored?.lon) {
+            mapObj.current?.setView([stored.lat, stored.lon], MAP_CONFIG.MY_ZOOM || 13);
+            fetchMarkers({ lat: stored.lat, lng: stored.lon });
+            return;
+          }
+        } catch (_) {}
         fetchMarkers(null);
       }
     );
@@ -251,7 +260,7 @@ export default function MapExplorePage() {
       {/* 상단 컨트롤 */}
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000, display: 'flex', gap: 8 }}>
         <button
-          onClick={() => window.history.back()}
+          onClick={() => { window.location.href = '/'; }}
           style={{
             background: '#fff', border: 'none', borderRadius: 12,
             padding: '8px 14px', fontWeight: 700, fontSize: 14,
@@ -351,10 +360,29 @@ export default function MapExplorePage() {
               )}
             </div>
 
+            {/* 전화 CTA — primary (phone 있을 때) */}
+            {(selected.phone || selected.contact || selected.phoneFull || selected.farmerPhone) && (() => {
+              const tel = (selected.phone || selected.contact || selected.phoneFull || selected.farmerPhone).replace(/[^0-9+]/g, '');
+              return (
+                <a
+                  href={`tel:${tel}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%', height: 56,
+                    background: '#ff4d00', color: '#fff',
+                    fontSize: 18, fontWeight: 900,
+                    borderRadius: 14, marginBottom: 10,
+                    textDecoration: 'none',
+                    boxShadow: '0 4px 16px rgba(255,77,0,0.38)',
+                  }}
+                >📞 지금 전화하기</a>
+              );
+            })()}
+
             {/* 버튼 */}
             <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={() => { window.location.href = `/jobs/${selected.id}`; }}
+                onClick={() => { getOrCreateUser(); window.location.href = `/jobs/${selected.id}`; }}
                 style={{
                   flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
                   background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 14,

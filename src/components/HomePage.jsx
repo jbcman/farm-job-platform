@@ -632,7 +632,10 @@ export default function HomePage({
       {/* 하단 탭바 — DESIGN_V4: 🏠 홈 / 📋 일자리 / 🗺️ 지도 / 👤 내 활동 */}
       <nav className="tabbar">
         {/* 🏠 홈 */}
-        <button className="tab-btn">
+        <button
+          className="tab-btn"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
           <span className="text-2xl leading-none text-farm-green">🏠</span>
           <span className="text-farm-green font-bold">홈</span>
         </button>

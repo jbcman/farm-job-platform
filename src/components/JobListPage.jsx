@@ -336,8 +336,9 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
 
         {/* 상단: 뒤로가기 + 타이틀 + 건수 */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-          <button onClick={onBack} className="p-1 text-white active:scale-90 transition-transform">
-            <ArrowLeft size={22} />
+          <button onClick={onBack} className="flex items-center gap-1 text-white active:scale-90 transition-transform px-1 py-1">
+            <ArrowLeft size={20} />
+            <span style={{ fontSize: 13, fontWeight: 700 }}>홈</span>
           </button>
           <div className="flex-1">
             <h1 style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 18, color: '#fff', margin: 0 }}>
@@ -591,6 +592,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               onWriteReview={setReviewJob}
               onCloseJob={myJobsMode ? handleClose : undefined}
               onCopyJob={myJobsMode ? onCopyJob : undefined}
+              onViewDetail={onViewJobDetail ? (j) => onViewJobDetail(j) : undefined}
               userLocation={gpsLoc || loc}
             />
           </div>
