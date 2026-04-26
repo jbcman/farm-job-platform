@@ -285,22 +285,37 @@ export default function App() {
     if (extras.job)     setSelectedJob(extras.job);
     if (extras.jobId)   setDeepJobId(extras.jobId);
     if (extras.source)  setDeepSource(extras.source);
-    // BACK_NAV: history stack에 뷰 상태 추가 → OS 뒤로가기 지원
-    pushView(p, {
+
+    // BACK_NAV: history stack 관리
+    // - 같은 뷰면 replaceState (stack 중복 방지 — 뒤로가기 연타 방지)
+    // - 다른 뷰면 pushState (뒤로가기 가능하도록 새 entry 추가)
+    const histParams = {
       jobId:  extras.jobId  ?? extras.job?.id ?? null,
       source: extras.source ?? null,
-      // selectedJob 직렬화 (applicants 복귀용) — 용량 절약을 위해 필수 필드만
       job: extras.job ? {
-        id: extras.job.id, category: extras.job.category,
-        locationText: extras.job.locationText, date: extras.job.date,
-        status: extras.job.status, requesterId: extras.job.requesterId,
-        pay: extras.job.pay,
+        id:           extras.job.id,
+        category:     extras.job.category,
+        locationText: extras.job.locationText,
+        date:         extras.job.date,
+        status:       extras.job.status,
+        requesterId:  extras.job.requesterId,
+        pay:          extras.job.pay,
       } : null,
-    });
+    };
+
+    if (p === page) {
+      // 같은 뷰 재진입(필터 변경 등) → replace (stack 오염 방지)
+      replaceView(p, histParams);
+    } else {
+      // 다른 뷰 이동 → push (뒤로가기 entry 생성)
+      pushView(p, histParams);
+    }
+
     setPage(p);
   }
 
   function goHome() {
+    replaceView('home', {}); // BACK_NAV: 홈은 항상 replace (stack의 기준점)
     setPage('home');
     // 딥링크 state 초기화
     setDeepJobId(null);
