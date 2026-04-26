@@ -62,10 +62,10 @@ router.post('/location', (req, res) => {
         return res.status(400).json({ ok: false, error: '유효하지 않은 좌표' });
     }
 
-    // workers 테이블에서 userId로 찾아 현재 위치 갱신
+    // workers 테이블에서 userId로 찾아 현재 위치 갱신 + activeNow=1 (최근 활동 표시)
     const result = db.prepare(`
         UPDATE workers
-        SET currentLat = ?, currentLng = ?, locationUpdatedAt = ?
+        SET currentLat = ?, currentLng = ?, locationUpdatedAt = ?, activeNow = 1
         WHERE userId = ?
     `).run(latNum, lngNum, new Date().toISOString(), userId);
 
@@ -76,6 +76,30 @@ router.post('/location', (req, res) => {
 
     console.log(`[WORKER_LOC_UPDATE] userId=${userId} (${latNum}, ${lngNum})`);
     return res.json({ ok: true, updated: true });
+});
+
+// ─── POST /api/workers/heartbeat — ACTIVE_NOW_RELIABILITY ────
+// 작업자 앱이 주기적으로 호출 → locationUpdatedAt 갱신 → V2 보너스 유지
+// 좌표 없이도 "지금 활동 중" 신호만 전송 가능
+router.post('/heartbeat', (req, res) => {
+    const userId = req.headers['x-user-id'] || req.body?.userId;
+    if (!userId) {
+        return res.status(400).json({ ok: false, error: 'userId 필요' });
+    }
+
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+        UPDATE workers
+        SET activeNow = 1, locationUpdatedAt = ?
+        WHERE userId = ?
+    `).run(now, userId);
+
+    if (result.changes === 0) {
+        // workers 프로필 없는 사용자 (농민 등) — 무시
+        return res.json({ ok: true, updated: false });
+    }
+
+    return res.json({ ok: true, updated: true, activeUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString() });
 });
 
 module.exports = router;

@@ -46,8 +46,12 @@ function calcV2Bonus(worker, job) {
             }
         }
 
-        // 3. 즉시 가능 보너스 (+4점)
-        if (worker.activeNow) {
+        // 3. 즉시 가능 보너스 (+4점) — 최근 10분 내 위치 갱신 기준 (정적 activeNow 대체)
+        const TEN_MIN_MS = 10 * 60 * 1000;
+        const isRecentlyActive = worker.locationUpdatedAt
+            ? (Date.now() - new Date(worker.locationUpdatedAt).getTime()) < TEN_MIN_MS
+            : false;
+        if (worker.activeNow || isRecentlyActive) {
             bonus += 4;
         }
 

@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Zap } from 'lucide-react';
-import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign } from '../utils/api.js';
+import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent } from '../utils/api.js';
 
 // PHASE 28: 추천 배지 — rank 1/2/3 각각 다른 스타일
 const RANK_BADGE = {
@@ -8,6 +8,20 @@ const RANK_BADGE = {
   2: { label: '🥈 2순위',      cls: 'bg-gray-100  text-gray-600  border border-gray-200'  },
   3: { label: '🥉 3순위',      cls: 'bg-orange-50 text-orange-700 border border-orange-200' },
 };
+
+// 작업자 최근 활동 시간 표시 (ACTIVE_NOW_RELIABILITY)
+// 초록 = 즉시 연결 가능 표시, 노랑 = 활동 정보만 표시
+function activeLabel(locationUpdatedAt, activeNow) {
+  if (!locationUpdatedAt && !activeNow) return null;
+  if (locationUpdatedAt) {
+    const mins = Math.round((Date.now() - new Date(locationUpdatedAt).getTime()) / 60000);
+    if (mins < 2)  return { text: '🟢 방금 접속 · 바로 연결 가능',       cls: 'text-green-600' };
+    if (mins < 10) return { text: `🟢 ${mins}분 전 활동 · 바로 연결 가능`, cls: 'text-green-600' };
+    if (mins < 60) return { text: `🟡 ${mins}분 전 활동`,                  cls: 'text-yellow-600' };
+  }
+  if (activeNow)   return { text: '🟢 지금 가능 · 바로 연결 가능',         cls: 'text-green-600' };
+  return null;
+}
 
 // 속도 표시 문자열
 function speedLabel(mins) {
@@ -35,6 +49,15 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const [autoResult,     setAutoResult]     = useState(null);               // { workerName, workerPhone, matchScore }
   const [autoAssignOn,   setAutoAssignOn]   = useState(!!job.autoAssign);   // SAFETY: opt-in 상태
   const [togglingAuto,   setTogglingAuto]   = useState(false);              // 토글 처리 중
+  const [autoMatched,    setAutoMatched]    = useState(null);               // 폴링 중 자동 매칭 감지 → 알림 { worker, matchScore, matchedAt }
+  const [matchedElapsed, setMatchedElapsed] = useState('');                 // "N초 전" 라이브 업데이트
+  const hadSelectedRef      = useRef(false);     // 페이지 로드 시 이미 선택됨 여부 (false 알림 방지)
+  const viewApplicantsAtRef = useRef(null);      // view_applicants ts = firstSeenAt 기준
+  const firstActionAtRef    = useRef(null);      // 첫 의미있는 액션 ts (decision_time 기준)
+  const anyActionTakenRef   = useRef(false);     // 페이지 이탈 분석 — 아무 행동도 안 한 경우
+  const impressedRef        = useRef(new Set()); // 카드별 impression 1회 보장
+  const abandonTimerRef     = useRef(null);      // auto_match_abandon 15초 타이머
+  const didCallRef          = useRef(false);     // 배너에서 전화 클릭 여부 (abandon 차단용)
 
   // Phase 8: 상태별 읽기 전용 모드
   const isReadOnly = job.status === 'closed' || job.status === 'matched';
@@ -44,14 +67,149 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   useEffect(() => {
     setLoading(true);
     getApplicants(job.id, userId)
-      .then(d => setApplicants(d.applicants || []))
+      .then(d => {
+        const list = d.applicants || [];
+        setApplicants(list);
+        // 페이지 열 때 이미 선택된 지원자가 있으면 ref 표시 → 폴링 시 false 알림 차단
+        hadSelectedRef.current = list.some(a => a.status === 'selected');
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [job.id, userId]);
 
+  // KPI_EVENTS: view_applicants — job 단위 + 세션 단위 1회 보장
+  // StrictMode 이중 실행 / 뒤로가기 재진입 / 새로고침 모두 차단
+  useEffect(() => {
+    const key = `view_applicants_sent_${job.id}`;
+    const existing = sessionStorage.getItem(key);
+    if (existing) {
+      // 이미 발송됨 → ts만 복원해서 time_to_call 계산에 사용
+      viewApplicantsAtRef.current = parseInt(existing, 10);
+      return;
+    }
+    const ts = Date.now();
+    sessionStorage.setItem(key, String(ts));
+    viewApplicantsAtRef.current = ts;
+    trackClientEvent('view_applicants', { jobId: job.id, userId, ts });
+  }, [job.id, userId]);
+
+  // KPI_EVENTS: applicant_card_impression — IntersectionObserver (뷰포트 진입 시 1회)
+  useEffect(() => {
+    if (applicants.length === 0) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const id   = entry.target.dataset.applicantId;
+        const rank = entry.target.dataset.rank ? parseInt(entry.target.dataset.rank, 10) : null;
+        if (id && !impressedRef.current.has(id)) {
+          impressedRef.current.add(id);
+          trackClientEvent('applicant_card_impression', { jobId: job.id, applicantId: id, rank });
+          observer.unobserve(entry.target); // 1회 후 관찰 중단
+        }
+      });
+    }, { threshold: 0.5 }); // 카드 절반 이상 보여야 impression
+
+    // 렌더링 후 DOM에 붙은 카드들 관찰 시작
+    const cards = document.querySelectorAll('[data-applicant-id]');
+    cards.forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, [applicants, job.id]);
+
+  // KPI_EVENTS: 첫 액션 시각 기록 + anyAction 마킹
+  // decision_time = firstActionAt - viewApplicantsAt  (고민 시간)
+  // call_delay    = callAt - firstActionAt             (행동 망설임)
+  function markFirstAction() {
+    if (!firstActionAtRef.current) firstActionAtRef.current = Date.now();
+    anyActionTakenRef.current = true;
+  }
+
+  // KPI_EVENTS: 페이지 이탈 — 아무 행동 없이 나간 경우 (보이지 않는 이탈 포착)
+  useEffect(() => {
+    const seenAt  = viewApplicantsAtRef; // ref — cleanup 시점에 최신값 읽힘
+    const jobId   = job.id;
+    return () => {
+      if (!anyActionTakenRef.current && seenAt.current) {
+        const elapsed = Date.now() - seenAt.current;
+        trackClientEvent('view_applicants_exit', { jobId, elapsed, didNothing: true });
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — 마운트/언마운트 1회만
+
+  // ACTIVE_NOW / AUTO_ASSIGN_ON: 자동 배정 켜진 상태에서 15초마다 폴링
+  // → 배정 발생 즉시 "AI 자동 연결됐어요" 배너 + 전화 버튼 노출
+  useEffect(() => {
+    if (!autoAssignOn || isReadOnly) return;
+    const timer = setInterval(async () => {
+      try {
+        const d = await getApplicants(job.id, userId);
+        const fresh = d.applicants || [];
+        setApplicants(fresh);
+        const selected = fresh.find(a => a.status === 'selected');
+        if (selected) {
+          // 이전에 없었는데 지금 생김 → 페이지 열어두는 동안 자동 매칭 발생
+          if (!hadSelectedRef.current) {
+            // matchedAt: 서버 selectedAt 우선 → 디바이스 시간 오차 제거
+            const serverTs = selected.worker?.matchedAt
+              ? new Date(selected.worker.matchedAt).getTime()
+              : Date.now();
+            didCallRef.current = false;
+            setAutoMatched({ worker: selected.worker, matchScore: selected.matchScore, matchedAt: serverTs });
+            trackClientEvent('auto_match_detected', { jobId: job.id, workerId: selected.worker?.id });
+          }
+          hadSelectedRef.current = true;
+          clearInterval(timer); // 배정 완료 → 폴링 중단
+        }
+      } catch (_) { /* 폴링 실패 무시 */ }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [autoAssignOn, isReadOnly, job.id, userId]);
+
+  // AUTO_MATCH_NOTIFY: 행동 유도형 elapsed 레이블 (1초 갱신) + abandon 15초 타이머
+  useEffect(() => {
+    if (!autoMatched?.matchedAt) return;
+
+    function elapsedLabel(secs) {
+      if (secs < 10)  return '⚡ 지금 바로 연결 추천';
+      if (secs < 30)  return '⏳ 빠르게 연락하세요';
+      if (secs < 120) return '🔥 아직 연결 가능';
+      return '📞 서둘러야 합니다';
+    }
+
+    function tick() {
+      const secs = Math.round((Date.now() - autoMatched.matchedAt) / 1000);
+      setMatchedElapsed(elapsedLabel(secs));
+    }
+    tick();
+    const t = setInterval(tick, 1000);
+
+    // 15초 내 전화 없으면 abandon 이벤트
+    abandonTimerRef.current = setTimeout(() => {
+      if (!didCallRef.current) {
+        const secs = Math.round((Date.now() - autoMatched.matchedAt) / 1000);
+        trackClientEvent('auto_match_abandon', { jobId: job.id, elapsedSecs: secs });
+      }
+    }, 15000);
+
+    return () => {
+      clearInterval(t);
+      clearTimeout(abandonTimerRef.current);
+    };
+  }, [autoMatched, job.id]);
+
   // FAST_SELECT: 선택 API → 즉시 전화 다이얼 (한 번 탭으로 끝)
   async function handleSelectAndCall(applicant) {
     if (!applicant.worker) return;
+    markFirstAction();
+    const now           = Date.now();
+    const decision_time = viewApplicantsAtRef.current && firstActionAtRef.current
+      ? firstActionAtRef.current - viewApplicantsAtRef.current : null;
+    const call_delay    = firstActionAtRef.current ? now - firstActionAtRef.current : null;
+    trackClientEvent('select_click', {
+      jobId: job.id, workerId: applicant.worker.id, rank: applicant.rank,
+      time_to_call: viewApplicantsAtRef.current ? now - viewApplicantsAtRef.current : null,
+      decision_time,
+      call_delay,
+    });
     setSelecting(applicant.worker.id);
     try {
       const data = await selectWorker(job.id, {
@@ -74,6 +232,17 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   // PHASE 31: 역할 기반 전화 연결
   // matched 상태면 startJob 자동 호출 → 사용자 행동 = 시스템 상태 일치
   async function handleCall(wId) {
+    markFirstAction();
+    const now           = Date.now();
+    const decision_time = viewApplicantsAtRef.current && firstActionAtRef.current
+      ? firstActionAtRef.current - viewApplicantsAtRef.current : null;
+    const call_delay    = firstActionAtRef.current ? now - firstActionAtRef.current : null;
+    trackClientEvent('call_click', {
+      jobId: job.id, workerId: wId,
+      time_to_call: viewApplicantsAtRef.current ? now - viewApplicantsAtRef.current : null,
+      decision_time,
+      call_delay,
+    });
     setCalling(wId);
     try {
       // 농민이고 아직 matched 상태 → 전화 누르면 작업 시작 자동 처리
@@ -106,6 +275,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   // AUTO_MATCH: 긴급 전환 — isUrgent=1 → 매칭 +100 boost + 지원자 재알림
   async function handleUrgent() {
     if (urgenting) return;
+    markFirstAction();
+    trackClientEvent('urgent_click', { jobId: job.id });
     setUrgenting(true);
     try {
       await setJobUrgent(job.id, userId);
@@ -134,6 +305,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   // AI_MATCH_V2: 농민이 "AI가 지금 바로 배정해줘" 명시적 트리거
   async function handleAutoAssign() {
     if (autoAssigning) return;
+    markFirstAction();
+    trackClientEvent('auto_assign_click', { jobId: job.id });
     setAutoAssigning(true);
     setError('');
     try {
@@ -177,13 +350,126 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
         </div>
       </header>
 
-      {/* PHASE 29: AI 자동 연결 배지 */}
-      {job.autoSelected && (
+      {/* PHASE 29: AI 자동 연결 배지 (초기 로드 시 이미 매칭된 경우) */}
+      {job.autoSelected && !autoMatched && (
         <div className="mx-4 mt-3 flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-2.5">
           <span className="text-xl">🤖</span>
           <div>
             <p className="text-sm font-bold text-indigo-700">AI 추천으로 자동 연결됐어요</p>
             <p className="text-xs text-indigo-500">거리·평점·속도를 종합해 최적 작업자를 선택했어요</p>
+          </div>
+        </div>
+      )}
+
+      {/* AUTO_MATCH_NOTIFY: 폴링으로 감지된 실시간 자동 매칭 알림 */}
+      {autoMatched && (
+        <div className="mx-4 mt-3 animate-fade-in">
+          <div className="bg-green-50 border-2 border-green-400 rounded-2xl px-4 py-4 shadow-md">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1">
+                {/* 경과 시간 + 타이틀 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-base font-black text-green-800">
+                    🎯 AI가 작업자를 연결했습니다
+                  </p>
+                  {matchedElapsed && (
+                    <span className="text-xs text-green-500 font-semibold bg-green-100 px-2 py-0.5 rounded-full">
+                      {matchedElapsed}
+                    </span>
+                  )}
+                </div>
+                {autoMatched.worker?.name && (
+                  <p className="text-sm text-green-700 mt-0.5 font-semibold">
+                    {autoMatched.worker.name}님
+                    {autoMatched.matchScore != null && (
+                      <span className="font-normal text-green-600 ml-1">· 매칭 점수 {autoMatched.matchScore}점</span>
+                    )}
+                  </p>
+                )}
+                <p className="text-xs text-green-600 mt-1">
+                  👉 지금 바로 전화 연결됩니다
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  clearTimeout(abandonTimerRef.current);
+                  if (!didCallRef.current) {
+                    const secs = autoMatched.matchedAt
+                      ? Math.round((Date.now() - autoMatched.matchedAt) / 1000)
+                      : null;
+                    trackClientEvent('auto_match_abandon', { jobId: job.id, elapsedSecs: secs });
+                  }
+                  setAutoMatched(null);
+                }}
+                className="text-green-400 text-xl leading-none flex-shrink-0 mt-0.5"
+              >✕</button>
+            </div>
+
+            {/* 전화 버튼 — auto_match_call_click 별도 추적 */}
+            {autoMatched.worker?.id && (
+              <button
+                onClick={() => {
+                  didCallRef.current = true;
+                  clearTimeout(abandonTimerRef.current);
+                  const secs = autoMatched.matchedAt
+                    ? Math.round((Date.now() - autoMatched.matchedAt) / 1000)
+                    : null;
+                  trackClientEvent('auto_match_call_click', {
+                    jobId:      job.id,
+                    workerId:   autoMatched.worker.id,
+                    elapsedSecs: secs,
+                    label:      matchedElapsed,
+                  });
+                  handleCall(autoMatched.worker.id);
+                }}
+                disabled={calling === autoMatched.worker.id}
+                className="mt-3 w-full flex items-center justify-center gap-2
+                           bg-green-500 text-white font-bold text-sm rounded-xl py-3
+                           active:scale-95 transition-transform disabled:opacity-60"
+              >
+                {calling === autoMatched.worker.id
+                  ? <><Loader2 size={15} className="animate-spin" /> 연결 중...</>
+                  : <><Phone size={15} /> {autoMatched.worker.name}님께 전화하기</>}
+              </button>
+            )}
+
+            {/* 전화 미수신 힌트 — 다시 전화 / 다른 지원자 보기 */}
+            {callHint === autoMatched.worker?.id && (
+              <div className="mt-2 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 animate-fade-in">
+                <p className="text-xs text-orange-700 font-semibold mb-2">📵 안 받으셨나요?</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      didCallRef.current = true;
+                      clearTimeout(abandonTimerRef.current);
+                      trackClientEvent('auto_match_call_click', {
+                        jobId: job.id, workerId: autoMatched.worker.id, retry: true,
+                      });
+                      handleCall(autoMatched.worker.id);
+                    }}
+                    className="flex-1 text-xs font-bold text-white bg-orange-400
+                               rounded-lg py-2 active:scale-95 transition-transform"
+                  >
+                    📞 다시 전화
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearTimeout(abandonTimerRef.current);
+                      if (!didCallRef.current) {
+                        trackClientEvent('auto_match_abandon', {
+                          jobId: job.id, reason: 'no_answer_switch',
+                        });
+                      }
+                      setAutoMatched(null);
+                    }}
+                    className="flex-1 text-xs font-bold text-orange-700 bg-orange-100
+                               border border-orange-300 rounded-lg py-2 active:scale-95 transition-transform"
+                  >
+                    다른 지원자 보기
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -224,7 +510,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                   <p className="text-sm font-bold text-indigo-800">🤖 AI 자동 배정</p>
                   <p className="text-xs text-indigo-500 mt-0.5">
                     {autoAssignOn
-                      ? '켜짐 — 조건 충족 시 자동 연결됩니다'
+                      ? '✅ 켜짐 — 조건 충족 시 자동 작동합니다'
                       : '꺼짐 — 직접 선택하거나 아래 버튼으로 즉시 배정'}
                   </p>
                 </div>
@@ -242,13 +528,16 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 </button>
               </div>
 
-              {/* 자동 배정 ON 경고 */}
+              {/* 자동 배정 ON — 강한 경고 (명확한 행동 예고) */}
               {autoAssignOn && (
-                <div className="flex items-start gap-1.5 bg-indigo-100 rounded-xl px-3 py-2">
-                  <span className="text-xs">⚠️</span>
-                  <p className="text-xs text-indigo-700">
-                    지원자 3명 + 점수 기준 충족 시 <strong>자동으로 연결됩니다</strong>.
-                    연결되면 카카오 알림으로 안내해드려요.
+                <div className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">
+                  <p className="text-xs font-bold text-amber-800 mb-1">⚠️ 자동 배정 ON 상태입니다</p>
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    지원자 3명 + AI 점수 기준 충족 시<br />
+                    <strong>작업자가 자동으로 선택되고 바로 전화 연결됩니다.</strong>
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1.5">
+                    📲 연결 즉시 카카오 알림으로 안내드려요
                   </p>
                 </div>
               )}
@@ -264,7 +553,12 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 >
                   {autoAssigning
                     ? <><Loader2 size={14} className="animate-spin" /> AI 분석 중...</>
-                    : '지금 바로 최적 작업자 배정하기'
+                    : <>
+                        지금 바로 최적 작업자 배정하기
+                        <span className="block text-xs font-normal opacity-80 mt-0.5">
+                          📞 누르면 바로 전화 연결됩니다
+                        </span>
+                      </>
                   }
                 </button>
               )}
@@ -360,6 +654,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 </div>
               )}
             <div
+              data-applicant-id={applicant.applicationId}
+              data-rank={rank}
               className={`card transition-all ${
                 rank === 1
                   ? 'border-2 border-amber-300 bg-amber-50/30 shadow-md'
@@ -428,12 +724,20 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 </div>
               </div>
 
-              {/* TRUST_SYSTEM: 가능 시간대 */}
-              {w.availableTimeText && w.availableTimeText !== '협의' && (
-                <p className="text-xs text-blue-600 font-semibold mb-1.5">
-                  🕐 {w.availableTimeText}
-                </p>
-              )}
+              {/* TRUST_SYSTEM: 가능 시간대 + 최근 활동 시간 */}
+              <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+                {w.availableTimeText && w.availableTimeText !== '협의' && (
+                  <p className="text-xs text-blue-600 font-semibold">
+                    🕐 {w.availableTimeText}
+                  </p>
+                )}
+                {(() => {
+                  const al = activeLabel(w.locationUpdatedAt, w.activeNow);
+                  return al ? (
+                    <p className={`text-xs font-semibold ${al.cls}`}>{al.text}</p>
+                  ) : null;
+                })()}
+              </div>
 
               {/* REVIEW_UX: topTags (실제 후기 기반 태그) */}
               {w.topTags && w.topTags.length > 0 && (

@@ -1026,6 +1026,11 @@ router.get('/:id/applicants', (req, res) => {
                 })(),
                 distKm,
                 distLabel:        dist !== null ? distLabel(dist) : null,
+                // ACTIVE_NOW_RELIABILITY: 클라이언트 상대 시간 표시용
+                locationUpdatedAt: worker.locationUpdatedAt ?? null,
+                activeNow:         worker.activeNow         ?? 0,
+                // AUTO_MATCH_NOTIFY: 선택 시각 (서버 기준) — 경과 시간 정확도 보장
+                matchedAt: a.status === 'selected' ? (job.selectedAt ?? null) : null,
             } : null,
         };
     });

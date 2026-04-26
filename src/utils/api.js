@@ -83,6 +83,11 @@ export async function getMyApplications(userId) {
 
 // ─── 작업자 API ───────────────────────────────────────────────
 
+/** ACTIVE_NOW_RELIABILITY: 작업자 활동 중 신호 (10분마다 호출 권장) */
+export async function workerHeartbeat() {
+    return req('POST', '/workers/heartbeat', {});
+}
+
 /** 근처 작업자 */
 export async function getNearbyWorkers({ lat, lon, category } = {}) {
     const params = new URLSearchParams();
