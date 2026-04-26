@@ -121,9 +121,26 @@ export async function completeWork(jobId, workerId) {
     return req('POST', `/jobs/${jobId}/complete-work`, { workerId });
 }
 
-/** PHASE 22: 후기 작성 (workerId 기반, 완료 상태 필수) */
-export async function submitJobReview(jobId, { workerId, rating, review }) {
-    return req('POST', `/jobs/${jobId}/review`, { workerId, rating, review });
+/** PHASE 22 / REVIEW_UX: 후기 작성 (양방향, 태그, 블라인드 지원) */
+export async function submitJobReview(jobId, {
+    workerId,                // backward compat
+    reviewerId,              // 명시적 작성자 ID
+    targetId,                // 명시적 대상 ID
+    reviewerRole,            // 'farmer' | 'worker'
+    rating,
+    review,                  // comment alias
+    comment,
+    tags,                    // string[]
+}) {
+    return req('POST', `/jobs/${jobId}/review`, {
+        workerId,
+        reviewerId,
+        targetId,
+        reviewerRole,
+        rating,
+        review: review || comment || '',
+        tags,
+    });
 }
 
 /** PHASE 26: 탭바 배지 카운트 (30초 폴링) */

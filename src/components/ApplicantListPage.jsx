@@ -186,11 +186,16 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
               {/* 작업자 기본 정보 */}
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-lg font-bold text-gray-800">{w.name}</span>
+                    {/* REVIEW_UX: ratingAvg 우선, 없으면 기본 rating */}
                     <div className="flex items-center gap-0.5 text-amber-400">
                       <Star size={14} fill="currentColor" />
-                      <span className="text-sm font-bold text-gray-700">{w.rating}</span>
+                      <span className="text-sm font-bold text-gray-700">
+                        {w.ratingAvg != null
+                          ? `${w.ratingAvg} (${w.ratingCount}건)`
+                          : w.rating}
+                      </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 text-sm text-gray-500 mt-0.5">
@@ -222,11 +227,26 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 </div>
               </div>
 
-              {/* TRUST_SYSTEM: 가능 시간대 + 장비 배지 */}
+              {/* TRUST_SYSTEM: 가능 시간대 */}
               {w.availableTimeText && w.availableTimeText !== '협의' && (
-                <p className="text-xs text-blue-600 font-semibold mb-2">
+                <p className="text-xs text-blue-600 font-semibold mb-1.5">
                   🕐 {w.availableTimeText}
                 </p>
+              )}
+
+              {/* REVIEW_UX: topTags (실제 후기 기반 태그) */}
+              {w.topTags && w.topTags.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap mb-2">
+                  {w.topTags.map(tag => (
+                    <span
+                      key={tag}
+                      className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700
+                                 border border-green-200 font-medium"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
               )}
 
               {/* 장비 배지 */}

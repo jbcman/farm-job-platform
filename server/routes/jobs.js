@@ -1002,7 +1002,25 @@ router.get('/:id/applicants', (req, res) => {
                 completedJobs:    worker.completedJobs,
                 rating:           worker.rating,
                 availableTimeText: worker.availableTimeText,
-                noshowCount:      worker.noshowCount || 0, // TRUST_SYSTEM
+                noshowCount:      worker.noshowCount  || 0, // TRUST_SYSTEM
+                ratingAvg:        worker.ratingAvg   ?? null, // REVIEW_UX
+                ratingCount:      worker.ratingCount ?? 0,
+                topTags:          (() => {
+                    const tagRows = db.prepare(
+                        'SELECT tags FROM reviews WHERE targetId = ? AND isPublic = 1 AND tags IS NOT NULL'
+                    ).all(worker.id);
+                    const freq = {};
+                    tagRows.forEach(row => {
+                        try {
+                            const arr = JSON.parse(row.tags);
+                            if (Array.isArray(arr)) arr.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+                        } catch {}
+                    });
+                    return Object.entries(freq)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 3)
+                        .map(([tag]) => tag);
+                })(),
                 distKm,
                 distLabel:        dist !== null ? distLabel(dist) : null,
             } : null,
@@ -1314,11 +1332,12 @@ router.post('/:id/review', (req, res) => {
     // backward compat: workerId OR reviewerId 둘 다 허용
     const {
         workerId,
-        reviewerId: reviewerIdParam,
-        targetId:   targetIdParam,
+        reviewerId:   reviewerIdParam,
+        targetId:     targetIdParam,
         rating,
-        review:  comment = '',
-        tags:    tagsRaw,
+        review:       comment = '',
+        tags:         tagsRaw,
+        reviewerRole: reviewerRoleRaw,  // 'farmer' | 'worker'
     } = req.body;
 
     const reviewerId = reviewerIdParam || workerId;
@@ -1359,11 +1378,41 @@ router.post('/:id/review', (req, res) => {
         ? JSON.stringify(tagsRaw)
         : (tagsRaw ? String(tagsRaw) : null);
 
+    // reviewerRole: 명시 or 역할 추론
+    const reviewerRole = reviewerRoleRaw || (isFarmer ? 'farmer' : 'worker');
+
     const id = newId('rev');
     db.prepare(`
-        INSERT INTO reviews (id, jobId, reviewerId, targetId, rating, comment, tags, isPublic, createdAt)
-        VALUES (@id, @jobId, @reviewerId, @targetId, @rating, @comment, @tags, 0, @createdAt)
-    `).run({ id, jobId: job.id, reviewerId, targetId, rating: r, comment, tags: tagsStr, createdAt: new Date().toISOString() });
+        INSERT INTO reviews (id, jobId, reviewerId, targetId, rating, comment, tags, reviewerRole, isPublic, createdAt)
+        VALUES (@id, @jobId, @reviewerId, @targetId, @rating, @comment, @tags, @reviewerRole, 0, @createdAt)
+    `).run({ id, jobId: job.id, reviewerId, targetId, rating: r, comment, tags: tagsStr, reviewerRole, createdAt: new Date().toISOString() });
+
+    // 누적 평점 갱신: 농민→작업자(workers), 작업자→농민(users)
+    if (reviewerRole === 'farmer') {
+        // targetId = workers.id
+        const w = db.prepare('SELECT id, ratingAvg, ratingCount FROM workers WHERE id = ?').get(targetId);
+        if (w) {
+            const oldAvg   = w.ratingAvg   ?? 0;
+            const oldCount = w.ratingCount ?? 0;
+            const newCount = oldCount + 1;
+            const newAvg   = Math.round(((oldAvg * oldCount) + r) / newCount * 10) / 10;
+            db.prepare('UPDATE workers SET ratingAvg = ?, ratingCount = ? WHERE id = ?')
+              .run(newAvg, newCount, w.id);
+            console.log(`[RATING_UPDATED] workers id=${w.id} newAvg=${newAvg} newCount=${newCount}`);
+        }
+    } else {
+        // targetId = users.id (farmer)
+        const u = db.prepare('SELECT id, rating, reviewCount FROM users WHERE id = ?').get(targetId);
+        if (u) {
+            const oldAvg   = u.rating      ?? 0;
+            const oldCount = u.reviewCount ?? 0;
+            const newCount = oldCount + 1;
+            const newAvg   = Math.round(((oldAvg * oldCount) + r) / newCount * 10) / 10;
+            db.prepare('UPDATE users SET rating = ?, reviewCount = ? WHERE id = ?')
+              .run(newAvg, newCount, u.id);
+            console.log(`[RATING_UPDATED] users id=${u.id} newAvg=${newAvg} newCount=${newCount}`);
+        }
+    }
 
     // BLIND_REVEAL: 상대방도 작성했으면 양쪽 동시 공개 (보복 방지)
     const otherReview = db.prepare(
@@ -1376,8 +1425,8 @@ router.post('/:id/review', (req, res) => {
         console.log(`[REVIEW_BLIND_REVEAL] jobId=${job.id} — 양측 작성 완료 → 공개`);
     }
 
-    console.log(`[REVIEW_SUBMITTED] jobId=${job.id} reviewerId=${reviewerId} target=${targetId} rating=${r} blind=${!revealed}`);
-    trackEvent('review_submitted', { jobId: job.id, userId: reviewerId, meta: { rating: r } });
+    console.log(`[REVIEW_SUBMITTED] jobId=${job.id} reviewerId=${reviewerId} target=${targetId} rating=${r} role=${reviewerRole} blind=${!revealed}`);
+    trackEvent('review_submitted', { jobId: job.id, userId: reviewerId, meta: { rating: r, reviewerRole } });
     return res.status(201).json({ ok: true, revealed, waitingForOther: !revealed });
 });
 

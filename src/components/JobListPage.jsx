@@ -816,6 +816,9 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
       {reviewJob && (
         <ReviewModal
           job={reviewJob}
+          reviewerRole="farmer"
+          reviewerId={userId}
+          targetId={reviewJob.selectedWorkerId}
           showIncentive
           onClose={() => setReviewJob(null)}
           onSubmit={() => {
