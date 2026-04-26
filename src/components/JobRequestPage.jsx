@@ -252,30 +252,47 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       return;
     }
 
+    // FIX: lat/lng 강제 숫자 변환 (문자열 방지)
+    const resolvedLat = gpsLat != null ? Number(gpsLat) : null;
+    const resolvedLng = gpsLng != null ? Number(gpsLng) : null;
+
+    // FIX: 좌표 유효성 최종 방어
+    if (farmAddress.trim() && (!resolvedLat || !resolvedLng || isNaN(resolvedLat) || isNaN(resolvedLng))) {
+      setError('📍 위치 좌표가 올바르지 않아요. "위치 찾기"를 다시 눌러주세요.');
+      return;
+    }
+
+    const payload = {
+      requesterId:   getUserId(),
+      requesterName: getUserName(),
+      category,
+      locationText:  location,
+      lat: resolvedLat,
+      lng: resolvedLng,
+      date,
+      timeSlot:    simpleMode ? '시간 협의' : timeSlot,
+      areaSize:    parseInt(areaSize) || null,
+      areaUnit,
+      pay:         pay.trim() || null,
+      note,
+      farmImages:  farmImages.length > 0 ? farmImages : undefined,
+      farmAddress: farmAddress.trim() || undefined,
+      isUrgentPaid: isUrgentPaid || undefined,
+    };
+
+    // STEP 1: 요청 payload 디버그 로그
+    console.log('[JOB_SUBMIT]', {
+      ...payload,
+      farmImages: payload.farmImages ? `[${payload.farmImages.length}장]` : undefined,
+    });
+
     setError('');
     setSubmitting(true);
     try {
-      const result = await createJob({
-        requesterId:   getUserId(),
-        requesterName: getUserName(),
-        category,
-        locationText:  location,
-        // GPS 실좌표 (있을 때만)
-        lat: gpsLat,
-        lng: gpsLng,
-        date,
-        timeSlot:  simpleMode ? '시간 협의' : timeSlot,
-        areaSize:  parseInt(areaSize) || null,
-        areaUnit,
-        pay:       pay.trim() || null,
-        note,
-        // PHASE 26: 다중 이미지 (base64 배열)
-        farmImages: farmImages.length > 0 ? farmImages : undefined,
-        // PHASE MAP_FIX: GPS 없을 때 서버 측 지오코딩 소스
-        farmAddress: farmAddress.trim() || undefined,
-        // PHASE SCALE: 유료 긴급 공고
-        isUrgentPaid: isUrgentPaid || undefined,
-      });
+      const result = await createJob(payload);
+
+      // STEP 4: API 응답 로그
+      console.log('[JOB_RESPONSE]', result);
 
       if (simpleMode) {
         try { trackClientEvent('quick_job_created', { category }); } catch (_) {}
@@ -329,6 +346,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       setDone(true);
       setTimeout(() => onSuccess?.(), 1600);
     } catch (e) {
+      // STEP 4: 에러 상세 로그
+      console.error('[JOB_ERROR]', e.message, e);
       setError(e.message);
     } finally {
       setSubmitting(false);
