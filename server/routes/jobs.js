@@ -254,42 +254,42 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ ok: false, error: '농지 주소가 너무 짧아요. 예: "경기 화성시 서신면" 형식으로 입력해주세요.' });
     }
 
-    // PHASE MAP_FIX: GPS 우선, GPS 없으면 farmAddress 지오코딩 시도
+    // LOCATION_FIX: 우선순위 — farmAddress(농지주소) > GPS(현재위치)
+    // 이유: GPS = 농민의 집일 수 있음. farmAddress가 있으면 반드시 농지 좌표 사용.
     let resolvedLat = null;
     let resolvedLng = null;
 
     const rawLat = parseFloat(bodyLat ?? latitude);
     const rawLng = parseFloat(bodyLng ?? longitude);
+    const hasFarmAddress = farmAddressRaw && farmAddressRaw.trim().length >= 5;
 
-    if (Number.isFinite(rawLat) && Number.isFinite(rawLng)) {
-        // ① GPS 있음 — 그대로 사용
-        resolvedLat = rawLat;
-        resolvedLng = rawLng;
-        console.log('[SERVER_COORD_GPS]', locationText, resolvedLat, resolvedLng);
-    } else if (farmAddressRaw && farmAddressRaw.trim()) {
-        // ② GPS 없음 + 농지 주소 있음 → Nominatim 지오코딩
+    if (hasFarmAddress) {
+        // ① 농지 주소 있음 → 지오코딩 필수 (GPS 완전 무시)
         const geo = await geocodeAddress(farmAddressRaw.trim());
         if (geo) {
             resolvedLat = geo.lat;
             resolvedLng = geo.lng;
-            console.log(`[SERVER_COORD_GEOCODED] "${farmAddressRaw.trim()}" → (${resolvedLat}, ${resolvedLng})`);
+            console.log(`[SERVER_COORD_FARMADDR] "${farmAddressRaw.trim()}" → (${resolvedLat}, ${resolvedLng})`);
         } else {
-            console.warn(`[SERVER_GEOCODE_FAIL] "${farmAddressRaw.trim()}" → 좌표 획득 실패, null 저장`);
+            // 지오코딩 실패 → 등록 거부 (GPS로 대체하지 않음)
+            console.warn(`[SERVER_GEOCODE_FAIL] "${farmAddressRaw.trim()}" → 좌표 획득 실패, 등록 거부`);
+            return res.status(400).json({
+                ok: false,
+                error: `"${farmAddressRaw.trim()}" 주소의 위치를 찾을 수 없어요. 시·군·읍·면·리 형식으로 더 정확하게 입력해주세요. 예) 경기 포천시 창수면 오가리`,
+            });
         }
+    } else if (Number.isFinite(rawLat) && Number.isFinite(rawLng)) {
+        // ② 농지 주소 없음 + GPS 있음 → GPS 사용 (현장에서 직접 등록하는 경우)
+        resolvedLat = rawLat;
+        resolvedLng = rawLng;
+        console.log('[SERVER_COORD_GPS]', locationText, resolvedLat, resolvedLng);
     } else {
-        // ③ GPS도 없고 주소도 없음 → PHASE 25 차단
+        // ③ 둘 다 없음 → 등록 거부
         console.warn('[SERVER_COORD_REQUIRED]', locationText, '→ lat/lng 없음 + farmAddress 없음, 등록 거부');
         return res.status(400).json({
             ok: false,
             error: '위치 좌표가 필요해요. GPS를 허용하거나 농지 주소를 입력해주세요.',
         });
-    }
-
-    const hasGps = resolvedLat !== null && resolvedLng !== null;
-    if (!hasGps) {
-        // 지오코딩 실패 → 지도 미표시로 저장 (등록 자체는 허용)
-        console.warn('[SERVER_NO_COORD]', locationText,
-            '→ 지오코딩 실패, lat/lng=null 저장, 지도 미표시 처리됨');
     }
 
     const isUrgent   = suggestUrgent({ note: note || '', date });

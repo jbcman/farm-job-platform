@@ -95,7 +95,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     setImgPreviews(prev => prev.filter((_, i) => i !== idx));
   }
 
-  // DESIGN_V2: 주소 → 좌표 변환 (서버 /api/geocode 경유)
+  // LOCATION_FIX: 주소 → 좌표 변환 (서버 /api/geocode 경유)
+  // 농지 주소 좌표를 userLocation에 저장하지 않음 (작업자 위치 오염 방지)
   const handleGeocodeAddress = useCallback(async () => {
     if (!farmAddress.trim()) return;
     setGeocodeStatus('loading');
@@ -103,16 +104,18 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       const res  = await fetch(`/api/geocode?address=${encodeURIComponent(farmAddress.trim())}`);
       const data = await res.json();
       if (!res.ok || !data.lat) throw new Error('주소를 찾을 수 없어요');
+      // 농지 좌표 — gpsLat/gpsLng에 저장하되 userLocation(내 위치)에는 저장 안 함
       setGpsLat(data.lat);
       setGpsLng(data.lng);
-      setGeoStatus('ok');
+      setGpsStatus('ok');         // LOCATION_FIX: setGeoStatus → setGpsStatus (정의된 함수)
       setGeocodeStatus('ok');
-      try {
-        localStorage.setItem('userLocation', JSON.stringify({ lat: data.lat, lon: data.lng }));
-      } catch (_) {}
+      // ❌ localStorage.setItem('userLocation', ...) 제거 — 농지 위치 ≠ 내 위치
       try { trackClientEvent('geocode_success', { address: farmAddress.trim() }); } catch (_) {}
     } catch (e) {
       setGeocodeStatus('error');
+      // 미리 획득한 GPS 좌표도 지워서 잘못된 위치 사용 방지
+      setGpsLat(null);
+      setGpsLng(null);
       try { trackClientEvent('geocode_fail', { address: farmAddress.trim() }); } catch (_) {}
     }
   }, [farmAddress]);
@@ -172,9 +175,20 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     if (!category) return setError('작업 종류를 선택해주세요.');
     if (!location) return setError('지역을 입력해주세요.');
     if (!date)     return setError('날짜를 선택해주세요.');
-    // PHASE MAP_FIX: GPS 없으면 농지 주소라도 필요
-    if (gpsLat === null && !farmAddress.trim()) {
-      setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 아래 농지 주소를 입력해주세요.');
+    // LOCATION_FIX: 위치 검증
+    if (farmAddress.trim()) {
+      // 농지 주소 입력됐으면 반드시 지오코딩 성공 상태여야 함
+      if (geocodeStatus !== 'ok') {
+        if (geocodeStatus === 'error') {
+          setError('📍 농지 주소를 찾을 수 없어요. 아래 "위치 확인" 버튼을 눌러 주소를 다시 확인해주세요.');
+        } else {
+          setError('📍 농지 주소 위치를 확인해주세요. "위치 확인" 버튼을 눌러주세요.');
+        }
+        return;
+      }
+    } else if (gpsLat === null) {
+      // 농지 주소도 없고 GPS도 없음
+      setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 아래 농지 주소를 입력 후 위치 확인해주세요.');
       return;
     }
 
