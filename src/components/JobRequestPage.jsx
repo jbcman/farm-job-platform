@@ -157,8 +157,17 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       maxZoom: 19,
     }).addTo(map);
 
-    L.marker([gpsLat, gpsLng]).addTo(map)
-      .bindPopup('📍 농지 위치').openPopup();
+    // MAP_PIN_DRAG: 드래그 가능 마커 — 이동 시 좌표 업데이트 + 재확인 요구
+    const marker = L.marker([gpsLat, gpsLng], { draggable: true }).addTo(map);
+    marker.bindPopup('📍 핀을 움직여 위치를 조정하세요').openPopup();
+
+    marker.on('dragend', () => {
+      const { lat, lng } = marker.getLatLng();
+      setGpsLat(lat);
+      setGpsLng(lng);
+      setConfirmedLocation(false); // 드래그 후 재확인 필수
+      marker.bindPopup('📍 새 위치를 확인해주세요').openPopup();
+    });
 
     miniMapObj.current = map;
 
@@ -168,7 +177,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
         miniMapObj.current = null;
       }
     };
-  }, [geocodeStatus, gpsLat, gpsLng]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geocodeStatus]); // gpsLat/gpsLng 제외 — dragend에서 직접 업데이트하므로 루프 방지
 
   // alias for geocodeStatus so the rest of the code doesn't break
   // (gpsStatus already exists; we expose geocodeStatus separately)
@@ -523,7 +532,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                     marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4,
                   }}>
                     <MapPin size={11} style={{ color: '#2d8a4e' }} />
-                    아래 지도에서 정확한 위치를 확인해주세요
+                    아래 지도에서 정확한 위치를 확인하세요
+                    <span style={{ fontWeight: 400, color: '#9ca3af' }}>· 핀 드래그로 조정 가능</span>
                   </p>
 
                   {/* 미니맵 */}
