@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Sparkles, Camera, Loader2, CheckCircle, Zap, MapPin, Navigation, Flame, Search } from 'lucide-react';
 import { createJob, smartAssist, getUserId, getUserName, trackClientEvent, sponsorJob, getUrgentPrice, createPayment, confirmPayment } from '../utils/api.js';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const CATEGORIES = [
   { name: '밭갈이',    emoji: '🚜' },
@@ -43,6 +45,10 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [farmAddress, setFarmAddress] = useState('');
   // DESIGN_V2: 주소 → 좌표 변환 상태
   const [geocodeStatus, setGeocodeStatus] = useState('idle'); // idle | loading | ok | error
+  // LOCATION_CONFIRM: 지도에서 위치 확인 여부
+  const [confirmedLocation, setConfirmedLocation] = useState(false);
+  const miniMapRef = useRef(null);   // div DOM ref
+  const miniMapObj = useRef(null);   // L.Map instance
   const [submitting,    setSubmitting]    = useState(false);
   const [done,          setDone]          = useState(false);
   const [error,         setError]         = useState('');
@@ -120,6 +126,50 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     }
   }, [farmAddress]);
 
+  // LOCATION_CONFIRM: geocode 성공 시 미니맵 렌더링
+  useEffect(() => {
+    if (geocodeStatus !== 'ok' || gpsLat == null || gpsLng == null) return;
+    if (!miniMapRef.current) return;
+
+    // 기존 맵 인스턴스 제거 (주소 변경 후 재렌더링 시)
+    if (miniMapObj.current) {
+      miniMapObj.current.remove();
+      miniMapObj.current = null;
+    }
+
+    // Leaflet 기본 아이콘 경로 수정
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    });
+
+    const map = L.map(miniMapRef.current, {
+      zoomControl:       true,
+      scrollWheelZoom:   false,
+      dragging:          true,
+      doubleClickZoom:   false,
+      attributionControl: false,
+    }).setView([gpsLat, gpsLng], 16);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    L.marker([gpsLat, gpsLng]).addTo(map)
+      .bindPopup('📍 농지 위치').openPopup();
+
+    miniMapObj.current = map;
+
+    return () => {
+      if (miniMapObj.current) {
+        miniMapObj.current.remove();
+        miniMapObj.current = null;
+      }
+    };
+  }, [geocodeStatus, gpsLat, gpsLng]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // alias for geocodeStatus so the rest of the code doesn't break
   // (gpsStatus already exists; we expose geocodeStatus separately)
 
@@ -175,20 +225,21 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     if (!category) return setError('작업 종류를 선택해주세요.');
     if (!location) return setError('지역을 입력해주세요.');
     if (!date)     return setError('날짜를 선택해주세요.');
-    // LOCATION_FIX: 위치 검증
+    // LOCATION_CONFIRM: 위치 검증
     if (farmAddress.trim()) {
-      // 농지 주소 입력됐으면 반드시 지오코딩 성공 상태여야 함
+      // 농지 주소 입력됐으면 지오코딩 + 지도 확인 필수
       if (geocodeStatus !== 'ok') {
-        if (geocodeStatus === 'error') {
-          setError('📍 농지 주소를 찾을 수 없어요. 아래 "위치 확인" 버튼을 눌러 주소를 다시 확인해주세요.');
-        } else {
-          setError('📍 농지 주소 위치를 확인해주세요. "위치 확인" 버튼을 눌러주세요.');
-        }
+        setError(geocodeStatus === 'error'
+          ? '📍 농지 주소를 찾을 수 없어요. "위치 찾기" 버튼으로 다시 확인해주세요.'
+          : '📍 농지 주소 입력 후 "위치 찾기" 버튼을 눌러주세요.');
+        return;
+      }
+      if (!confirmedLocation) {
+        setError('📍 지도에서 위치를 확인하고 "이 위치가 맞습니다" 버튼을 눌러주세요.');
         return;
       }
     } else if (gpsLat === null) {
-      // 농지 주소도 없고 GPS도 없음
-      setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 아래 농지 주소를 입력 후 위치 확인해주세요.');
+      setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 농지 주소를 입력해주세요.');
       return;
     }
 
@@ -446,7 +497,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   className="input text-sm flex-1"
                   placeholder="예: 경기 화성시 서신면 홍법리 123"
                   value={farmAddress}
-                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); }}
+                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setConfirmedLocation(false); }}
                   onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
                 />
                 <button
@@ -463,10 +514,71 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   위치 찾기
                 </button>
               </div>
+              {/* LOCATION_CONFIRM: 미니맵 + 확인 버튼 */}
               {geocodeStatus === 'ok' && (
-                <p className="text-xs text-green-600 font-semibold mt-1 flex items-center gap-1">
-                  <CheckCircle size={11} /> 위치 확인됨 — 지도에 정확히 표시됩니다
-                </p>
+                <div style={{ marginTop: 10 }}>
+                  {/* 안내 문구 */}
+                  <p style={{
+                    fontSize: 11, fontWeight: 700, color: '#374151',
+                    marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <MapPin size={11} style={{ color: '#2d8a4e' }} />
+                    아래 지도에서 정확한 위치를 확인해주세요
+                  </p>
+
+                  {/* 미니맵 */}
+                  <div
+                    ref={miniMapRef}
+                    style={{
+                      width: '100%', height: 180,
+                      borderRadius: 12,
+                      border: confirmedLocation
+                        ? '2px solid #2d8a4e'
+                        : '2px solid #d1d5db',
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}
+                  />
+
+                  {/* 확인 / 재입력 버튼 */}
+                  {!confirmedLocation ? (
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmedLocation(true); try { trackClientEvent('location_confirmed', { lat: gpsLat, lng: gpsLng }); } catch (_) {} }}
+                      style={{
+                        marginTop: 8, width: '100%',
+                        padding: '11px 0',
+                        borderRadius: 12,
+                        background: '#2d8a4e',
+                        color: '#fff',
+                        fontSize: 13, fontWeight: 800,
+                        border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}
+                    >
+                      <CheckCircle size={14} /> 📍 이 위치가 맞습니다
+                    </button>
+                  ) : (
+                    <div style={{
+                      marginTop: 8, padding: '8px 12px',
+                      borderRadius: 12,
+                      background: '#f0fdf4',
+                      border: '1px solid #86efac',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <CheckCircle size={13} /> 위치 확인 완료
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setConfirmedLocation(false); setGeocodeStatus('idle'); setFarmAddress(''); setGpsLat(null); setGpsLng(null); }}
+                        style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
+                      >
+                        재입력
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
               {geocodeStatus === 'error' && (
                 <p className="text-xs text-red-500 font-semibold mt-1">
