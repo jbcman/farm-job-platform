@@ -163,6 +163,11 @@ export async function setJobUrgent(jobId, requesterId) {
     return req('POST', `/jobs/${jobId}/urgent`, { requesterId });
 }
 
+/** AI_MATCH_V2: 농민 명시적 자동 배정 — 지금 바로 최적 작업자 선택 */
+export async function autoAssignWorker(jobId, requesterId) {
+    return req('POST', `/jobs/${jobId}/auto-assign`, { requesterId });
+}
+
 /** PHASE SCALE: 스폰서 등록 (type: 'sponsored' | 'urgentPaid') */
 export async function sponsorJob(jobId, { requesterId, type = 'sponsored', hours = 24, boost = 20 }) {
     return req('POST', `/jobs/${jobId}/sponsor`, { requesterId, type, hours, boost });

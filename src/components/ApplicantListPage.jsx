@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Zap } from 'lucide-react';
-import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent } from '../utils/api.js';
+import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker } from '../utils/api.js';
 
 // PHASE 28: 추천 배지 — rank 1/2/3 각각 다른 스타일
 const RANK_BADGE = {
@@ -29,8 +29,10 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const [calling, setCalling]       = useState(null);   // PHASE 29: 전화 연결 중
   const [callHint, setCallHint]     = useState(null);   // PHASE 32: 미수신 힌트 workerId
   const [error, setError]           = useState('');
-  const [urgenting, setUrgenting]   = useState(false);  // AUTO_MATCH: 긴급 전환 중
-  const [isUrgent, setIsUrgent]     = useState(job.isUrgent || false); // 낙관적 업데이트용
+  const [urgenting,    setUrgenting]    = useState(false);   // AUTO_MATCH: 긴급 전환 중
+  const [isUrgent,     setIsUrgent]     = useState(job.isUrgent || false); // 낙관적 업데이트용
+  const [autoAssigning, setAutoAssigning] = useState(false); // AI_MATCH_V2: 자동 배정 중
+  const [autoResult,   setAutoResult]   = useState(null);    // { workerName, workerPhone, matchScore }
 
   // Phase 8: 상태별 읽기 전용 모드
   const isReadOnly = job.status === 'closed' || job.status === 'matched';
@@ -113,6 +115,29 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     }
   }
 
+  // AI_MATCH_V2: 농민이 "AI가 지금 바로 배정해줘" 명시적 트리거
+  async function handleAutoAssign() {
+    if (autoAssigning) return;
+    setAutoAssigning(true);
+    setError('');
+    try {
+      const data = await autoAssignWorker(job.id, userId);
+      setAutoResult(data);
+      // 배정 완료 즉시 전화 연결
+      const phone = data.contact?.workerPhone;
+      if (phone) {
+        window.location.href = `tel:${phone.replace(/[^0-9]/g, '')}`;
+      }
+      // applicants 목록 갱신
+      const fresh = await getApplicants(job.id, userId).catch(() => null);
+      if (fresh) setApplicants(fresh.applicants || []);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setAutoAssigning(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-farm-bg pb-8">
       {/* 헤더 */}
@@ -173,7 +198,32 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
             </div>
           )}
 
-          {/* ③ 긴급 전환 CTA — 아직 긴급 아닐 때만 */}
+          {/* ③ AI 자동 배정 — 지원자 있고 직접 고르기 귀찮을 때 */}
+          {applicants.filter(a => a.status === 'applied').length > 0 && !autoResult && (
+            <button
+              onClick={handleAutoAssign}
+              disabled={autoAssigning}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-500 text-white
+                         font-bold text-sm rounded-2xl px-4 py-3
+                         active:scale-95 transition-transform disabled:opacity-60 shadow-sm"
+            >
+              {autoAssigning
+                ? <><Loader2 size={14} className="animate-spin" /> AI 분석 중...</>
+                : <>🤖 AI 자동 배정 — 지금 바로 최적 작업자 선택</>
+              }
+            </button>
+          )}
+          {autoResult && (
+            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-2.5">
+              <span className="text-base">🤖</span>
+              <p className="text-xs font-bold text-indigo-700">
+                {autoResult.contact?.workerName}님이 자동 배정됐어요
+                <span className="font-normal text-indigo-500 ml-1">(점수 {autoResult.matchScore}점)</span>
+              </p>
+            </div>
+          )}
+
+          {/* ④ 긴급 전환 CTA — 아직 긴급 아닐 때만 */}
           {!isUrgent && (
             <button
               onClick={handleUrgent}

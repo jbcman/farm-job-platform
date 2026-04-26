@@ -440,5 +440,12 @@ try { db.exec("ALTER TABLE reviews ADD COLUMN reviewerRole TEXT DEFAULT NULL"); 
 try { db.exec("ALTER TABLE workers ADD COLUMN ratingAvg   REAL    DEFAULT NULL"); } catch (_) {}
 try { db.exec("ALTER TABLE workers ADD COLUMN ratingCount INTEGER DEFAULT 0");   } catch (_) {}
 
+// AI_MATCH_V2: 작물/스킬/시간대/즉시가능 매칭 보정
+try { db.exec("ALTER TABLE jobs    ADD COLUMN cropType     TEXT    DEFAULT NULL"); } catch (_) {}
+try { db.exec("ALTER TABLE jobs    ADD COLUMN autoAssign   INTEGER DEFAULT 0");    } catch (_) {}
+try { db.exec("ALTER TABLE workers ADD COLUMN skillTags    TEXT    DEFAULT NULL"); } catch (_) {}  // JSON 배열
+try { db.exec("ALTER TABLE workers ADD COLUMN preferredTime TEXT   DEFAULT NULL"); } catch (_) {}  // '오전'|'오후'|'저녁'
+try { db.exec("ALTER TABLE workers ADD COLUMN activeNow    INTEGER DEFAULT 0");    } catch (_) {}
+
 console.log(`[DB] SQLite 연결 완료 → ${DB_PATH}`);
 module.exports = db;

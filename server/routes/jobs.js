@@ -14,6 +14,7 @@ const { sendJobAlert, sendApplyAlert, sendDepartureReminder, sendContactAlert } 
 const { sortRecommendedJobs }          = require('../services/recommendationService');
 const { reengageUnselectedApplicants } = require('../services/reengageService');
 const { checkAndAutoSelect }           = require('../services/autoSelect');
+const { calcV2Bonus }                  = require('../services/aiMatchV2');
 const { getCallInfo }                  = require('../services/callService');
 const { tryFireReminder }              = require('../services/reminderRecovery');
 const { geocodeAddress }               = require('../services/geocodeService');
@@ -978,10 +979,12 @@ router.get('/:id/applicants', (req, res) => {
             ? (db.prepare('SELECT COUNT(*) AS cnt FROM reviews WHERE targetId = ?').get(worker.id)?.cnt || 0)
             : 0;
 
-        // PHASE 28+30: 매칭 점수 (worker 없으면 null)
-        const matchScore = worker
+        // PHASE 28+30 + AI_MATCH_V2: 매칭 점수 (worker 없으면 null)
+        const baseScore = worker
             ? calcApplicantMatchScore(worker, a, job, distKm, reviewCount)
             : null;
+        const v2Bonus  = worker ? calcV2Bonus(worker, job) : 0;
+        const matchScore = baseScore !== null ? Math.round(baseScore + v2Bonus) : null;
 
         return {
             applicationId: a.id,
@@ -1544,6 +1547,113 @@ router.post('/:id/urgent', (req, res) => {
     });
 
     return res.json({ ok: true, alreadyUrgent: false, notified: true });
+});
+
+// ─── AI_MATCH_V2: POST /api/jobs/:id/auto-assign ─────────────
+// 농민이 명시적으로 "AI 자동 배정" 트리거
+// checkAndAutoSelect(자동, 3명+조건)과 달리 1명도 가능, 농민이 직접 실행
+router.post('/:id/auto-assign', (req, res) => {
+    const { requesterId } = req.body || {};
+    if (!requesterId) return res.status(400).json({ ok: false, error: 'requesterId가 필요해요.' });
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '내 공고만 자동 배정 가능해요.' });
+    }
+    if (job.status !== 'open') {
+        return res.status(400).json({ ok: false, error: '모집 중인 공고만 자동 배정 가능해요.' });
+    }
+
+    // 지원자 목록 (applied 상태만)
+    const apps = db.prepare(
+        "SELECT * FROM applications WHERE jobRequestId = ? AND status = 'applied' ORDER BY createdAt ASC"
+    ).all(job.id);
+    if (apps.length === 0) {
+        return res.status(400).json({ ok: false, error: '지원자가 없어요. 잠시 후 다시 시도해주세요.' });
+    }
+
+    // V2 점수 계산 (기존 calcApplicantMatchScore + V2 보정)
+    const scored = apps.map(a => {
+        const worker = normalizeWorker(db.prepare('SELECT * FROM workers WHERE id = ?').get(a.workerId));
+        if (!worker) return null;
+        const dist = (job.latitude && job.longitude && worker.latitude && worker.longitude)
+            ? distanceKm(job.latitude, job.longitude, worker.latitude, worker.longitude)
+            : null;
+        const distKmVal    = dist !== null ? Math.round(dist * 10) / 10 : null;
+        const reviewCount  = db.prepare('SELECT COUNT(*) AS cnt FROM reviews WHERE targetId = ?').get(worker.id)?.cnt || 0;
+        const baseScore    = calcApplicantMatchScore(worker, a, job, distKmVal, reviewCount);
+        const v2Bonus      = calcV2Bonus(worker, job);
+        const matchScore   = Math.round(baseScore + v2Bonus);
+        return { app: a, worker, distKm: distKmVal, matchScore };
+    }).filter(Boolean);
+
+    if (scored.length === 0) {
+        return res.status(400).json({ ok: false, error: '유효한 지원자 프로필이 없어요.' });
+    }
+
+    // 내림차순 정렬 → 최고 점수
+    scored.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
+    const top = scored[0];
+
+    // 안전 가드 (soft — ratingAvg 없으면 패스)
+    if (top.worker.ratingAvg !== null && top.worker.ratingAvg < 3.0) {
+        return res.status(400).json({ ok: false, error: '추천 작업자의 평점이 낮아 자동 배정이 보류됐어요. 직접 선택해주세요.' });
+    }
+    if ((top.worker.noshowCount || 0) > 3) {
+        return res.status(400).json({ ok: false, error: '노쇼 이력이 많아 자동 배정이 불가해요. 직접 선택해주세요.' });
+    }
+
+    const workerId   = top.worker.id;
+    const farmerUser = db.prepare('SELECT phone FROM users WHERE id = ?').get(job.requesterId);
+    const farmerPhone = farmerUser?.phone || '010-0000-0000';
+
+    // 원자적 트랜잭션 (autoSelect와 동일 패턴)
+    let didSelect = false;
+    db.transaction(() => {
+        const r = db.prepare(`
+            UPDATE jobs
+            SET status = 'matched', contactRevealed = 1,
+                selectedWorkerId = ?, selectedAt = ?, autoSelected = 1
+            WHERE id = ? AND status = 'open'
+        `).run(workerId, new Date().toISOString(), job.id);
+
+        if (r.changes === 0) return; // 이미 처리됨
+        didSelect = true;
+
+        db.prepare("UPDATE applications SET status = 'selected' WHERE jobRequestId = ? AND workerId = ?")
+          .run(job.id, workerId);
+        db.prepare("UPDATE applications SET status = 'rejected' WHERE jobRequestId = ? AND workerId != ?")
+          .run(job.id, workerId);
+
+        try {
+            db.prepare(`
+                INSERT OR IGNORE INTO contacts (id, jobId, farmerId, workerId, createdAt)
+                VALUES (?,?,?,?,?)
+            `).run(newId('contact'), job.id, job.requesterId, workerId, new Date().toISOString());
+        } catch (_) {}
+    })();
+
+    if (!didSelect) {
+        return res.status(409).json({ ok: false, error: '이미 다른 작업자가 선택됐어요.' });
+    }
+
+    console.log(`[AUTO_ASSIGN] jobId=${job.id} workerId=${workerId} score=${top.matchScore} dist=${top.distKm ?? '?'}km`);
+    trackEvent('auto_assign', { jobId: job.id, userId: requesterId, meta: { workerId, score: top.matchScore } });
+
+    // 카카오 알림 (fire-and-forget)
+    setImmediate(() => { try { sendSelectionNotification(job, top.worker); } catch (_) {} });
+
+    return res.json({
+        ok: true,
+        workerId,
+        matchScore: top.matchScore,
+        contact: {
+            workerName:  top.worker.name,
+            workerPhone: top.worker.phone,
+            farmerPhone,
+        },
+    });
 });
 
 // ─── PHASE SCALE: POST /api/jobs/:id/sponsor ─────────────────
