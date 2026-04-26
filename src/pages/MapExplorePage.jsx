@@ -10,6 +10,7 @@
  * - 상단: ← 뒤로 + 📍 내 위치로
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MAP_CONFIG } from '../config/mapConfig.js';
@@ -111,6 +112,7 @@ function makeJobIcon(isToday, isUrgent, isSponsored, pay, workLabel) {
 }
 
 export default function MapExplorePage() {
+  const routerNav   = useNavigate();   // ROUTER_FIX
   const mapRef      = useRef(null);
   const mapObj      = useRef(null);
   const markersRef  = useRef([]);       // L.Marker[]
@@ -260,7 +262,7 @@ export default function MapExplorePage() {
       {/* 상단 컨트롤 */}
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000, display: 'flex', gap: 8 }}>
         <button
-          onClick={() => { window.location.href = '/'; }}
+          onClick={() => routerNav('/')}
           style={{
             background: '#fff', border: 'none', borderRadius: 12,
             padding: '8px 14px', fontWeight: 700, fontSize: 14,
@@ -384,9 +386,8 @@ export default function MapExplorePage() {
               <button
                 onClick={() => {
                   getOrCreateUser();
-                  // 브라우저 history에 /map-explore 추가 → 뒤로가기 시 지도 복귀
-                  window.history.pushState(null, '', '/map-explore');
-                  window.location.href = `/jobs/${selected.id}`;
+                  // ROUTER_FIX: React Router navigate → SPA 유지 + 뒤로가기 정상 동작
+                  routerNav(`/jobs/${selected.id}`);
                 }}
                 style={{
                   flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',

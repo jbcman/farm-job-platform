@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import './styles/theme.css';
 import LoginPage          from './components/LoginPage.jsx';
 import HomePage           from './components/HomePage.jsx';
@@ -18,6 +19,61 @@ import MapExplorePage        from './pages/MapExplorePage.jsx';
 import RevenueDashboard      from './pages/RevenueDashboard.jsx';
 import { getUserId, trackClientEvent, getNotifications } from './utils/api.js';
 import { getOrCreateUser } from './utils/userProfile.js';
+
+// ── URL Route 컴포넌트들 (React Router 네이티브) ─────────────────
+
+/** /jobs/:id — URL 진입 시 React Router back 사용 */
+function JobDetailRoute() {
+  const { id }     = useParams();
+  const routerNav  = useNavigate();
+  return (
+    <div className="max-w-lg mx-auto relative min-h-screen">
+      <JobDetailPage
+        jobId={id}
+        source="direct"
+        onBack={() => routerNav(-1)}
+      />
+    </div>
+  );
+}
+
+/** /pay/:type — 결제 결과 */
+function PayResultRoute() {
+  const location  = useLocation();
+  const routerNav = useNavigate();
+  const type      = location.pathname.includes('success') ? 'success' : 'fail';
+  return (
+    <div className="max-w-lg mx-auto relative min-h-screen">
+      <PayResultPage
+        type={type}
+        onDone={(jobId) => {
+          if (jobId) routerNav(`/jobs/${jobId}`, { replace: true });
+          else       routerNav('/', { replace: true });
+        }}
+      />
+    </div>
+  );
+}
+
+/** /admin — 관리자 대시보드 */
+function AdminRoute() {
+  const routerNav = useNavigate();
+  return (
+    <div className="max-w-lg mx-auto relative min-h-screen">
+      <AdminDashboard onBack={() => routerNav('/')} />
+    </div>
+  );
+}
+
+/** /revenue — 수익 대시보드 */
+function RevenueRoute() {
+  const routerNav = useNavigate();
+  return (
+    <div className="max-w-lg mx-auto relative min-h-screen">
+      <RevenueDashboard onBack={() => routerNav('/admin')} />
+    </div>
+  );
+}
 
 /**
  * App.jsx — 메인 상태 관리 + 화면 라우팅
@@ -110,62 +166,27 @@ function parseDeeplinkSource() {
   return params.get('source') || 'direct';
 }
 
+/** ROUTER_FIX: 최상위 라우터 — URL 경로별 컴포넌트 분기 */
 export default function App() {
-  // PHASE_REVENUE_DASHBOARD_V1: /revenue → 수익 대시보드 (로그인 게이트 우회)
-  if (isRevenuePath()) {
-    return (
-      <div className="max-w-lg mx-auto relative min-h-screen">
-        <RevenueDashboard onBack={() => { window.history.replaceState({}, '', '/admin'); window.location.reload(); }} />
-      </div>
-    );
-  }
+  return (
+    <Routes>
+      {/* 특수 경로 — 로그인 게이트 우회 */}
+      <Route path="/revenue/*"     element={<RevenueRoute />} />
+      <Route path="/admin/*"       element={<AdminRoute />} />
+      <Route path="/ops/*"         element={<div className="max-w-lg mx-auto relative min-h-screen"><OperatorPage /></div>} />
+      <Route path="/map-explore"   element={<MapExplorePage />} />
+      <Route path="/map"           element={<MapPage />} />
+      <Route path="/pay/*"         element={<PayResultRoute />} />
+      {/* URL 딥링크 상세 페이지 — navigate(-1)로 뒤로가기 */}
+      <Route path="/jobs/:id"      element={<JobDetailRoute />} />
+      {/* 메인 앱 — 기존 state 라우팅 유지 */}
+      <Route path="/*"             element={<MainApp />} />
+    </Routes>
+  );
+}
 
-  // Phase 9: /admin 경로 → 관리자 대시보드 직접 렌더 (로그인 게이트 우회)
-  if (isAdminPath()) {
-    return (
-      <div className="max-w-lg mx-auto relative min-h-screen">
-        <AdminDashboard onBack={() => { window.history.replaceState({}, '', '/'); window.location.reload(); }} />
-      </div>
-    );
-  }
-
-  // MVP 운영자 페이지: /ops (로그인 게이트 우회)
-  if (isOpsPath()) {
-    return (
-      <div className="max-w-lg mx-auto relative min-h-screen">
-        <OperatorPage />
-      </div>
-    );
-  }
-
-  // 전체 일손 지도 탐색: /map-explore (Uber-style — 로그인 게이트 우회)
-  if (isMapExplorePath()) {
-    return <MapExplorePage />;
-  }
-
-  // 작업 위치 지도: /map?lat=&lng=&title= (로그인 게이트 우회 — 공유 링크 대비)
-  if (isMapDetailPath()) {
-    return <MapPage />;
-  }
-
-  // PHASE SCALE+: 결제 결과 페이지 (토스 리다이렉트 복귀)
-  const payPath = parsePayPath();
-  if (payPath) {
-    return (
-      <div className="max-w-lg mx-auto relative min-h-screen">
-        <PayResultPage
-          type={payPath}
-          onDone={(jobId) => {
-            window.history.replaceState({}, '', '/');
-            // jobId 있으면 상세로 이동, 없으면 홈
-            if (jobId) window.location.replace(`/jobs/${jobId}`);
-            else       window.location.replace('/');
-          }}
-        />
-      </div>
-    );
-  }
-
+/** 기존 state 기반 앱 — 내부 페이지 전환은 이 컴포넌트 안에서 처리 */
+function MainApp() {
   const [user,        setUser]        = useState(null);
   const [page,        setPage]        = useState('home');
   const [userMode,    setUserMode]    = useState('farmer');
@@ -208,29 +229,8 @@ export default function App() {
       try { trackClientEvent('auto_login_external', { hostname: window.location.hostname, userId: u.id }); } catch (_) {}
     }
 
-    // STEP 2: 딥링크 감지 (/jobs/:id)
-    const jobId = parseJobIdFromUrl();
-    if (jobId) {
-      const src = parseDeeplinkSource();
-      setDeepJobId(jobId);
-      setDeepSource(src);
-
-      // PHASE 30-31: 로그인 안 된 상태면 intent 이중 저장 후 로그인 페이지로
-      // sessionStorage : 기본 (탭 재사용 시 정상 동작)
-      // localStorage   : fallback (일부 환경 sessionStorage 소멸 대비)
-      if (!storedId && !isExternal) {
-        try { sessionStorage.setItem('deeplink-pending-jobId',  jobId); } catch (_) {}
-        try { sessionStorage.setItem('deeplink-pending-source', src);   } catch (_) {}
-        try { localStorage.setItem('deeplink-fallback-jobId',  jobId); } catch (_) {}
-        try { localStorage.setItem('deeplink-fallback-source', src);   } catch (_) {}
-        // login 게이트가 LoginPage를 자동으로 표시하므로 별도 setPage 불필요
-      } else {
-        setPage('job-detail');
-      }
-
-      // URL 정리 (SPA 히스토리 교체)
-      window.history.replaceState({}, '', `/?source=${src}`);
-    }
+    // ROUTER_FIX: /jobs/:id 딥링크는 JobDetailRoute에서 처리됨
+    // MainApp에서는 딥링크 감지 불필요
 
     trackClientEvent('mobile_visit', {
       ua:     navigator.userAgent.slice(0, 80),
