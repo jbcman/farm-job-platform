@@ -18,6 +18,7 @@ import MapExplorePage        from './pages/MapExplorePage.jsx';
 import RevenueDashboard      from './pages/RevenueDashboard.jsx';
 import { getUserId, trackClientEvent, getNotifications } from './utils/api.js';
 import { getOrCreateUser } from './utils/userProfile.js';
+import { pushView, replaceView } from './utils/historyManager.js';
 
 /**
  * App.jsx — 메인 상태 관리 + 화면 라우팅
@@ -236,6 +237,11 @@ export default function App() {
       ua:     navigator.userAgent.slice(0, 80),
       screen: `${window.screen.width}x${window.screen.height}`,
     });
+
+    // BACK_NAV: 홈 진입 시 history state 초기화 (replaceState → 뒤로가기 체인 기준점)
+    if (!jobId) {
+      replaceView('home', {});
+    }
   }, []);
 
   const userId = user?.id || getUserId();
@@ -253,11 +259,44 @@ export default function App() {
     return () => clearInterval(notifTimer.current);
   }, [userId]);
 
+  // BACK_NAV: OS 뒤로가기(popstate) → 이전 뷰 복원
+  useEffect(() => {
+    const handler = (e) => {
+      const state = e.state;
+      if (!state?.view) {
+        console.log('[BACK_NAV] no state → 홈 유지');
+        return;
+      }
+      const { view, params = {} } = state;
+      console.log('[BACK_NAV]', view, params);
+
+      if (params.job)    setSelectedJob(params.job);
+      if (params.jobId)  setDeepJobId(params.jobId);
+      if (params.source) setDeepSource(params.source);
+      setPrevPage(page); // 현재 페이지를 prevPage로 저장
+      setPage(view);
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, [page]); // page 의존성 → setPrevPage(page) 정확히 캡처
+
   function navigate(p, extras = {}) {
     if (p === 'job-detail') setPrevPage(page); // 이전 페이지 저장
     if (extras.job)     setSelectedJob(extras.job);
     if (extras.jobId)   setDeepJobId(extras.jobId);
     if (extras.source)  setDeepSource(extras.source);
+    // BACK_NAV: history stack에 뷰 상태 추가 → OS 뒤로가기 지원
+    pushView(p, {
+      jobId:  extras.jobId  ?? extras.job?.id ?? null,
+      source: extras.source ?? null,
+      // selectedJob 직렬화 (applicants 복귀용) — 용량 절약을 위해 필수 필드만
+      job: extras.job ? {
+        id: extras.job.id, category: extras.job.category,
+        locationText: extras.job.locationText, date: extras.job.date,
+        status: extras.job.status, requesterId: extras.job.requesterId,
+        pay: extras.job.pay,
+      } : null,
+    });
     setPage(p);
   }
 

@@ -249,6 +249,25 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     setSmartMode(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // BACK_NAV: 스크롤 위치 저장/복원
+  const SCROLL_KEY = 'farm-listScroll';
+  useEffect(() => {
+    // 마운트 시 저장된 스크롤 복원
+    const saved = sessionStorage.getItem(SCROLL_KEY);
+    if (saved) {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: Number(saved), behavior: 'instant' });
+      });
+      sessionStorage.removeItem(SCROLL_KEY); // 1회 복원 후 삭제
+    }
+    // 스크롤 이벤트 저장 (상세 이동 직전 포지션 기록)
+    const onScroll = () => {
+      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** SMART_V3: 🤖 추천 버튼 핸들러 */
   function applySmartFilter() {
     setSelectedCategories(getSmartCategories());

@@ -122,6 +122,28 @@ export default function MapExplorePage() {
   const [loading,    setLoading]    = useState(false);
   const [count,      setCount]      = useState(0);
 
+  // BACK_NAV: 지도 상태 저장/복원 유틸
+  const MAP_STATE_KEY = 'farm-mapState';
+
+  function saveMapState() {
+    if (!mapObj.current) return;
+    try {
+      const c = mapObj.current.getCenter();
+      const z = mapObj.current.getZoom();
+      sessionStorage.setItem(MAP_STATE_KEY, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: z }));
+    } catch (_) {}
+  }
+
+  function restoreMapState() {
+    try {
+      const raw = sessionStorage.getItem(MAP_STATE_KEY);
+      if (!raw || !mapObj.current) return false;
+      const { lat, lng, zoom } = JSON.parse(raw);
+      mapObj.current.setView([lat, lng], zoom);
+      return true;
+    } catch (_) { return false; }
+  }
+
   // ── 마커 데이터 fetch ─────────────────────────────────────────
   const fetchMarkers = useCallback(async (center) => {
     setLoading(true);
@@ -182,6 +204,34 @@ export default function MapExplorePage() {
         fetchMarkers({ lat: c.lat, lng: c.lng });
       }, 600);
     });
+
+    // BACK_NAV: 뒤로가기로 복귀 시 이전 지도 위치/줌 복원 (GPS보다 우선)
+    const hadSavedState = (() => {
+      try {
+        const raw = sessionStorage.getItem('farm-mapState');
+        if (!raw) return false;
+        const { lat, lng, zoom } = JSON.parse(raw);
+        map.setView([lat, lng], zoom);
+        fetchMarkers({ lat, lng });
+        sessionStorage.removeItem('farm-mapState'); // 복원 후 삭제 (1회성)
+        return true;
+      } catch (_) { return false; }
+    })();
+
+    if (hadSavedState) {
+      // 저장된 위치로 복원됐으면 GPS 오버라이드 안 함
+      navigator.geolocation?.getCurrentPosition(({ coords }) => {
+        const { latitude: lat, longitude: lng } = coords;
+        setUserLoc({ lat, lng });
+        const userIcon = L.divIcon({
+          html: `<div style="background:#2563eb;color:#fff;font-size:13px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);">📍</div>`,
+          className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+        });
+        userMarker.current = L.marker([lat, lng], { icon: userIcon }).addTo(map).bindPopup('내 위치');
+        // 지도 이동 안 함 — 저장 상태 유지
+      });
+      return; // GPS setView 건너뜀
+    }
 
     // GPS 확보
     navigator.geolocation?.getCurrentPosition(
@@ -260,7 +310,10 @@ export default function MapExplorePage() {
       {/* 상단 컨트롤 */}
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000, display: 'flex', gap: 8 }}>
         <button
-          onClick={() => { window.location.href = '/'; }}
+          onClick={() => {
+            saveMapState(); // BACK_NAV: 뒤로가기 전 지도 상태 저장 (혹시 몰라서)
+            window.history.back();
+          }}
           style={{
             background: '#fff', border: 'none', borderRadius: 12,
             padding: '8px 14px', fontWeight: 700, fontSize: 14,
@@ -384,6 +437,7 @@ export default function MapExplorePage() {
               <button
                 onClick={() => {
                   getOrCreateUser();
+                  saveMapState(); // BACK_NAV: 상세 이동 전 지도 위치/줌 저장
                   // 브라우저 history에 /map-explore 추가 → 뒤로가기 시 지도 복귀
                   window.history.pushState(null, '', '/map-explore');
                   window.location.href = `/jobs/${selected.id}`;
