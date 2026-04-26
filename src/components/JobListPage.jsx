@@ -9,8 +9,43 @@ import { useUserLocation } from '../hooks/useUserLocation.js';
 import JobCard from './JobCard.jsx';
 import ReviewModal from './ReviewModal.jsx';
 import PostApplySheet from './PostApplySheet.jsx';
+import FilterModal from './FilterModal.jsx';
+import { getBehaviorScore, getHotJobIds } from '../utils/behaviorScore.js';
 
 const CATEGORIES = ['전체', '밭갈이', '로터리', '두둑', '방제', '수확 일손', '예초'];
+
+// ── SMART_V3: 시간대 기반 추천 카테고리 + 이유 ─────────────────
+function getSmartCategories() {
+  const hour = new Date().getHours();
+  if (hour < 12) return ['밭갈이', '로터리'];
+  if (hour < 18) return ['수확', '방제'];
+  return ['방제', '예초'];
+}
+function getSmartReason() {
+  const hour = new Date().getHours();
+  if (hour < 12) return { label: '🌅 오전 작업 추천', desc: `오전이라 ${getSmartCategories().join('·')} 추천 중` };
+  if (hour < 18) return { label: '☀️ 오후 작업 추천', desc: `오후라 ${getSmartCategories().join('·')} 추천 중` };
+  return { label: '🌙 야간 작업 추천', desc: `저녁이라 ${getSmartCategories().join('·')} 추천 중` };
+}
+
+/**
+ * SMART_V4: 스마트 점수
+ *   urgent      +50  (급구/오늘)
+ *   근거리 ≤5km +30
+ *   시간대 일치 +20
+ *   클릭 횟수   ×10  (내 행동)
+ *   전화 횟수   ×30  (내 행동 — 가장 강한 신호)
+ */
+function smartScore(job) {
+  let score = 0;
+  if (job.isUrgent || job.isToday) score += 50;
+  const km = job.distKm;
+  if (km != null && Number.isFinite(km) && km <= 5) score += 30;
+  const smartCats = getSmartCategories();
+  if (smartCats.includes(job.category)) score += 20;
+  score += getBehaviorScore(job.id);   // 클릭×10 + 전화×30
+  return score;
+}
 
 function getStoredLocation() {
   try {
@@ -57,6 +92,11 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const [nearbyMode,    setNearbyMode]    = useState(false);
   const [nearbyJobs,    setNearbyJobs]    = useState([]);
   const [nearbyLoading, setNearbyLoading] = useState(false);
+  // FILTER_V1: 다중 카테고리 선택 + 모달
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [showFilterModal,    setShowFilterModal]    = useState(false);
+  // SMART_V2: 자동 추천 상태 (true = 시스템 추천 활성)
+  const [smartMode, setSmartMode] = useState(false);
   // FINAL POLISH: localStorage에서 마지막 사용 반경 복원
   const [radius, setRadius] = useState(() => {
     try {
@@ -200,6 +240,22 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     runNearby(gpsLoc, radius);
   }, [gpsLoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── SMART_V3: 첫 진입 자동 추천 (시간대 기반, 1회) ──────────────
+  useEffect(() => {
+    if (myJobsMode || myApplicationsMode) return;
+    if (sessionStorage.getItem('smart_auto_run')) return;
+    sessionStorage.setItem('smart_auto_run', '1');
+    setSelectedCategories(getSmartCategories());
+    setSmartMode(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** SMART_V3: 🤖 추천 버튼 핸들러 */
+  function applySmartFilter() {
+    setSelectedCategories(getSmartCategories());
+    setUrgentOnly(true);
+    setSmartMode(true);
+  }
+
   // ── 작업자: 지원하기 ──────────────────────────────────────────
   async function handleApply(job) {
     try {
@@ -290,15 +346,42 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const title = myApplicationsMode ? '내 지원 현황' : myJobsMode ? '내 요청 관리' : '지금 가능한 일';
   const mode  = myJobsMode ? 'farmer' : 'worker';
 
-  // PHASE 16+18+19: 일반 목록 → 급구 필터 → 추천 정렬
-  // PHASE NEARBY_MATCH: nearbyMode일 때는 nearbyJobs 사용 (이미 거리순 정렬됨)
-  // myJobsMode/myApplicationsMode는 기존 순서 유지 (농민 관리 화면)
+  // FILTER_V1: 다중 카테고리 제거 핸들러
+  const removeCategory = (cat) => {
+    setSelectedCategories(prev => prev.filter(c => c !== cat));
+  };
+
+  // FILTER_V1: 전체 초기화 (smartMode도 해제)
+  const clearFilters = () => {
+    setSelectedCategories([]);
+    setUrgentOnly(false);
+    setSmartMode(false);
+  };
+
+  // PHASE 16+18+19+FILTER_V1: 일반 목록 → 급구 필터 → 카테고리 다중필터 → 추천 정렬
   const isPublicList = !myJobsMode && !myApplicationsMode;
   const userProfile  = isPublicList ? getUserProfile() : {};
-  const displayJobs  = isPublicList
+
+  function applyFilters(list) {
+    let result = filterUrgentOnly(list, urgentOnly);
+    if (selectedCategories.length > 0) {
+      result = result.filter(j => selectedCategories.includes(j.category));
+    }
+    return result;
+  }
+
+  // SMART_V3: smartMode일 때 스코어 기반 정렬, 아니면 기존 추천 정렬
+  function sortForDisplay(list) {
+    if (smartMode) {
+      return [...list].sort((a, b) => smartScore(b) - smartScore(a));
+    }
+    return sortJobsByRecommend(list, userProfile);
+  }
+
+  const displayJobs = isPublicList
     ? nearbyMode
-      ? filterUrgentOnly(nearbyJobs, urgentOnly)            // 근처 모드: 거리순 유지 (이미 정렬됨)
-      : sortJobsByRecommend(filterUrgentOnly(jobs, urgentOnly), userProfile)  // 일반 모드
+      ? applyFilters(nearbyJobs)
+      : sortForDisplay(applyFilters(jobs))
     : jobs;
 
   const urgentCount = isPublicList ? jobs.filter(j => j.isUrgent).length : 0;
@@ -376,86 +459,196 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
           </div>
         )}
 
-        {/* 필터 칩: 내 근처 + 반경 + 🔥급구 + 카테고리 (작업자 공개 목록) */}
+        {/* FILTER_V1: 핵심 4개 칩 + 반경 서브 칩 (작업자 공개 목록) */}
         {!myJobsMode && !myApplicationsMode && (
-          <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-none">
-            {/* 내 근처 */}
-            <button
-              onClick={handleNearby}
-              disabled={nearbyLoading}
-              style={{
-                flexShrink: 0,
-                padding: '5px 12px',
-                borderRadius: 9999,
-                fontWeight: 700,
-                fontSize: 12,
-                background: nearbyMode ? '#fff' : 'transparent',
-                color: nearbyMode ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
-                border: nearbyMode ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 4,
-                opacity: nearbyLoading ? 0.6 : 1,
-              }}
-            >
-              {nearbyLoading ? <Loader2 size={11} className="animate-spin" /> : <Navigation size={11} />}
-              {nearbyMode ? '전체 보기' : '내 근처'}
-            </button>
-
-            {/* 반경 선택 */}
-            {nearbyMode && [3, 5, 10].map(km => (
+          <>
+            {/* 메인 필터 칩 행 */}
+            <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
+              {/* 내 근처 */}
               <button
-                key={km}
-                onClick={() => handleRadiusChange(km)}
+                onClick={handleNearby}
                 disabled={nearbyLoading}
-                style={{
-                  flexShrink: 0,
-                  padding: '5px 10px',
-                  borderRadius: 9999,
-                  fontWeight: 700,
-                  fontSize: 11,
-                  background: radius === km ? '#fff' : 'transparent',
-                  color: radius === km ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
-                  border: radius === km ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
-                  cursor: 'pointer',
-                }}
-              >{km}km</button>
-            ))}
-
-            {/* 🔥 급구 */}
-            <button
-              onClick={() => setUrgentOnly(v => !v)}
-              style={{
-                flexShrink: 0,
-                padding: '5px 12px',
-                borderRadius: 9999,
-                fontWeight: 700,
-                fontSize: 12,
-                background: urgentOnly ? '#dc2626' : 'transparent',
-                color: urgentOnly ? '#fff' : 'rgba(255,255,255,0.85)',
-                border: urgentOnly ? '2px solid #dc2626' : '2px solid rgba(255,255,255,0.4)',
-                cursor: 'pointer',
-              }}
-            >🔥 급구{urgentCount > 0 && !urgentOnly ? ` ${urgentCount}` : ''}</button>
-
-            {/* 카테고리 */}
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setCategory(cat)}
                 style={{
                   flexShrink: 0,
                   padding: '5px 12px',
                   borderRadius: 9999,
                   fontWeight: 700,
                   fontSize: 12,
-                  background: category === cat ? '#fff' : 'transparent',
-                  color: category === cat ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
-                  border: category === cat ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  background: nearbyMode ? '#fff' : 'transparent',
+                  color: nearbyMode ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                  border: nearbyMode ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  opacity: nearbyLoading ? 0.6 : 1,
+                }}
+              >
+                {nearbyLoading ? <Loader2 size={11} className="animate-spin" /> : <Navigation size={11} />}
+                {nearbyMode ? '전체 보기' : '내 근처'}
+              </button>
+
+              {/* 🔥 급구 */}
+              <button
+                onClick={() => setUrgentOnly(v => !v)}
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 12px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: urgentOnly ? '#dc2626' : 'transparent',
+                  color: urgentOnly ? '#fff' : 'rgba(255,255,255,0.85)',
+                  border: urgentOnly ? '2px solid #dc2626' : '2px solid rgba(255,255,255,0.4)',
                   cursor: 'pointer',
                 }}
-              >{cat}</button>
-            ))}
-          </div>
+              >🔥 급구{urgentCount > 0 && !urgentOnly ? ` ${urgentCount}` : ''}</button>
+
+              {/* 전체 (필터 초기화) */}
+              {(urgentOnly || selectedCategories.length > 0) && (
+                <button
+                  onClick={clearFilters}
+                  style={{
+                    flexShrink: 0,
+                    padding: '5px 12px',
+                    borderRadius: 9999,
+                    fontWeight: 700,
+                    fontSize: 12,
+                    background: 'rgba(255,255,255,0.15)',
+                    color: 'rgba(255,255,255,0.85)',
+                    border: '2px solid rgba(255,255,255,0.4)',
+                    cursor: 'pointer',
+                  }}
+                >✕ 초기화</button>
+              )}
+
+              {/* 🤖 추천 버튼 */}
+              <button
+                onClick={applySmartFilter}
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 12px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: smartMode ? '#f59e0b' : 'transparent',
+                  color: smartMode ? '#fff' : 'rgba(255,255,255,0.85)',
+                  border: smartMode ? '2px solid #f59e0b' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                🤖 추천
+              </button>
+
+              {/* 🗂 종류 (카테고리 모달) */}
+              <button
+                onClick={() => { setShowFilterModal(true); setSmartMode(false); }}
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 12px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: selectedCategories.length > 0 && !smartMode ? '#fff' : 'transparent',
+                  color: selectedCategories.length > 0 && !smartMode ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                  border: selectedCategories.length > 0 && !smartMode ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                🗂 종류{selectedCategories.length > 0 && !smartMode ? ` ${selectedCategories.length}` : ''}
+              </button>
+            </div>
+
+            {/* 반경 서브 칩 (nearbyMode일 때만) */}
+            {nearbyMode && (
+              <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
+                {[3, 5, 10].map(km => (
+                  <button
+                    key={km}
+                    onClick={() => handleRadiusChange(km)}
+                    disabled={nearbyLoading}
+                    style={{
+                      flexShrink: 0,
+                      padding: '4px 10px',
+                      borderRadius: 9999,
+                      fontWeight: 700,
+                      fontSize: 11,
+                      background: radius === km ? '#fff' : 'transparent',
+                      color: radius === km ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                      border: radius === km ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                      cursor: 'pointer',
+                    }}
+                  >{km}km</button>
+                ))}
+              </div>
+            )}
+
+            {/* SMART_V4: 추천 이유 배너 (행동 데이터 있으면 문구 변경) */}
+            {smartMode && selectedCategories.length > 0 && (() => {
+              const reason   = getSmartReason();
+              const hotIds   = getHotJobIds();
+              const hasHuman = hotIds.length > 0;
+              return (
+                <div style={{
+                  margin: '0 16px 6px',
+                  padding: '7px 12px',
+                  borderRadius: 10,
+                  background: hasHuman
+                    ? 'rgba(37,99,235,0.18)'
+                    : 'rgba(245,158,11,0.18)',
+                  border: `1px solid ${hasHuman ? 'rgba(37,99,235,0.4)' : 'rgba(245,158,11,0.45)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <div>
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'block' }}>
+                      {hasHuman ? '👥 사람 흔적 기반' : reason.label}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#fff', fontWeight: 800 }}>
+                      🤖 {hasHuman
+                        ? `사람들이 많이 선택한 작업 · ${selectedCategories.join('·')}`
+                        : reason.desc}
+                    </span>
+                  </div>
+                  <button
+                    onClick={clearFilters}
+                    style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  >
+                    전체 보기
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* 선택된 카테고리 태그 표시 행 */}
+            {selectedCategories.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
+                {selectedCategories.map(cat => (
+                  <span
+                    key={cat}
+                    onClick={() => removeCategory(cat)}
+                    style={{
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: 'rgba(255,255,255,0.9)',
+                      color: '#2d8a4e',
+                      padding: '3px 10px',
+                      borderRadius: 9999,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {cat} <span style={{ fontSize: 10, opacity: 0.7 }}>✕</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </header>
 
@@ -594,6 +787,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               onCopyJob={myJobsMode ? onCopyJob : undefined}
               onViewDetail={onViewJobDetail ? (j) => onViewJobDetail(j) : undefined}
               userLocation={gpsLoc || loc}
+              isSmartMatch={smartMode && selectedCategories.includes(job.category)}
             />
           </div>
         ))}
@@ -624,6 +818,15 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
           jobId={postApply.jobId}
           job={postApply.job}
           onClose={() => setPostApply(null)}
+        />
+      )}
+
+      {/* FILTER_V1: 카테고리 다중 선택 모달 */}
+      {showFilterModal && (
+        <FilterModal
+          selectedCategories={selectedCategories}
+          setSelectedCategories={setSelectedCategories}
+          onClose={() => setShowFilterModal(false)}
         />
       )}
     </div>

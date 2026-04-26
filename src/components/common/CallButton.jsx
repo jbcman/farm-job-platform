@@ -21,6 +21,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { trackClientEvent } from '../../utils/api.js';
 import { logCall, logVariant } from '../../utils/conversionTracker.js';
+import { trackCall } from '../../utils/behaviorScore.js';
 
 // 모듈 레벨 쿨다운 (컴포넌트 재마운트 시에도 유지)
 let lastCallTime = 0;
@@ -57,6 +58,7 @@ export default function CallButton({
     lastCallTime = Date.now();
 
     logCall(jobId, activeVariant);
+    trackCall(jobId);   // SMART_V4: 전화 행동 기록 (가중치 ×30)
     try { trackClientEvent('call_click', { jobId, variant: activeVariant, hasPhone: !!phone }); } catch (_) {}
 
     // jobId 있으면 토큰 플로우 우선

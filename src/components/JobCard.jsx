@@ -10,6 +10,7 @@ import { distBadgeColor, SHADOW } from '../config/designSystem.js';
 import CallButton from './common/CallButton.jsx';
 import { logView, logDetail } from '../utils/conversionTracker.js';
 import { estimateWork } from '../utils/workEstimator.js';
+import { trackClick } from '../utils/behaviorScore.js';
 
 // ── 디자인 시스템 V2: 거리 체감 라벨 ─────────────────────────
 function distLabel(km) {
@@ -93,6 +94,7 @@ export default function JobCard({
   applied = false,
   userId,
   userLocation,     // DISTANCE_FIX: { lat, lng } | null — 프론트 폴백 거리 계산용
+  isSmartMatch = false, // SMART_V3: 🤖 추천 매칭 여부
 }) {
   // PHASE IMAGE_JOBTYPE_AI: autoJobType 확정 시 우선 아이콘
   const resolvedType = job.autoJobType || job.category;
@@ -193,6 +195,18 @@ export default function JobCard({
         className={`card animate-fade-in ${urgentBorder}`}
         style={{ padding: '14px 16px' }}
       >
+        {/* SMART_V3: 🤖 추천 뱃지 */}
+        {isSmartMatch && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            background: 'linear-gradient(90deg,#d97706,#f59e0b)',
+            color: '#fff', fontWeight: 900, fontSize: 11,
+            borderRadius: 9999, padding: '3px 10px', marginBottom: 8,
+          }}>
+            🤖 추천
+          </div>
+        )}
+
         {/* STEP 9: 긴급 태그 */}
         {isUrgentNow && (
           <div style={{
@@ -312,6 +326,7 @@ export default function JobCard({
             e.stopPropagation();
             logDetail(job.id);
             logBehavior(job, 'view');
+            trackClick(job.id);    // SMART_V4: 클릭 행동 기록
             onViewDetail?.(job);
           }}
           style={{
@@ -335,6 +350,7 @@ export default function JobCard({
       onClick={(e) => {
         if (e.target.closest('button, a')) return;
         logBehavior(job, 'view');
+        trackClick(job.id);    // SMART_V4: 카드 클릭 행동 기록
         onViewDetail && onViewDetail(job);
       }}
     >

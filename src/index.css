@@ -184,3 +184,38 @@
 @supports (height: 100dvh) {
   .min-h-screen { min-height: 100dvh; }
 }
+
+/* ─── FILTER_V1: 확장형 필터 모달 ────────────────────────────── */
+.filter-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+}
+
+.filter-modal-sheet {
+  width: 100%;
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px 32px;
+  animation: slideUp 0.22s cubic-bezier(.22,1,.36,1) both;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.filter-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.filter-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
