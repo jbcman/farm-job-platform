@@ -115,6 +115,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       setGpsLng(data.lng);
       setGpsStatus('ok');         // LOCATION_FIX: setGeoStatus → setGpsStatus (정의된 함수)
       setGeocodeStatus('ok');
+      setConfirmedLocation(true); // REQUEST_FAIL_UX STEP4: 지오코딩 성공 시 자동 확인 (핀 드래그 전까지)
       // ❌ localStorage.setItem('userLocation', ...) 제거 — 농지 위치 ≠ 내 위치
       try { trackClientEvent('geocode_success', { address: farmAddress.trim() }); } catch (_) {}
     } catch (e) {
@@ -544,11 +545,21 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                       borderRadius: 12,
                       border: confirmedLocation
                         ? '2px solid #2d8a4e'
-                        : '2px solid #d1d5db',
+                        : '2px solid #ef4444',
                       overflow: 'hidden',
                       position: 'relative',
                     }}
                   />
+
+                  {/* REQUEST_FAIL_UX STEP3: 핀 드래그 후 재확인 필요 시 시각적 경고 */}
+                  {!confirmedLocation && (
+                    <p style={{
+                      marginTop: 6, fontSize: 11, fontWeight: 700, color: '#dc2626',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
+                      👇 핀을 이동했어요 — 아래 버튼으로 위치를 확인해주세요
+                    </p>
+                  )}
 
                   {/* 확인 / 재입력 버튼 */}
                   {!confirmedLocation ? (
@@ -796,8 +807,9 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                       px-4 pt-3 pb-safe pb-4 z-30">
         <button
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || (farmAddress.trim() && geocodeStatus === 'ok' && !confirmedLocation)}
           className={`btn-full text-lg py-4 font-black rounded-2xl flex items-center justify-center gap-2
+                      ${(farmAddress.trim() && geocodeStatus === 'ok' && !confirmedLocation) ? 'opacity-50 cursor-not-allowed' : ''}
                       ${isUrgentPaid
                         ? 'bg-red-500 text-white active:scale-95 transition-transform shadow-lg'
                         : 'btn-primary'}`}
