@@ -65,6 +65,7 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true })); // MAP_CORE: form-encoded body 방어
 
 // ─── 요청 로그 ────────────────────────────────────────────────────
 app.use((req, _res, next) => {

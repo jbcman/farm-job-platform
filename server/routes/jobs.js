@@ -234,6 +234,11 @@ router.post('/smart-assist', (req, res) => {
 
 // ─── POST /api/jobs ───────────────────────────────────────────
 router.post('/', async (req, res) => {
+  try { // MAP_CORE: 전체 핸들러 try/catch — 비동기 throw 시 502 완전 차단
+    // MAP_CORE: body 디버그 로그 (farmImages 제외)
+    const { farmImages: _fi, ...bodyLog } = req.body || {};
+    console.log('[API /jobs POST] body:', bodyLog);
+
     const {
         requesterId, requesterName, category, locationText,
         latitude, longitude,
@@ -243,7 +248,7 @@ router.post('/', async (req, res) => {
         farmImages: farmImagesRaw,   // PHASE 26: 다중 이미지 배열 (JSON string or array)
         farmAddress: farmAddressRaw, // PHASE MAP_FIX: 농지 주소 (지오코딩 소스)
         isUrgentPaid: isUrgentPaidRaw, // PHASE SCALE: 유료 긴급 공고
-    } = req.body;
+    } = req.body || {};
 
     if (!requesterId || !category || !locationText || !date) {
         return res.status(400).json({ ok: false, error: '필수 항목이 빠졌어요.' });
@@ -407,6 +412,14 @@ router.post('/', async (req, res) => {
     });
 
     return res.status(201).json({ ok: true, job: jobView(normalizeJob(row)) });
+
+  } catch (e) {
+    // MAP_CORE: 최상위 catch — async 핸들러 내 미처리 throw → 502 방지
+    console.error('[JOB_CREATE_FATAL]', e.message, e.stack?.split('\n')[1] || '');
+    if (!res.headersSent) {
+        return res.status(500).json({ ok: false, error: '서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.' });
+    }
+  }
 });
 
 // ─── GET /api/jobs ────────────────────────────────────────────
