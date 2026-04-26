@@ -43,7 +43,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       .finally(() => setLoading(false));
   }, [job.id, userId]);
 
-  async function handleSelect(applicant) {
+  // FAST_SELECT: 선택 API → 즉시 전화 다이얼 (한 번 탭으로 끝)
+  async function handleSelectAndCall(applicant) {
     if (!applicant.worker) return;
     setSelecting(applicant.worker.id);
     try {
@@ -52,6 +53,11 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
         workerId:    applicant.worker.id,
       });
       onSelectContact?.(data.contact);
+      // 선택 완료 즉시 전화 연결 — contact.workerPhone 사용
+      const phone = data.contact?.workerPhone;
+      if (phone) {
+        window.location.href = `tel:${phone.replace(/[^0-9]/g, '')}`;
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -121,6 +127,18 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
           <div>
             <p className="text-sm font-bold text-indigo-700">AI 추천으로 자동 연결됐어요</p>
             <p className="text-xs text-indigo-500">거리·평점·속도를 종합해 최적 작업자를 선택했어요</p>
+          </div>
+        </div>
+      )}
+
+      {/* FAST_SELECT: 행동 유도 배너 — 선택 가능한 상태에서만 표시 */}
+      {!loading && applicants.length > 0 && !isReadOnly && (
+        <div className="mx-4 mt-3 flex items-center gap-3 bg-amber-50 border border-amber-200
+                        rounded-2xl px-4 py-3">
+          <span className="text-2xl">🔥</span>
+          <div>
+            <p className="font-bold text-amber-800">지원자 {applicants.length}명 도착!</p>
+            <p className="text-xs text-amber-600">👇 한 명 선택하면 바로 전화 연결돼요</p>
           </div>
         </div>
       )}
@@ -201,9 +219,12 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                   <div className="flex items-center gap-1 text-sm text-gray-500 mt-0.5">
                     <MapPin size={13} />
                     <span>{w.baseLocationText}</span>
-                    {w.distLabel && (
+                    {w.distKm != null && (
                       <span className="text-gray-400 ml-0.5">
-                        ({w.distKm != null ? `${w.distKm}km` : w.distLabel})
+                        ({w.distKm}km ·{' '}
+                        <span className="text-blue-500 font-semibold">
+                          약 {Math.round((w.distKm / 40) * 60)}분
+                        </span>)
                       </span>
                     )}
                   </div>
@@ -317,15 +338,19 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 </div>
               ) : applicant.status === 'applied' && !isReadOnly ? (
                 <button
-                  onClick={() => handleSelect(applicant)}
+                  onClick={() => handleSelectAndCall(applicant)}
                   disabled={!!selecting}
-                  className={`btn-full ${rank === 1 ? 'btn-primary' : 'btn-outline py-3'}`}
+                  className={`btn-full flex items-center justify-center gap-2 ${
+                    rank === 1
+                      ? 'btn-primary text-base py-3.5'
+                      : 'btn-outline py-3'
+                  }`}
                 >
                   {selecting === w.id
                     ? <><Loader2 size={16} className="animate-spin" /> 처리 중...</>
                     : rank === 1
-                      ? '⭐ 추천 — 이 분으로 결정할게요'
-                      : '이 분으로 결정할게요'}
+                      ? <><Phone size={16} /> 선택 · 바로 전화연결</>
+                      : '이 분으로 결정 · 전화연결'}
                 </button>
               ) : (
                 <p className="text-center text-sm text-gray-400 py-2">
