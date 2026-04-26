@@ -1498,6 +1498,54 @@ router.post('/:id/rematch', (req, res) => {
     return res.json({ ok: true, count: candidates.length, candidates: candidates.map(c => ({ workerId: c.workerId, name: c.name })) });
 });
 
+// ─── AUTO_MATCH: POST /api/jobs/:id/urgent ───────────────────
+// 농민이 무료로 isUrgent=1 전환 → 매칭 점수 +100 boost → 더 많은 작업자에게 노출
+// (향후 유료화 훅: isUrgentPaid 플래그로 분리)
+router.post('/:id/urgent', (req, res) => {
+    const { requesterId } = req.body || {};
+    if (!requesterId) return res.status(400).json({ ok: false, error: 'requesterId가 필요해요.' });
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '본인 공고만 긴급 전환 가능해요.' });
+    }
+    if (job.status !== 'open') {
+        return res.status(400).json({ ok: false, error: '모집 중인 공고만 긴급 전환 가능해요.' });
+    }
+    if (job.isUrgent) {
+        return res.json({ ok: true, alreadyUrgent: true });
+    }
+
+    db.prepare('UPDATE jobs SET isUrgent = 1 WHERE id = ?').run(job.id);
+    console.log(`[JOB_URGENT] jobId=${job.id} requesterId=${requesterId}`);
+    trackEvent('job_urgent', { jobId: job.id, userId: requesterId, meta: { category: job.category } });
+
+    // 기존 지원자에게 "긴급 전환됐어요" 알림 재발송 (fire-and-forget)
+    setImmediate(async () => {
+        try {
+            const apps = db.prepare(
+                "SELECT a.workerId, w.phone, w.name FROM applications a LEFT JOIN workers w ON w.id = a.workerId WHERE a.jobRequestId = ? AND a.status = 'applied'"
+            ).all(job.id);
+            const updatedJob = { ...job, isUrgent: 1 };
+            for (const a of apps) {
+                if (a.phone) {
+                    try {
+                        await sendJobAlert(updatedJob, { phone: a.phone, name: a.name });
+                    } catch (_) {}
+                }
+            }
+            if (apps.length > 0) {
+                console.log(`[URGENT_ALERT_SENT] jobId=${job.id} notified=${apps.length}명`);
+            }
+        } catch (e) {
+            console.error('[URGENT_ALERT_ERROR]', e.message);
+        }
+    });
+
+    return res.json({ ok: true, alreadyUrgent: false, notified: true });
+});
+
 // ─── PHASE SCALE: POST /api/jobs/:id/sponsor ─────────────────
 // 농민 자가 서비스 — 스폰서 등록 + isUrgentPaid 플래그 설정
 // 결제 검증은 추후 PG 연동 시 구현 (테스트 모드: 호출 즉시 활성화)

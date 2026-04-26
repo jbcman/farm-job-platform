@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy } from 'lucide-react';
-import { getApplicants, selectWorker, connectCall, startJob } from '../utils/api.js';
+import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Zap } from 'lucide-react';
+import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent } from '../utils/api.js';
 
 // PHASE 28: 추천 배지 — rank 1/2/3 각각 다른 스타일
 const RANK_BADGE = {
@@ -29,6 +29,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const [calling, setCalling]       = useState(null);   // PHASE 29: 전화 연결 중
   const [callHint, setCallHint]     = useState(null);   // PHASE 32: 미수신 힌트 workerId
   const [error, setError]           = useState('');
+  const [urgenting, setUrgenting]   = useState(false);  // AUTO_MATCH: 긴급 전환 중
+  const [isUrgent, setIsUrgent]     = useState(job.isUrgent || false); // 낙관적 업데이트용
 
   // Phase 8: 상태별 읽기 전용 모드
   const isReadOnly = job.status === 'closed' || job.status === 'matched';
@@ -97,6 +99,20 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     }
   }
 
+  // AUTO_MATCH: 긴급 전환 — isUrgent=1 → 매칭 +100 boost + 지원자 재알림
+  async function handleUrgent() {
+    if (urgenting) return;
+    setUrgenting(true);
+    try {
+      await setJobUrgent(job.id, userId);
+      setIsUrgent(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUrgenting(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-farm-bg pb-8">
       {/* 헤더 */}
@@ -131,15 +147,52 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
         </div>
       )}
 
-      {/* FAST_SELECT: 행동 유도 배너 — 선택 가능한 상태에서만 표시 */}
-      {!loading && applicants.length > 0 && !isReadOnly && (
-        <div className="mx-4 mt-3 flex items-center gap-3 bg-amber-50 border border-amber-200
-                        rounded-2xl px-4 py-3">
-          <span className="text-2xl">🔥</span>
-          <div>
-            <p className="font-bold text-amber-800">지원자 {applicants.length}명 도착!</p>
-            <p className="text-xs text-amber-600">👇 한 명 선택하면 바로 전화 연결돼요</p>
-          </div>
+      {/* AUTO_MATCH: 상태별 상단 배너 */}
+      {!loading && !isReadOnly && isFarmer && (
+        <div className="mx-4 mt-3 space-y-2">
+
+          {/* ① 지원자 있음 → 선택 유도 */}
+          {applicants.length > 0 && (
+            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+              <span className="text-2xl">🔥</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-amber-800">지원자 {applicants.length}명 도착!</p>
+                <p className="text-xs text-amber-600">👇 한 명 선택하면 바로 전화 연결돼요</p>
+              </div>
+            </div>
+          )}
+
+          {/* ② AI 자동매칭 진행 상태 (3명 미만 → 카운터 표시) */}
+          {applicants.filter(a => a.status === 'applied').length < 3 && (
+            <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-2.5">
+              <Loader2 size={18} className="text-blue-500 animate-spin shrink-0" />
+              <p className="text-xs text-blue-700">
+                지원자 <strong>{Math.max(0, 3 - applicants.filter(a => a.status === 'applied').length)}명</strong> 더 오면
+                {' '}<strong>AI 자동 매칭</strong>이 시작돼요
+              </p>
+            </div>
+          )}
+
+          {/* ③ 긴급 전환 CTA — 아직 긴급 아닐 때만 */}
+          {!isUrgent && (
+            <button
+              onClick={handleUrgent}
+              disabled={urgenting}
+              className="w-full flex items-center justify-center gap-2 bg-red-50 border border-red-200
+                         text-red-700 font-bold text-sm rounded-2xl px-4 py-2.5
+                         active:scale-95 transition-transform disabled:opacity-60"
+            >
+              {urgenting
+                ? <><Loader2 size={14} className="animate-spin" /> 처리 중...</>
+                : <><Zap size={14} /> 긴급 전환 — 더 많은 작업자에게 알림 발송</>
+              }
+            </button>
+          )}
+          {isUrgent && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-2 text-xs font-bold text-red-600">
+              <Zap size={13} fill="currentColor" /> 긴급 공고로 등록됐어요 — 작업자 알림 재발송 완료
+            </div>
+          )}
         </div>
       )}
 
@@ -170,16 +223,36 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
           <div className="card bg-red-50 text-red-600 text-sm py-3 text-center">{error}</div>
         )}
 
-        {applicants.map((applicant) => {
+        {/* AUTO_MATCH: rank 1 전용 섹션 헤더 */}
+        {applicants.length > 0 && applicants[0]?.rank === 1 && !isReadOnly && isFarmer && (
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-base">🎯</span>
+            <p className="text-sm font-bold text-amber-700">AI 추천 1순위</p>
+            <span className="flex-1 h-px bg-amber-200" />
+          </div>
+        )}
+
+        {applicants.map((applicant, idx) => {
           const w    = applicant.worker;
           if (!w) return null;
           const rank = applicant.rank;           // PHASE 28: 1-based rank
           const isTop3 = rank <= 3;
           const badge  = RANK_BADGE[rank];
 
+          // rank 2 시작 지점에 구분선 삽입
+          const showDivider = rank === 2 && applicants.length > 1;
+
           return (
+            <React.Fragment key={applicant.applicationId}>
+              {/* rank 2 시작 — "다른 지원자" 구분선 */}
+              {showDivider && (
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="flex-1 h-px bg-gray-200" />
+                  <p className="text-xs text-gray-400 font-medium">다른 지원자</p>
+                  <span className="flex-1 h-px bg-gray-200" />
+                </div>
+              )}
             <div
-              key={applicant.applicationId}
               className={`card transition-all ${
                 rank === 1
                   ? 'border-2 border-amber-300 bg-amber-50/30 shadow-md'
@@ -362,6 +435,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 </p>
               )}
             </div>
+            </React.Fragment>
           );
         })}
       </div>

@@ -158,6 +158,11 @@ export async function rematchJob(jobId, requesterId) {
     return req('POST', `/jobs/${jobId}/rematch`, { requesterId });
 }
 
+/** AUTO_MATCH: 긴급 전환 (무료 — isUrgent=1, 매칭 +100 boost) */
+export async function setJobUrgent(jobId, requesterId) {
+    return req('POST', `/jobs/${jobId}/urgent`, { requesterId });
+}
+
 /** PHASE SCALE: 스폰서 등록 (type: 'sponsored' | 'urgentPaid') */
 export async function sponsorJob(jobId, { requesterId, type = 'sponsored', hours = 24, boost = 20 }) {
     return req('POST', `/jobs/${jobId}/sponsor`, { requesterId, type, hours, boost });
