@@ -213,8 +213,21 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                       {speedLabel(applicant.speedMins)}
                     </p>
                   )}
+                  {/* TRUST_SYSTEM: 노쇼 경고 */}
+                  {w.noshowCount > 0 && (
+                    <p className="text-xs font-bold text-red-500 mt-0.5">
+                      ⚠️ 노쇼 {w.noshowCount}회
+                    </p>
+                  )}
                 </div>
               </div>
+
+              {/* TRUST_SYSTEM: 가능 시간대 + 장비 배지 */}
+              {w.availableTimeText && w.availableTimeText !== '협의' && (
+                <p className="text-xs text-blue-600 font-semibold mb-2">
+                  🕐 {w.availableTimeText}
+                </p>
+              )}
 
               {/* 장비 배지 */}
               <div className="flex gap-1.5 flex-wrap mb-3">

@@ -1002,6 +1002,7 @@ router.get('/:id/applicants', (req, res) => {
                 completedJobs:    worker.completedJobs,
                 rating:           worker.rating,
                 availableTimeText: worker.availableTimeText,
+                noshowCount:      worker.noshowCount || 0, // TRUST_SYSTEM
                 distKm,
                 distLabel:        dist !== null ? distLabel(dist) : null,
             } : null,
@@ -1117,6 +1118,18 @@ router.post('/:id/close', (req, res) => {
 
     db.prepare("UPDATE jobs SET status = 'closed', closedAt = ? WHERE id = ?")
       .run(new Date().toISOString(), job.id);
+
+    // TRUST_SYSTEM: 노쇼 추적 — matched 상태에서 마감 = 작업자 노쇼로 간주
+    if (job.status === 'matched' && job.selectedWorkerId) {
+        try {
+            db.prepare(
+                'UPDATE workers SET noshowCount = COALESCE(noshowCount, 0) + 1 WHERE id = ?'
+            ).run(job.selectedWorkerId);
+            console.log(`[NOSHOW_TRACKED] jobId=${job.id} workerId=${job.selectedWorkerId}`);
+        } catch (e) {
+            console.warn('[NOSHOW_TRACK_FAIL]', e.message);
+        }
+    }
 
     console.log(`[JOB_CLOSED] id=${job.id} prevStatus=${job.status} farmer=${requesterId}`);
     trackEvent('job_closed', { jobId: job.id, userId: requesterId, meta: { prevStatus: job.status } });
@@ -1295,10 +1308,21 @@ router.post('/:id/complete-work', (req, res) => {
 });
 
 // ─── POST /api/jobs/:id/review ────────────────────────────────
-// PHASE 22: 완료된 작업에 후기 작성 (작업자 → 농민 평가)
+// TRUST_SYSTEM: 양방향 리뷰 (농민↔작업자) + 태그 + 블라인드 공개
+// - isPublic=0 으로 저장 → 양측 작성 완료 시 isPublic=1 자동 공개 (보복 방지)
 router.post('/:id/review', (req, res) => {
-    const { workerId, rating, review = '' } = req.body;
-    if (!workerId) return res.status(400).json({ ok: false, error: 'workerId가 필요해요.' });
+    // backward compat: workerId OR reviewerId 둘 다 허용
+    const {
+        workerId,
+        reviewerId: reviewerIdParam,
+        targetId:   targetIdParam,
+        rating,
+        review:  comment = '',
+        tags:    tagsRaw,
+    } = req.body;
+
+    const reviewerId = reviewerIdParam || workerId;
+    if (!reviewerId) return res.status(400).json({ ok: false, error: 'reviewerId가 필요해요.' });
 
     const r = parseInt(rating);
     if (!r || r < 1 || r > 5) {
@@ -1308,37 +1332,79 @@ router.post('/:id/review', (req, res) => {
     const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
 
-    // completed 상태인 application만 허용
-    const app = db.prepare(
-        "SELECT * FROM applications WHERE jobRequestId = ? AND workerId = ? AND status = 'completed'"
-    ).get(job.id, workerId);
-    if (!app) {
-        return res.status(403).json({ ok: false, error: '완료된 작업에만 후기를 남길 수 있어요.' });
+    // 작성 자격 확인: 농민 OR 선택된 작업자
+    const isFarmer = job.requesterId  === reviewerId;
+    const isWorker = job.selectedWorkerId === reviewerId;
+    if (!isFarmer && !isWorker) {
+        // 하위호환: completed application도 허용
+        const app = db.prepare(
+            "SELECT id FROM applications WHERE jobRequestId = ? AND workerId = ?"
+        ).get(job.id, reviewerId);
+        if (!app) return res.status(403).json({ ok: false, error: '이 작업에 참여한 분만 후기를 남길 수 있어요.' });
     }
 
-    // 중복 후기 방지 (UNIQUE(jobId, reviewerId) 제약 + 선제 확인)
+    // targetId: 명시적 or 역할 추론 (농민 → 작업자, 작업자 → 농민)
+    const targetId = targetIdParam
+        || (isFarmer ? job.selectedWorkerId : job.requesterId);
+    if (!targetId) return res.status(400).json({ ok: false, error: '대상을 특정할 수 없어요. targetId를 전달해주세요.' });
+
+    // 중복 방지
     const existing = db.prepare(
         'SELECT id FROM reviews WHERE jobId = ? AND reviewerId = ?'
-    ).get(job.id, workerId);
+    ).get(job.id, reviewerId);
     if (existing) return res.status(409).json({ ok: false, error: '이미 후기를 작성했어요.' });
+
+    // tags 직렬화
+    const tagsStr = Array.isArray(tagsRaw)
+        ? JSON.stringify(tagsRaw)
+        : (tagsRaw ? String(tagsRaw) : null);
 
     const id = newId('rev');
     db.prepare(`
-        INSERT INTO reviews (id, jobId, reviewerId, targetId, rating, comment, createdAt)
-        VALUES (@id, @jobId, @reviewerId, @targetId, @rating, @comment, @createdAt)
-    `).run({
-        id,
-        jobId:      job.id,
-        reviewerId: workerId,
-        targetId:   job.requesterId,
-        rating:     r,
-        comment:    review,
-        createdAt:  new Date().toISOString(),
-    });
+        INSERT INTO reviews (id, jobId, reviewerId, targetId, rating, comment, tags, isPublic, createdAt)
+        VALUES (@id, @jobId, @reviewerId, @targetId, @rating, @comment, @tags, 0, @createdAt)
+    `).run({ id, jobId: job.id, reviewerId, targetId, rating: r, comment, tags: tagsStr, createdAt: new Date().toISOString() });
 
-    console.log(`[REVIEW_SUBMITTED] jobId=${job.id} workerId=${workerId} rating=${r}`);
-    trackEvent('review_submitted', { jobId: job.id, userId: workerId, meta: { rating: r } });
-    return res.status(201).json({ ok: true });
+    // BLIND_REVEAL: 상대방도 작성했으면 양쪽 동시 공개 (보복 방지)
+    const otherReview = db.prepare(
+        'SELECT id FROM reviews WHERE jobId = ? AND reviewerId != ? AND isPublic = 0'
+    ).get(job.id, reviewerId);
+    let revealed = false;
+    if (otherReview) {
+        db.prepare('UPDATE reviews SET isPublic = 1 WHERE jobId = ?').run(job.id);
+        revealed = true;
+        console.log(`[REVIEW_BLIND_REVEAL] jobId=${job.id} — 양측 작성 완료 → 공개`);
+    }
+
+    console.log(`[REVIEW_SUBMITTED] jobId=${job.id} reviewerId=${reviewerId} target=${targetId} rating=${r} blind=${!revealed}`);
+    trackEvent('review_submitted', { jobId: job.id, userId: reviewerId, meta: { rating: r } });
+    return res.status(201).json({ ok: true, revealed, waitingForOther: !revealed });
+});
+
+// ─── GET /api/jobs/:id/reviews ────────────────────────────────
+// TRUST_SYSTEM: 공개 리뷰 + 자기가 쓴 리뷰 (블라인드 대기 중 포함)
+router.get('/:id/reviews', (req, res) => {
+    const { userId } = req.query;
+    const reviews = db.prepare(`
+        SELECT r.id, r.reviewerId, r.targetId, r.rating, r.comment, r.tags,
+               r.isPublic, r.createdAt,
+               u.name AS reviewerName
+        FROM   reviews r
+        LEFT JOIN users u ON u.id = r.reviewerId
+        WHERE  r.jobId = ?
+          AND  (r.isPublic = 1 OR r.reviewerId = ?)
+        ORDER BY r.createdAt DESC
+    `).all(req.params.id, userId || '');
+
+    // tags 파싱
+    const parsed = reviews.map(rv => ({
+        ...rv,
+        tags: (() => { try { return rv.tags ? JSON.parse(rv.tags) : []; } catch { return []; } })(),
+        isPublic: !!rv.isPublic,
+        waitingForOther: !rv.isPublic,
+    }));
+
+    return res.json({ ok: true, reviews: parsed, count: parsed.length });
 });
 
 // ─── PHASE RETENTION: POST /api/jobs/:id/rematch ─────────────
