@@ -168,6 +168,11 @@ export async function autoAssignWorker(jobId, requesterId) {
     return req('POST', `/jobs/${jobId}/auto-assign`, { requesterId });
 }
 
+/** AI_MATCH_V2: 자동 배정 opt-in 토글 (enable: true=켜기 / false=끄기) */
+export async function setAutoAssign(jobId, requesterId, enable) {
+    return req('POST', `/jobs/${jobId}/set-auto-assign`, { requesterId, enable });
+}
+
 /** PHASE SCALE: 스폰서 등록 (type: 'sponsored' | 'urgentPaid') */
 export async function sponsorJob(jobId, { requesterId, type = 'sponsored', hours = 24, boost = 20 }) {
     return req('POST', `/jobs/${jobId}/sponsor`, { requesterId, type, hours, boost });

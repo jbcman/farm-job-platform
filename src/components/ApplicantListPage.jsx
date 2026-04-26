@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Zap } from 'lucide-react';
-import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker } from '../utils/api.js';
+import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign } from '../utils/api.js';
 
 // PHASE 28: 추천 배지 — rank 1/2/3 각각 다른 스타일
 const RANK_BADGE = {
@@ -31,8 +31,10 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const [error, setError]           = useState('');
   const [urgenting,    setUrgenting]    = useState(false);   // AUTO_MATCH: 긴급 전환 중
   const [isUrgent,     setIsUrgent]     = useState(job.isUrgent || false); // 낙관적 업데이트용
-  const [autoAssigning, setAutoAssigning] = useState(false); // AI_MATCH_V2: 자동 배정 중
-  const [autoResult,   setAutoResult]   = useState(null);    // { workerName, workerPhone, matchScore }
+  const [autoAssigning,  setAutoAssigning]  = useState(false);              // AI_MATCH_V2: 자동 배정 중
+  const [autoResult,     setAutoResult]     = useState(null);               // { workerName, workerPhone, matchScore }
+  const [autoAssignOn,   setAutoAssignOn]   = useState(!!job.autoAssign);   // SAFETY: opt-in 상태
+  const [togglingAuto,   setTogglingAuto]   = useState(false);              // 토글 처리 중
 
   // Phase 8: 상태별 읽기 전용 모드
   const isReadOnly = job.status === 'closed' || job.status === 'matched';
@@ -112,6 +114,20 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       setError(e.message);
     } finally {
       setUrgenting(false);
+    }
+  }
+
+  // SAFETY: 자동 배정 opt-in/off 토글
+  async function handleToggleAutoAssign(enable) {
+    if (togglingAuto) return;
+    setTogglingAuto(true);
+    try {
+      await setAutoAssign(job.id, userId, enable);
+      setAutoAssignOn(enable);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTogglingAuto(false);
     }
   }
 
@@ -198,28 +214,69 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
             </div>
           )}
 
-          {/* ③ AI 자동 배정 — 지원자 있고 직접 고르기 귀찮을 때 */}
-          {applicants.filter(a => a.status === 'applied').length > 0 && !autoResult && (
-            <button
-              onClick={handleAutoAssign}
-              disabled={autoAssigning}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-500 text-white
-                         font-bold text-sm rounded-2xl px-4 py-3
-                         active:scale-95 transition-transform disabled:opacity-60 shadow-sm"
-            >
-              {autoAssigning
-                ? <><Loader2 size={14} className="animate-spin" /> AI 분석 중...</>
-                : <>🤖 AI 자동 배정 — 지금 바로 최적 작업자 선택</>
-              }
-            </button>
-          )}
-          {autoResult && (
-            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-2.5">
-              <span className="text-base">🤖</span>
-              <p className="text-xs font-bold text-indigo-700">
-                {autoResult.contact?.workerName}님이 자동 배정됐어요
-                <span className="font-normal text-indigo-500 ml-1">(점수 {autoResult.matchScore}점)</span>
-              </p>
+          {/* ③ AI 자동 배정 — 지원자 있을 때만 */}
+          {applicants.filter(a => a.status === 'applied').length > 0 && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 space-y-2">
+
+              {/* opt-in 토글 */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-indigo-800">🤖 AI 자동 배정</p>
+                  <p className="text-xs text-indigo-500 mt-0.5">
+                    {autoAssignOn
+                      ? '켜짐 — 조건 충족 시 자동 연결됩니다'
+                      : '꺼짐 — 직접 선택하거나 아래 버튼으로 즉시 배정'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleToggleAutoAssign(!autoAssignOn)}
+                  disabled={togglingAuto}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 flex-shrink-0
+                    ${autoAssignOn ? 'bg-indigo-500' : 'bg-gray-300'}
+                    ${togglingAuto ? 'opacity-60' : ''}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow
+                    transition-transform duration-200
+                    ${autoAssignOn ? 'translate-x-6' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+
+              {/* 자동 배정 ON 경고 */}
+              {autoAssignOn && (
+                <div className="flex items-start gap-1.5 bg-indigo-100 rounded-xl px-3 py-2">
+                  <span className="text-xs">⚠️</span>
+                  <p className="text-xs text-indigo-700">
+                    지원자 3명 + 점수 기준 충족 시 <strong>자동으로 연결됩니다</strong>.
+                    연결되면 카카오 알림으로 안내해드려요.
+                  </p>
+                </div>
+              )}
+
+              {/* 즉시 배정 버튼 (토글 상관없이 항상 가능) */}
+              {!autoResult && (
+                <button
+                  onClick={handleAutoAssign}
+                  disabled={autoAssigning}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-500 text-white
+                             font-bold text-sm rounded-xl py-2.5
+                             active:scale-95 transition-transform disabled:opacity-60"
+                >
+                  {autoAssigning
+                    ? <><Loader2 size={14} className="animate-spin" /> AI 분석 중...</>
+                    : '지금 바로 최적 작업자 배정하기'
+                  }
+                </button>
+              )}
+              {autoResult && (
+                <div className="flex items-center gap-2 py-1">
+                  <span className="text-base">✅</span>
+                  <p className="text-xs font-bold text-indigo-700">
+                    {autoResult.contact?.workerName}님이 배정됐어요
+                    <span className="font-normal text-indigo-500 ml-1">(점수 {autoResult.matchScore}점)</span>
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

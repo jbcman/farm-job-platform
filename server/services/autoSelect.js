@@ -64,6 +64,11 @@ async function checkAndAutoSelect(jobId) {
         if (!jobRow || jobRow.status !== 'open') {
             return { skipped: true, reason: 'job_not_open' };
         }
+        // ── [SAFETY] 농민 동의(autoAssign=1) 없으면 자동 배정 차단 ──────
+        // 기본값 0 (OFF). 농민이 명시적으로 켜야만 자동 매칭 실행됨.
+        if (!jobRow.autoAssign) {
+            return { skipped: true, reason: 'autoAssign_disabled' };
+        }
         // ── [방어 0] 서버 재시작 후에도 재실행 차단: 이미 자동 선택된 경우 ──
         if (jobRow.autoSelected) {
             return { skipped: true, reason: 'already_auto_selected' };

@@ -1549,6 +1549,26 @@ router.post('/:id/urgent', (req, res) => {
     return res.json({ ok: true, alreadyUrgent: false, notified: true });
 });
 
+// ─── AI_MATCH_V2: POST /api/jobs/:id/set-auto-assign ─────────
+// 농민 opt-in 토글 — autoAssign=1 이어야 checkAndAutoSelect 실행됨
+router.post('/:id/set-auto-assign', (req, res) => {
+    const { requesterId, enable } = req.body || {};
+    if (!requesterId) return res.status(400).json({ ok: false, error: 'requesterId가 필요해요.' });
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '내 공고만 설정 가능해요.' });
+    }
+
+    const flag = enable ? 1 : 0;
+    db.prepare('UPDATE jobs SET autoAssign = ? WHERE id = ?').run(flag, job.id);
+    console.log(`[AUTO_ASSIGN_FLAG] jobId=${job.id} autoAssign=${flag}`);
+    trackEvent('auto_assign_toggle', { jobId: job.id, userId: requesterId, meta: { enable: flag } });
+
+    return res.json({ ok: true, autoAssign: flag });
+});
+
 // ─── AI_MATCH_V2: POST /api/jobs/:id/auto-assign ─────────────
 // 농민이 명시적으로 "AI 자동 배정" 트리거
 // checkAndAutoSelect(자동, 3명+조건)과 달리 1명도 가능, 농민이 직접 실행
