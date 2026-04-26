@@ -346,7 +346,7 @@ router.post('/', async (req, res) => {
          @areaPyeong, @farmImages, @farmAddress, @isUrgentPaid)
     `).run(row);
 
-    console.log(`[JOB_CREATED] id=${id} category=${category} location=${locationText} gps=${hasGps ? resolvedLat+','+resolvedLng : 'none'} urgent=${isUrgent}`);
+    console.log(`[JOB_CREATED] id=${id} category=${category} location=${locationText} lat=${resolvedLat ?? 'none'} lng=${resolvedLng ?? 'none'} urgent=${isUrgent}`);
     trackEvent('job_created', { jobId: id, userId: requesterId, meta: { category } });
 
     // Phase 11: 미선택 지원자 재매칭 알림 (비동기, fail-safe)
