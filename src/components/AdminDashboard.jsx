@@ -3,6 +3,7 @@ import {
   RefreshCw, AlertTriangle, Activity, BarChart2,
   Briefcase, Users, CheckCircle, XCircle, ArrowLeft,
   TrendingUp, Star, Award,
+  ShieldOff, Shield, MapPin, Flag, Search, ChevronDown,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -10,10 +11,15 @@ import {
 } from 'recharts';
 
 // ── API 헬퍼 ────────────────────────────────────────────────────
-async function adminFetch(path, key) {
+async function adminFetch(path, key, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers['Authorization'] = `Bearer ${key}`;
-  const res  = await fetch(`/api${path}`, { headers });
+  const { method = 'GET', body } = options;
+  const res  = await fetch(`/api${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) throw new Error(data.error || '요청 실패');
   return data;
@@ -149,9 +155,20 @@ export default function AdminDashboard({ onBack }) {
   const [error,       setError]       = useState('');
   const [lastFetch,   setLastFetch]   = useState(null);
   // ANALYTICS_TAB: 전환 퍼널
-  const [activeTab,   setActiveTab]   = useState('ops'); // 'ops' | 'analytics'
+  const [activeTab,   setActiveTab]   = useState('ops'); // 'ops' | 'analytics' | 'users' | 'jobs-mgmt' | 'reports' | 'geo'
   const [analyticsData, setAnalyticsData] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  // ADMIN_TABS: 사용자 / 작업 / 신고 / 지도품질
+  const [usersData,        setUsersData]        = useState([]);
+  const [usersSearch,      setUsersSearch]       = useState('');
+  const [usersLoading,     setUsersLoading]      = useState(false);
+  const [jobsMgmtData,     setJobsMgmtData]      = useState([]);
+  const [jobsMgmtSearch,   setJobsMgmtSearch]    = useState('');
+  const [jobsMgmtLoading,  setJobsMgmtLoading]   = useState(false);
+  const [reportsData,      setReportsData]       = useState([]);
+  const [reportsLoading,   setReportsLoading]    = useState(false);
+  const [geoData,          setGeoData]           = useState(null);
+  const [geoLoading,       setGeoLoading]        = useState(false);
 
   const load = useCallback(async (key) => {
     const k = key ?? adminKey;
@@ -220,6 +237,69 @@ export default function AdminDashboard({ onBack }) {
     if (activeTab === 'analytics') loadAnalytics();
   }, [activeTab, loadAnalytics]);
 
+  // ── 사용자 탭 ─────────────────────────────────────────────────
+  const loadUsers = useCallback(async (q = '') => {
+    setUsersLoading(true);
+    try {
+      const d = await adminFetch(`/admin/users?q=${encodeURIComponent(q)}`, adminKey);
+      setUsersData(d.users || []);
+    } catch (e) { console.error('[ADMIN_TAB:users]', e); }
+    finally { setUsersLoading(false); }
+  }, [adminKey]);
+
+  const handleBlock = async (userId, currentBlocked) => {
+    const newBlocked = currentBlocked ? 0 : 1;
+    try {
+      await adminFetch(`/admin/user/${userId}/block`, adminKey, { method: 'PATCH', body: { blocked: newBlocked } });
+      // optimistic update
+      setUsersData(prev => prev.map(u => u.id === userId ? { ...u, blocked: newBlocked } : u));
+    } catch (e) { alert(e.message); }
+  };
+
+  // ── 작업관리 탭 ────────────────────────────────────────────────
+  const loadJobsMgmt = useCallback(async (q = '') => {
+    setJobsMgmtLoading(true);
+    try {
+      const d = await adminFetch(`/admin/jobs-list?q=${encodeURIComponent(q)}`, adminKey);
+      setJobsMgmtData(d.jobs || []);
+    } catch (e) { console.error('[ADMIN_TAB:jobs-mgmt]', e); }
+    finally { setJobsMgmtLoading(false); }
+  }, [adminKey]);
+
+  const handleStatusChange = async (jobId, newStatus) => {
+    try {
+      await adminFetch(`/admin/job/${jobId}/status`, adminKey, { method: 'PATCH', body: { status: newStatus } });
+      setJobsMgmtData(prev => prev.map(j => j.id === jobId ? { ...j, status: newStatus } : j));
+    } catch (e) { alert(e.message); }
+  };
+
+  // ── 신고 탭 ────────────────────────────────────────────────────
+  const loadReports = useCallback(async () => {
+    setReportsLoading(true);
+    try {
+      const d = await adminFetch('/admin/reports', adminKey);
+      setReportsData(d.reports || []);
+    } catch (e) { console.error('[ADMIN_TAB:reports]', e); }
+    finally { setReportsLoading(false); }
+  }, [adminKey]);
+
+  // ── 지도품질 탭 ────────────────────────────────────────────────
+  const loadGeo = useCallback(async () => {
+    setGeoLoading(true);
+    try {
+      const d = await adminFetch('/admin/geo-quality', adminKey);
+      setGeoData(d);
+    } catch (e) { console.error('[ADMIN_TAB:geo]', e); }
+    finally { setGeoLoading(false); }
+  }, [adminKey]);
+
+  useEffect(() => {
+    if (activeTab === 'users')     { loadUsers(usersSearch); }
+    if (activeTab === 'jobs-mgmt') { loadJobsMgmt(jobsMgmtSearch); }
+    if (activeTab === 'reports')   { loadReports(); }
+    if (activeTab === 'geo')       { loadGeo(); }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (showGate) return <KeyGate onSubmit={handleKeySubmit} />;
 
   const m = metrics;
@@ -254,17 +334,21 @@ export default function AdminDashboard({ onBack }) {
         </div>
       </header>
 
-      {/* ── ANALYTICS_TAB: 탭 전환 ── */}
-      <div className="bg-gray-900 border-b border-gray-800 sticky top-[65px] z-20">
-        <div className="max-w-2xl mx-auto px-4 flex gap-1 pt-1">
+      {/* ── 탭 전환 ── */}
+      <div className="bg-gray-900 border-b border-gray-800 sticky top-[65px] z-20 overflow-x-auto">
+        <div className="max-w-2xl mx-auto px-4 flex gap-1 pt-1 min-w-max">
           {[
-            { key: 'ops',       label: '🌾 운영', icon: BarChart2 },
-            { key: 'analytics', label: '📊 전환 분석', icon: Activity },
+            { key: 'ops',       label: '🌾 운영'   },
+            { key: 'analytics', label: '📊 분석'   },
+            { key: 'users',     label: '👥 사용자' },
+            { key: 'jobs-mgmt', label: '📋 작업'   },
+            { key: 'reports',   label: '🚨 신고'   },
+            { key: 'geo',       label: '🗺 지도'   },
           ].map(t => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
+              className={`px-4 py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
                 activeTab === t.key
                   ? 'border-farm-green text-farm-green'
                   : 'border-transparent text-gray-500 hover:text-gray-300'
@@ -286,7 +370,46 @@ export default function AdminDashboard({ onBack }) {
           <AnalyticsTab data={analyticsData} loading={analyticsLoading} onRefresh={loadAnalytics} />
         )}
 
-        {activeTab !== 'analytics' && (
+        {/* ══ USERS TAB ════════════════════════════════════════════ */}
+        {activeTab === 'users' && (
+          <UsersTab
+            users={usersData}
+            loading={usersLoading}
+            search={usersSearch}
+            onSearch={q => { setUsersSearch(q); loadUsers(q); }}
+            onBlock={(id, blocked) => handleBlock(id, blocked)}
+            onRefresh={() => loadUsers(usersSearch)}
+          />
+        )}
+
+        {/* ══ JOBS-MGMT TAB ════════════════════════════════════════ */}
+        {activeTab === 'jobs-mgmt' && (
+          <JobsMgmtTab
+            jobs={jobsMgmtData}
+            loading={jobsMgmtLoading}
+            search={jobsMgmtSearch}
+            onSearch={q => { setJobsMgmtSearch(q); loadJobsMgmt(q); }}
+            onStatusChange={handleStatusChange}
+            onRefresh={() => loadJobsMgmt(jobsMgmtSearch)}
+            adminKey={adminKey}
+          />
+        )}
+
+        {/* ══ REPORTS TAB ══════════════════════════════════════════ */}
+        {activeTab === 'reports' && (
+          <ReportsTab
+            reports={reportsData}
+            loading={reportsLoading}
+            onRefresh={loadReports}
+          />
+        )}
+
+        {/* ══ GEO TAB ══════════════════════════════════════════════ */}
+        {activeTab === 'geo' && (
+          <GeoTab data={geoData} loading={geoLoading} onRefresh={loadGeo} />
+        )}
+
+        {activeTab === 'ops' && (
           <>
         {/* ── 수익 대시보드 바로가기 ────────────────────────── */}
         <a
@@ -627,6 +750,332 @@ function AnalyticsTab({ data, loading, onRefresh }) {
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// USERS TAB — 사용자 목록 + 차단
+// ══════════════════════════════════════════════════════════════════
+function UsersTab({ users, loading, search, onSearch, onBlock, onRefresh }) {
+  const [query, setQuery] = useState(search || '');
+  function handleSearch(e) { e.preventDefault(); onSearch(query); }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="font-black text-white text-base">👥 사용자 관리</p>
+        <button onClick={onRefresh} className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 rounded-xl text-xs text-gray-300 hover:bg-gray-700">
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 새로고침
+        </button>
+      </div>
+
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="이름 / 전화번호 검색…"
+          className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-farm-green"
+        />
+        <button type="submit" className="px-4 py-2 bg-farm-green text-white rounded-xl text-sm font-bold">
+          <Search size={14} />
+        </button>
+      </form>
+
+      {loading && <div className="flex justify-center py-8 text-gray-500"><RefreshCw size={20} className="animate-spin" /></div>}
+      {!loading && users.length === 0 && <div className="text-center py-10 text-gray-500 text-sm">사용자 없음</div>}
+
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
+        {users.map(u => (
+          <div key={u.id} className="flex items-center gap-3 px-4 py-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-bold text-gray-200">{u.name || '(이름없음)'}</p>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                  u.role === 'farmer' ? 'bg-green-900/50 text-green-400' : 'bg-blue-900/50 text-blue-400'
+                }`}>{u.role === 'farmer' ? '🌾 농민' : '👷 작업자'}</span>
+                {u.blocked ? <span className="text-xs bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded-full font-semibold">🚫 차단됨</span> : null}
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">{u.phone || '전화없음'} · 평점 {(u.rating || 0).toFixed(1)} ★</p>
+            </div>
+            <button
+              onClick={() => onBlock(u.id, u.blocked)}
+              className={`shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                u.blocked ? 'bg-green-900/40 text-green-400 hover:bg-green-900/70' : 'bg-red-900/40 text-red-400 hover:bg-red-900/70'
+              }`}
+            >
+              {u.blocked ? <><Shield size={12} /> 차단해제</> : <><ShieldOff size={12} /> 차단</>}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// JOBS-MGMT TAB — 작업 목록 + 상태/위치 수정
+// ══════════════════════════════════════════════════════════════════
+const JOB_STATUSES   = ['open','matched','in_progress','done','closed'];
+const STATUS_LABELS  = { open:'모집중', matched:'연결완료', in_progress:'진행중', done:'완료', closed:'마감' };
+const STATUS_COLORS  = {
+  open:        'bg-green-900/40 text-green-300',
+  matched:     'bg-blue-900/40  text-blue-300',
+  in_progress: 'bg-purple-900/40 text-purple-300',
+  done:        'bg-amber-900/40  text-amber-300',
+  closed:      'bg-gray-800      text-gray-500',
+};
+
+function JobsMgmtTab({ jobs, loading, search, onSearch, onStatusChange, onRefresh, adminKey }) {
+  const [query,      setQuery]      = useState(search || '');
+  const [fixingId,   setFixingId]   = useState(null);
+  const [fixLat,     setFixLat]     = useState('');
+  const [fixLng,     setFixLng]     = useState('');
+  const [fixLoading, setFixLoading] = useState(false);
+
+  function handleSearch(e) { e.preventDefault(); onSearch(query); }
+
+  async function handleFixLocation(jobId) {
+    if (!fixLat || !fixLng) return;
+    setFixLoading(true);
+    try {
+      await adminFetch(`/admin/job/${jobId}/fix-location`, adminKey, {
+        method: 'PATCH',
+        body: { lat: parseFloat(fixLat), lng: parseFloat(fixLng) },
+      });
+      setFixingId(null);
+      onRefresh();
+    } catch (e) { alert(e.message); }
+    finally { setFixLoading(false); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="font-black text-white text-base">📋 작업 관리</p>
+        <button onClick={onRefresh} className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 rounded-xl text-xs text-gray-300 hover:bg-gray-700">
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 새로고침
+        </button>
+      </div>
+
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="카테고리 / 주소 검색…"
+          className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-farm-green"
+        />
+        <button type="submit" className="px-4 py-2 bg-farm-green text-white rounded-xl text-sm font-bold">
+          <Search size={14} />
+        </button>
+      </form>
+
+      {loading && <div className="flex justify-center py-8 text-gray-500"><RefreshCw size={20} className="animate-spin" /></div>}
+      {!loading && jobs.length === 0 && <div className="text-center py-10 text-gray-500 text-sm">작업 없음</div>}
+
+      <div className="space-y-3">
+        {jobs.map(j => (
+          <div key={j.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+            <div className="px-4 pt-3 pb-2 flex items-start gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${STATUS_COLORS[j.status] || 'bg-gray-800 text-gray-400'}`}>
+                    {STATUS_LABELS[j.status] || j.status}
+                  </span>
+                  <p className="text-sm font-bold text-gray-200">{j.category}</p>
+                </div>
+                <p className="text-xs text-gray-500 truncate">{j.locationText}</p>
+                <p className="text-xs text-gray-600 mt-0.5">농민: {j.farmerName || '—'} · {timeAgo(j.createdAt)}</p>
+              </div>
+            </div>
+            <div className="px-4 pb-3 flex gap-2 flex-wrap">
+              <select
+                value={j.status}
+                onChange={e => onStatusChange(j.id, e.target.value)}
+                className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-xl text-xs text-gray-200 focus:outline-none"
+              >
+                {JOB_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+              </select>
+              <button
+                onClick={() => { setFixingId(fixingId === j.id ? null : j.id); setFixLat(''); setFixLng(''); }}
+                className="flex items-center gap-1 px-3 py-1.5 bg-amber-900/40 text-amber-400 rounded-xl text-xs font-bold hover:bg-amber-900/70 transition"
+              >
+                <MapPin size={11} /> 위치 수정
+              </button>
+            </div>
+            {fixingId === j.id && (
+              <div className="px-4 pb-3 flex gap-2 items-center border-t border-gray-800 pt-3">
+                <input
+                  value={fixLat} onChange={e => setFixLat(e.target.value)}
+                  placeholder="위도 (lat)"
+                  className="flex-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded-xl text-xs text-gray-200 placeholder-gray-500 focus:outline-none"
+                />
+                <input
+                  value={fixLng} onChange={e => setFixLng(e.target.value)}
+                  placeholder="경도 (lng)"
+                  className="flex-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded-xl text-xs text-gray-200 placeholder-gray-500 focus:outline-none"
+                />
+                <button
+                  onClick={() => handleFixLocation(j.id)}
+                  disabled={fixLoading}
+                  className="px-3 py-1.5 bg-amber-500 text-white rounded-xl text-xs font-bold disabled:opacity-40"
+                >
+                  {fixLoading ? '…' : '저장'}
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// REPORTS TAB — 신고 목록
+// ══════════════════════════════════════════════════════════════════
+const REPORT_TYPE_LABELS = { spam:'스팸', fraud:'사기', abuse:'욕설/비방', inappropriate:'부적절', other:'기타' };
+
+function ReportsTab({ reports, loading, onRefresh }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="font-black text-white text-base">🚨 신고 관리</p>
+        <button onClick={onRefresh} className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 rounded-xl text-xs text-gray-300 hover:bg-gray-700">
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 새로고침
+        </button>
+      </div>
+
+      {loading && <div className="flex justify-center py-8 text-gray-500"><RefreshCw size={20} className="animate-spin" /></div>}
+      {!loading && reports.length === 0 && (
+        <div className="text-center py-12 text-gray-500">
+          <Flag size={32} className="mx-auto mb-2 opacity-30" />
+          <p className="text-sm">신고 없음</p>
+        </div>
+      )}
+
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
+        {reports.map(r => (
+          <div key={r.id} className="px-4 py-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded-full font-bold">
+                    {REPORT_TYPE_LABELS[r.type] || r.type}
+                  </span>
+                  <span className="text-xs text-gray-500">{timeAgo(r.createdAt)}</span>
+                </div>
+                <p className="text-sm text-gray-200 font-semibold truncate">{r.jobTitle || r.jobId || '(일자리 정보 없음)'}</p>
+                {r.reason && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{r.reason}</p>}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-600">
+              {r.reporterName && <span>신고자: {r.reporterName}</span>}
+              {r.targetName   && <span>대상: {r.targetName}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GEO TAB — 지도 품질 대시보드
+// ══════════════════════════════════════════════════════════════════
+function GeoTab({ data, loading, onRefresh }) {
+  if (loading) {
+    return <div className="flex items-center justify-center py-20 text-gray-500"><RefreshCw size={22} className="animate-spin mr-2" /><span>로딩 중…</span></div>;
+  }
+  if (!data) {
+    return (
+      <div className="text-center py-12 text-gray-500">
+        <MapPin size={32} className="mx-auto mb-2 opacity-30" />
+        <p className="text-sm">지도 품질 데이터 없음</p>
+        <button onClick={onRefresh} className="mt-3 px-4 py-2 bg-gray-800 rounded-xl text-xs text-gray-300">불러오기</button>
+      </div>
+    );
+  }
+
+  const geo    = data.geoQuality || data || {};
+  const summary    = geo.summary    || {};
+  const precision  = geo.precision  || {};
+  const normalized = geo.normalized || {};
+  const recent     = geo.recent     || [];
+
+  const totalJobs       = summary.total        ?? '—';
+  const withFarmAddr    = summary.withFarmAddr  ?? '—';
+  const farmAddrRate    = summary.farmAddrRate  ?? null;
+  const fullCount       = precision.full        ?? 0;
+  const partialCount    = precision.partial     ?? 0;
+  const normalizedCount = normalized.count      ?? 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="font-black text-white text-base">🗺 지도 품질 현황</p>
+        <button onClick={onRefresh} className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 rounded-xl text-xs text-gray-300 hover:bg-gray-700">
+          <RefreshCw size={12} /> 새로고침
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <KpiCard label="전체 공고"    value={totalJobs}  color="gray"  />
+        <KpiCard
+          label="농지주소 입력율"
+          value={farmAddrRate !== null ? `${farmAddrRate}%` : '—'}
+          sub={`${withFarmAddr} / ${totalJobs}`}
+          color={farmAddrRate !== null && farmAddrRate < 30 ? 'red' : farmAddrRate !== null && farmAddrRate < 60 ? 'amber' : 'green'}
+        />
+        <KpiCard label="정확도 Full"    value={fullCount}    sub="완전 주소 성공"       color="green" />
+        <KpiCard label="정확도 Partial" value={partialCount} sub="도시/군 수준 fallback" color="amber" />
+      </div>
+
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 space-y-3">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">정규화 통계</p>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-400">정규화 성공 건수</span>
+          <span className="text-sm font-black text-amber-400">{normalizedCount}건</span>
+        </div>
+        {(fullCount + partialCount) > 0 && (
+          <>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-gray-500">Full 비율</span>
+              <span className="text-green-400 font-bold">
+                {Math.round(fullCount / (fullCount + partialCount) * 100)}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-800 rounded-full h-2">
+              <div className="h-2 rounded-full bg-farm-green" style={{ width: `${Math.round(fullCount / (fullCount + partialCount) * 100)}%` }} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {recent.length > 0 && (
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">최근 처리 ({recent.length}건)</p>
+          <div className="space-y-2">
+            {recent.slice(0, 10).map((r, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className={`shrink-0 px-1.5 py-0.5 rounded-full font-bold ${r.precision === 'full' ? 'bg-green-900/50 text-green-400' : 'bg-amber-900/50 text-amber-400'}`}>
+                  {r.precision}
+                </span>
+                <span className="text-gray-400 truncate flex-1">{r.addr || r.address || '—'}</span>
+                <span className={`shrink-0 ${r.normalized ? 'text-amber-400' : 'text-gray-600'}`}>
+                  {r.normalized ? '정규화' : '원본'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {farmAddrRate !== null && farmAddrRate < 30 && (
+        <div className="bg-red-900/40 border border-red-700/50 rounded-2xl px-4 py-3 text-red-300 text-sm">
+          ⚠️ 농지주소 입력율 {farmAddrRate}% — A/B 하드블록 조건 충족 (30% 미만)
         </div>
       )}
     </div>

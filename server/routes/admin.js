@@ -415,4 +415,117 @@ router.get('/geo-quality', auth, (req, res) => {
     }
 });
 
+// ── DB 마이그레이션: users.blocked 컬럼 추가 (안전) ─────────────
+try { db.exec("ALTER TABLE users ADD COLUMN blocked INTEGER DEFAULT 0"); } catch (_) {}
+
+// ── GET /api/admin/users — 사용자 목록 (검색 포함) ────────────────
+router.get('/users', auth, (req, res) => {
+    try {
+        const q = `%${req.query.q || ''}%`;
+        const rows = db.prepare(`
+            SELECT id, name, phone, role,
+                   COALESCE(rating, 0)      AS rating,
+                   COALESCE(reviewCount, 0) AS reviewCount,
+                   COALESCE(blocked, 0)     AS blocked,
+                   createdAt
+            FROM users
+            WHERE name LIKE ? OR phone LIKE ? OR id LIKE ?
+            ORDER BY createdAt DESC
+            LIMIT 100
+        `).all(q, q, q);
+        console.log(`[ADMIN_USERS] q="${req.query.q||''}" count=${rows.length}`);
+        return res.json({ ok: true, users: rows });
+    } catch (e) {
+        console.error('[ADMIN_USERS_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '사용자 조회 오류: ' + e.message });
+    }
+});
+
+// ── PATCH /api/admin/user/:id/block — 사용자 차단/해제 ────────────
+router.patch('/user/:id/block', auth, (req, res) => {
+    const { id } = req.params;
+    const blocked = req.body.blocked ? 1 : 0;
+    db.prepare('UPDATE users SET blocked = ? WHERE id = ?').run(blocked, id);
+    console.log(`[ADMIN_ACTION] type=user_block userId=${id} blocked=${blocked}`);
+    return res.json({ ok: true });
+});
+
+// ── GET /api/admin/jobs-list — 작업 목록 관리용 ───────────────────
+router.get('/jobs-list', auth, (req, res) => {
+    try {
+        const status = req.query.status || '';
+        const q      = `%${req.query.q || ''}%`;
+        const rows = db.prepare(`
+            SELECT j.id, j.category, j.status, j.locationText,
+                   j.latitude, j.longitude, j.farmAddress,
+                   j.requesterId, j.createdAt,
+                   u.name AS farmerName
+            FROM jobs j
+            LEFT JOIN users u ON j.requesterId = u.id
+            WHERE (status LIKE ? OR ? = '%' || '' || '%')
+              AND (j.locationText LIKE ? OR j.category LIKE ? OR j.id LIKE ?)
+            ORDER BY j.createdAt DESC
+            LIMIT 100
+        `).all(
+            status ? status : '%',
+            status ? status : '',
+            q, q, q
+        );
+        return res.json({ ok: true, jobs: rows });
+    } catch (e) {
+        console.error('[ADMIN_JOBS_LIST_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '작업 조회 오류: ' + e.message });
+    }
+});
+
+// ── PATCH /api/admin/job/:id/status — 상태 강제 변경 ─────────────
+router.patch('/job/:id/status', auth, (req, res) => {
+    const { id }     = req.params;
+    const { status } = req.body;
+    const ALLOWED = ['open', 'matched', 'in_progress', 'done', 'closed'];
+    if (!ALLOWED.includes(status)) {
+        return res.status(400).json({ ok: false, error: `허용 상태: ${ALLOWED.join(', ')}` });
+    }
+    const result = db.prepare('UPDATE jobs SET status = ? WHERE id = ?').run(status, id);
+    if (result.changes === 0) return res.status(404).json({ ok: false, error: '공고 없음' });
+    console.log(`[ADMIN_ACTION] type=status_change jobId=${id} status=${status}`);
+    return res.json({ ok: true });
+});
+
+// ── PATCH /api/admin/job/:id/fix-location — 좌표 보정 ────────────
+router.patch('/job/:id/fix-location', auth, (req, res) => {
+    const { id }     = req.params;
+    const { lat, lng } = req.body;
+    const parsedLat = parseFloat(lat);
+    const parsedLng = parseFloat(lng);
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+        return res.status(400).json({ ok: false, error: 'lat/lng 숫자 필요' });
+    }
+    db.prepare('UPDATE jobs SET latitude = ?, longitude = ? WHERE id = ?').run(parsedLat, parsedLng, id);
+    console.log(`[ADMIN_ACTION] type=geo_fix jobId=${id} lat=${parsedLat} lng=${parsedLng}`);
+    return res.json({ ok: true });
+});
+
+// ── GET /api/admin/reports — 신고 목록 ───────────────────────────
+router.get('/reports', auth, (req, res) => {
+    try {
+        const rows = db.prepare(`
+            SELECT r.id, r.jobId, r.reporterId, r.reason, r.createdAt,
+                   j.category   AS jobCategory,
+                   j.locationText AS jobLocation,
+                   u.name       AS reporterName
+            FROM reports r
+            LEFT JOIN jobs  j ON r.jobId     = j.id
+            LEFT JOIN users u ON r.reporterId = u.id
+            ORDER BY r.createdAt DESC
+            LIMIT 100
+        `).all();
+        console.log(`[ADMIN_REPORTS] count=${rows.length}`);
+        return res.json({ ok: true, reports: rows });
+    } catch (e) {
+        console.error('[ADMIN_REPORTS_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '신고 조회 오류: ' + e.message });
+    }
+});
+
 module.exports = router;
