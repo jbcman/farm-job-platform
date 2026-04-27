@@ -50,8 +50,11 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const miniMapRef = useRef(null);   // div DOM ref
   const miniMapObj = useRef(null);   // L.Map instance
   const [submitting,    setSubmitting]    = useState(false);
-  // GEO_QUALITY: 소프트 차단 — 농지 주소 없이 제출 시 1회 경고 후 2번째 시도에서 통과
-  const [geoWarnPending, setGeoWarnPending] = useState(false);
+  // GEO_QUALITY: 소프트 차단 — 경고 횟수 카운터 (0=미경고, ≥1=경고중)
+  // A/B: geo_warn_count 실험 — A그룹=1회, B그룹=2회 경고 후 통과
+  const [geoWarnPending, setGeoWarnPending] = useState(0);
+  // A/B 테스트: 서버에서 variant config 수령 (마운트 1회)
+  const [abConfig, setAbConfig] = useState(null);
   const [done,          setDone]          = useState(false);
   const [error,         setError]         = useState('');
   // PHASE SCALE: 유료 긴급 공고
@@ -220,6 +223,20 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
   useEffect(() => { acquireGps(); }, [acquireGps]);
 
+  // A/B CONFIG: 마운트 시 1회 호출 — 서버가 variant 결정, 클라이언트는 수동 반영
+  useEffect(() => {
+    const uid = getUserId();
+    fetch(`/api/ab/config?userId=${encodeURIComponent(uid)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok && d.config) {
+          setAbConfig(d.config);
+          console.log('[AB_CONFIG]', d.config.group, d.config);
+        }
+      })
+      .catch(() => {}); // fail-safe: 조회 실패 시 기본값(A그룹) 유지
+  }, []);
+
   // PHASE SCALE+: A/B 가격 정보 조회
   useEffect(() => {
     getUrgentPrice()
@@ -262,16 +279,30 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 농지 주소를 입력해주세요.');
       return;
     } else {
-      // GPS 있지만 농지 주소 없음 — 소프트 차단 (1회 경고 → 2번째 시도에서 통과)
-      if (!geoWarnPending) {
-        setGeoWarnPending(true);
-        setError('📍 농지 주소를 입력하면 작업자를 더 정확하게 매칭할 수 있어요.\nGPS 좌표로만 등록하면 거리 계산이 부정확할 수 있습니다.\n👉 위쪽 "농지 위치 입력" 칸에 읍·면·리까지 입력해보세요.\n그래도 GPS로 등록하려면 아래 버튼을 한 번 더 누르세요.');
-        trackClientEvent('geo_soft_block', { hadGps: true, farmAddrLen: 0 });
+      // GPS 있지만 농지 주소 없음 — A/B 기반 소프트/하드 차단
+      const abGroup      = abConfig?.group      ?? 'A';
+      const warnThreshold = abConfig?.geo_warn_count ?? 1;   // A=1회, B=2회
+      const warnMsg      = abConfig?.geo_message
+        ? `📍 ${abConfig.geo_message}\nGPS 좌표로만 등록하면 거리 계산이 부정확할 수 있습니다.\n👉 위쪽 "농지 위치 입력" 칸에 읍·면·리까지 입력해보세요.\n그래도 GPS로 등록하려면 아래 버튼을 한 번 더 누르세요.`
+        : '📍 농지 주소를 입력하면 작업자를 더 정확하게 매칭할 수 있어요.\nGPS 좌표로만 등록하면 거리 계산이 부정확할 수 있습니다.\n👉 위쪽 "농지 위치 입력" 칸에 읍·면·리까지 입력해보세요.\n그래도 GPS로 등록하려면 아래 버튼을 한 번 더 누르세요.';
+
+      // 조건부 하드차단: farmAddrRate < 30% 도달 시 서버가 hardBlock=true 반환
+      if (abConfig?.hardBlock) {
+        setError('📍 현재는 농지 주소 없이 등록할 수 없어요. 읍·면·리까지 입력 후 "위치 찾기"를 눌러주세요.');
+        trackClientEvent('geo_hard_block', { hadGps: true, group: abGroup });
         return;
       }
-      // 2번째 클릭 → 경고 해제 후 GPS로 진행
-      setGeoWarnPending(false);
-      trackClientEvent('geo_soft_block_bypass', { hadGps: true });
+
+      // 소프트 차단: warnThreshold 횟수 경고 후 통과 허용
+      if (geoWarnPending < warnThreshold) {
+        setGeoWarnPending(c => c + 1);
+        setError(warnMsg);
+        trackClientEvent('geo_soft_block', { hadGps: true, farmAddrLen: 0, warnCount: geoWarnPending + 1, group: abGroup });
+        return;
+      }
+      // 경고 횟수 소진 → GPS 진행 허용
+      setGeoWarnPending(0);
+      trackClientEvent('geo_soft_block_bypass', { hadGps: true, group: abGroup });
     }
 
     // FIX: lat/lng 강제 숫자 변환 (문자열 방지)
@@ -870,8 +901,10 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
         {error && (
           <div className={`rounded-xl px-4 py-3 text-sm font-semibold whitespace-pre-line
-                          ${geoWarnPending
-                            ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                          ${geoWarnPending > 0
+                            ? abConfig?.geo_warn_color === 'red'
+                              ? 'bg-red-50 text-red-700 border border-red-300'
+                              : 'bg-amber-50 text-amber-800 border border-amber-300'
                             : 'bg-red-50 text-red-600'}`}>
             {error}
           </div>
@@ -888,13 +921,15 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
           className={`btn-full text-lg py-4 font-black rounded-2xl flex items-center justify-center gap-2
                       ${isUrgentPaid
                         ? 'bg-red-500 text-white active:scale-95 transition-transform shadow-lg'
-                        : geoWarnPending
-                          ? 'bg-amber-500 text-white active:scale-95 transition-transform shadow-md shadow-amber-200'
+                        : geoWarnPending > 0
+                          ? abConfig?.geo_warn_color === 'red'
+                            ? 'bg-red-500 text-white active:scale-95 transition-transform shadow-lg'
+                            : 'bg-amber-500 text-white active:scale-95 transition-transform shadow-md shadow-amber-200'
                           : 'btn-primary'}`}
         >
           {submitting
             ? <><Loader2 size={18} className="animate-spin" /> 등록 중...</>
-            : geoWarnPending
+            : geoWarnPending > 0
               ? '📍 그래도 GPS로 등록하기'
               : isUrgentPaid
                 ? <><Flame size={18} /> 긴급 공고 등록</>
