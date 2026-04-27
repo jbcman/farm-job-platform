@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw, AlertTriangle, Activity, BarChart2,
   Briefcase, Users, CheckCircle, XCircle, ArrowLeft,
