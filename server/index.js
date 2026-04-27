@@ -97,6 +97,28 @@ app.get('/api/health', (_req, res) =>
     })
 );
 
+// ─── GET /api/geocode — 주소 → 좌표 변환 (JobRequestPage 농지 주소 입력용) ──
+// farmAddress 입력 후 "위치 찾기" 버튼이 이 엔드포인트를 호출함
+const { geocodeAddress } = require('./services/geocodeService');
+app.get('/api/geocode', async (req, res) => {
+    const { address } = req.query;
+    if (!address || !address.trim()) {
+        return res.status(400).json({ ok: false, error: '주소가 필요해요.' });
+    }
+    try {
+        const result = await geocodeAddress(address.trim());
+        if (!result) {
+            console.warn(`[GEOCODE_API_MISS] "${address}"`);
+            return res.status(404).json({ ok: false, error: `"${address.trim()}" 위치를 찾을 수 없어요. 시·군·읍·면·리 형식으로 더 구체적으로 입력해주세요.` });
+        }
+        console.log(`[GEOCODE_API_OK] "${address}" → (${result.lat}, ${result.lng})`);
+        return res.json({ ok: true, lat: result.lat, lng: result.lng });
+    } catch (e) {
+        console.error('[GEOCODE_API_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '위치 검색 중 오류가 발생했어요.' });
+    }
+});
+
 // ─── API 라우트 ──────────────────────────────────────────────────
 app.use('/api/jobs',        jobRoutes);
 app.use('/api/workers',     workerRoutes);
