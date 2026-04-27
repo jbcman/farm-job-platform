@@ -154,6 +154,11 @@ export default function AdminDashboard({ onBack }) {
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState('');
   const [lastFetch,   setLastFetch]   = useState(null);
+  // P1 자동 경보 (60초 폴링)
+  const [alertStatus,  setAlertStatus]  = useState(null); // null | { p1, p1Count, p2Count, lastP1Type }
+  const [alertDismissed, setAlertDismissed] = useState(false); // 수동 닫기 (새 P1 발생 시 재노출)
+  const alertDismissedCountRef = useRef(0); // 닫을 당시 p1Count → 새 P1이면 재노출
+
   // ANALYTICS_TAB: 전환 퍼널
   const [activeTab,   setActiveTab]   = useState('ops'); // 'ops' | 'analytics' | 'users' | 'jobs-mgmt' | 'reports' | 'geo'
   const [analyticsData, setAnalyticsData] = useState(null);
@@ -218,6 +223,27 @@ export default function AdminDashboard({ onBack }) {
   }, [adminKey]);
 
   useEffect(() => { load(adminKey || ''); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── P1 자동 경보: 60초 폴링 ─────────────────────────────────────
+  // Admin 탭이 열려 있는 동안 백그라운드에서 P1 감시
+  useEffect(() => {
+    if (showGate) return; // 인증 전에는 폴링 안 함
+
+    async function checkAlert() {
+      try {
+        const d = await adminFetch('/admin/alert-status', adminKey);
+        setAlertStatus(d);
+        // 새 P1 발생 → dismiss 해제 (다시 배너 노출)
+        if (d.p1Count > alertDismissedCountRef.current) {
+          setAlertDismissed(false);
+        }
+      } catch (_) {} // 폴링 실패는 무시
+    }
+
+    checkAlert(); // 즉시 1회
+    const id = setInterval(checkAlert, 60_000); // 60초마다
+    return () => clearInterval(id);
+  }, [adminKey, showGate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleKeySubmit(k) {
     sessionStorage.setItem('admin-key', k);
@@ -338,10 +364,51 @@ export default function AdminDashboard({ onBack }) {
 
   const m = metrics;
 
+  // P1 배너 노출 여부 판단
+  const showP1Banner = alertStatus?.p1 && !alertDismissed;
+
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-12">
+
+      {/* ── P1 자동 경보 배너 ────────────────────────────────────────
+          조건: P1 발생 && 수동으로 닫지 않음
+          클릭: 🧪 테스트 탭으로 이동
+          닫기: 현재 p1Count 기준으로 dismiss → 새 P1 발생 시 재노출
+      ─────────────────────────────────────────────────────────────── */}
+      {showP1Banner && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-between
+                     bg-red-600 text-white px-4 py-2.5 gap-3 shadow-lg"
+          style={{ maxWidth: 512, margin: '0 auto' }}
+        >
+          <button
+            onClick={() => { setActiveTab('test'); window.scrollTo(0, 0); }}
+            className="flex items-center gap-2 flex-1 text-left hover:opacity-90 transition"
+          >
+            <span className="text-lg animate-pulse">🔴</span>
+            <div>
+              <p className="text-sm font-black leading-tight">
+                P1 긴급 오류 {alertStatus.p1Count}건 발생
+              </p>
+              {alertStatus.lastP1Type && (
+                <p className="text-xs opacity-80 font-mono">{alertStatus.lastP1Type}</p>
+              )}
+            </div>
+            <span className="text-xs opacity-70 ml-1">→ 테스트 탭</span>
+          </button>
+          <button
+            onClick={() => {
+              alertDismissedCountRef.current = alertStatus.p1Count;
+              setAlertDismissed(true);
+            }}
+            className="shrink-0 text-white/70 hover:text-white text-lg leading-none px-1"
+            aria-label="닫기"
+          >✕</button>
+        </div>
+      )}
+
       {/* 헤더 */}
-      <header className="bg-gray-900 border-b border-gray-800 px-4 py-4 sticky top-0 z-30">
+      <header className={`bg-gray-900 border-b border-gray-800 px-4 py-4 sticky z-30 ${showP1Banner ? 'top-[48px]' : 'top-0'}`}>
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             {onBack && (
@@ -369,7 +436,7 @@ export default function AdminDashboard({ onBack }) {
       </header>
 
       {/* ── 탭 전환 ── */}
-      <div className="bg-gray-900 border-b border-gray-800 sticky top-[65px] z-20 overflow-x-auto">
+      <div className={`bg-gray-900 border-b border-gray-800 sticky z-20 overflow-x-auto ${showP1Banner ? 'top-[113px]' : 'top-[65px]'}`}>
         <div className="max-w-2xl mx-auto px-4 flex gap-1 pt-1 min-w-max">
           {[
             { key: 'ops',       label: '🌾 운영'   },
@@ -378,18 +445,26 @@ export default function AdminDashboard({ onBack }) {
             { key: 'jobs-mgmt', label: '📋 작업'   },
             { key: 'reports',   label: '🚨 신고'   },
             { key: 'geo',       label: '🗺 지도'   },
-            { key: 'test',      label: '🧪 테스트' },
-            { key: 'audit',     label: '🔐 감사로그' },
+            { key: 'test',  label: '🧪 테스트', badge: alertStatus?.p1Count || 0 },
+            { key: 'audit', label: '🔐 감사로그' },
           ].map(t => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
+              className={`relative px-4 py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
                 activeTab === t.key
                   ? 'border-farm-green text-farm-green'
                   : 'border-transparent text-gray-500 hover:text-gray-300'
               }`}
-            >{t.label}</button>
+            >
+              {t.label}
+              {t.badge > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px]
+                                 font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
+                  {t.badge}
+                </span>
+              )}
+            </button>
           ))}
         </div>
       </div>

@@ -697,4 +697,44 @@ router.get('/test-summary', auth, (req, res) => {
     }
 });
 
+// ══════════════════════════════════════════════════════════════════
+// GET /api/admin/alert-status — P1 자동 경보 (인증 불필요 — Admin만 호출)
+// 60초 폴링으로 Admin 대시보드가 호출. 빠른 응답이 핵심.
+// ══════════════════════════════════════════════════════════════════
+router.get('/alert-status', auth, (req, res) => {
+    try {
+        // test_logs 없으면 경보 없음
+        const tableExists = db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='test_logs'"
+        ).get();
+        if (!tableExists) return res.json({ ok: true, p1: false, p1Count: 0, p2Count: 0, checkedAt: new Date().toISOString() });
+
+        // 최근 24시간 P1/P2 카운트
+        const window = "datetime('now', '-24 hours')";
+        const p1Count = db.prepare(
+            `SELECT COUNT(*) AS n FROM test_logs WHERE priority = 1 AND createdAt > ${window}`
+        ).get()?.n || 0;
+        const p2Count = db.prepare(
+            `SELECT COUNT(*) AS n FROM test_logs WHERE priority = 2 AND createdAt > ${window}`
+        ).get()?.n || 0;
+
+        // 가장 최근 P1 오류 타입 (배너 메시지용)
+        const lastP1 = p1Count > 0
+            ? db.prepare(`SELECT type FROM test_logs WHERE priority = 1 ORDER BY id DESC LIMIT 1`).get()?.type
+            : null;
+
+        return res.json({
+            ok: true,
+            p1: p1Count > 0,
+            p1Count,
+            p2Count,
+            lastP1Type: lastP1,
+            checkedAt: new Date().toISOString(),
+        });
+    } catch (e) {
+        console.error('[ALERT_STATUS_ERROR]', e.message);
+        return res.json({ ok: true, p1: false, p1Count: 0, p2Count: 0 }); // fail-safe: 경보 미발령
+    }
+});
+
 module.exports = router;
