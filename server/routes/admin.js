@@ -12,14 +12,77 @@ const router   = express.Router();
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 
 // ── 인증 미들웨어 ────────────────────────────────────────────────
+// ❗ 보완: Brute-force 방어 (IP당 5분 내 10회 실패 → 일시 차단)
+const _failMap = new Map(); // ip → { count, firstAt }
+const FAIL_LIMIT  = 10;
+const FAIL_WINDOW = 5 * 60 * 1000; // 5분
+
 function auth(req, res, next) {
     if (!ADMIN_KEY) return next(); // ENV 미설정 → 개발 모드 통과
+
+    const ip     = req.headers['x-forwarded-for'] || req.ip || 'unknown';
     const header = (req.headers['authorization'] || '').replace('Bearer ', '');
     const query  = req.query.key || '';
+
+    // 차단된 IP 확인
+    const fail = _failMap.get(ip);
+    if (fail && fail.count >= FAIL_LIMIT && Date.now() - fail.firstAt < FAIL_WINDOW) {
+        console.warn(`[ADMIN_BRUTE_FORCE] ip=${ip} count=${fail.count} — 차단`);
+        return res.status(429).json({ ok: false, error: '잠시 후 다시 시도해주세요.' });
+    }
+
     if (header !== ADMIN_KEY && query !== ADMIN_KEY) {
+        // 실패 횟수 누적
+        if (fail && Date.now() - fail.firstAt < FAIL_WINDOW) {
+            fail.count++;
+        } else {
+            _failMap.set(ip, { count: 1, firstAt: Date.now() });
+        }
         return res.status(401).json({ ok: false, error: '관리자 키가 필요해요.' });
     }
+
+    // 성공 시 fail 기록 초기화
+    _failMap.delete(ip);
     next();
+}
+
+// ── Admin Action DB 로그 ──────────────────────────────────────────
+// ❗ 보완 사항: console만 찍으면 휘발됨 → DB에 영구 저장 (감사 추적용)
+try {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS admin_actions (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            type       TEXT    NOT NULL,
+            targetId   TEXT    DEFAULT NULL,
+            meta       TEXT    DEFAULT '{}',
+            ip         TEXT    DEFAULT '',
+            createdAt  TEXT    DEFAULT (datetime('now'))
+        )
+    `);
+} catch (_) {}
+
+/**
+ * logAction(type, targetId, meta, req)
+ * 모든 관리자 조치를 DB + console에 동시 기록
+ * type    : 'user_block' | 'status_change' | 'geo_fix' | 기타
+ * targetId: 조치 대상 id (userId, jobId 등)
+ * meta    : 추가 컨텍스트 (object)
+ * req     : Express req (IP 추출용, 선택)
+ */
+function logAction(type, targetId = '', meta = {}, req = null) {
+    const metaStr = JSON.stringify(meta);
+    const ip      = req ? (req.headers['x-forwarded-for'] || req.ip || '') : '';
+    // 1. DB 저장
+    try {
+        db.prepare(`
+            INSERT INTO admin_actions (type, targetId, meta, ip, createdAt)
+            VALUES (?, ?, ?, ?, datetime('now'))
+        `).run(type, String(targetId), metaStr, String(ip));
+    } catch (e) {
+        console.error('[ADMIN_LOG_DB_FAIL]', e.message);
+    }
+    // 2. 콘솔 (운영 로그 스트림)
+    console.log(`[ADMIN_ACTION] type=${type} target=${targetId} meta=${metaStr} ip=${ip}`);
 }
 
 // 안전 숫자 (null/undefined → 0)
@@ -446,7 +509,7 @@ router.patch('/user/:id/block', auth, (req, res) => {
     const { id } = req.params;
     const blocked = req.body.blocked ? 1 : 0;
     db.prepare('UPDATE users SET blocked = ? WHERE id = ?').run(blocked, id);
-    console.log(`[ADMIN_ACTION] type=user_block userId=${id} blocked=${blocked}`);
+    logAction('user_block', id, { blocked }, req); // ❗ DB 저장
     return res.json({ ok: true });
 });
 
@@ -462,15 +525,11 @@ router.get('/jobs-list', auth, (req, res) => {
                    u.name AS farmerName
             FROM jobs j
             LEFT JOIN users u ON j.requesterId = u.id
-            WHERE (status LIKE ? OR ? = '%' || '' || '%')
+            WHERE (? = '' OR j.status = ?)
               AND (j.locationText LIKE ? OR j.category LIKE ? OR j.id LIKE ?)
             ORDER BY j.createdAt DESC
             LIMIT 100
-        `).all(
-            status ? status : '%',
-            status ? status : '',
-            q, q, q
-        );
+        `).all(status, status, q, q, q);
         return res.json({ ok: true, jobs: rows });
     } catch (e) {
         console.error('[ADMIN_JOBS_LIST_ERROR]', e.message);
@@ -488,7 +547,7 @@ router.patch('/job/:id/status', auth, (req, res) => {
     }
     const result = db.prepare('UPDATE jobs SET status = ? WHERE id = ?').run(status, id);
     if (result.changes === 0) return res.status(404).json({ ok: false, error: '공고 없음' });
-    console.log(`[ADMIN_ACTION] type=status_change jobId=${id} status=${status}`);
+    logAction('status_change', id, { status }, req); // ❗ DB 저장
     return res.json({ ok: true });
 });
 
@@ -502,7 +561,7 @@ router.patch('/job/:id/fix-location', auth, (req, res) => {
         return res.status(400).json({ ok: false, error: 'lat/lng 숫자 필요' });
     }
     db.prepare('UPDATE jobs SET latitude = ?, longitude = ? WHERE id = ?').run(parsedLat, parsedLng, id);
-    console.log(`[ADMIN_ACTION] type=geo_fix jobId=${id} lat=${parsedLat} lng=${parsedLng}`);
+    logAction('geo_fix', id, { lat: parsedLat, lng: parsedLng }, req); // ❗ DB 저장
     return res.json({ ok: true });
 });
 
@@ -525,6 +584,28 @@ router.get('/reports', auth, (req, res) => {
     } catch (e) {
         console.error('[ADMIN_REPORTS_ERROR]', e.message);
         return res.status(500).json({ ok: false, error: '신고 조회 오류: ' + e.message });
+    }
+});
+
+// ── GET /api/admin/audit-log — 관리자 조치 이력 ─────────────────
+// ❗ 보완: 관리자가 무슨 조치를 했는지 추적 가능해야 함
+router.get('/audit-log', auth, (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+        const rows = db.prepare(`
+            SELECT id, type, targetId, meta, ip, createdAt
+            FROM admin_actions
+            ORDER BY id DESC
+            LIMIT ?
+        `).all(limit);
+        const logs = rows.map(r => ({
+            ...r,
+            meta: (() => { try { return JSON.parse(r.meta); } catch (_) { return {}; } })(),
+        }));
+        return res.json({ ok: true, logs, total: logs.length });
+    } catch (e) {
+        console.error('[ADMIN_AUDIT_LOG_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
     }
 });
 

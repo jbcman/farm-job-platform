@@ -169,6 +169,9 @@ export default function AdminDashboard({ onBack }) {
   const [reportsLoading,   setReportsLoading]    = useState(false);
   const [geoData,          setGeoData]           = useState(null);
   const [geoLoading,       setGeoLoading]        = useState(false);
+  // AUDIT_TAB
+  const [auditLogs,        setAuditLogs]         = useState([]);
+  const [auditLoading,     setAuditLoading]      = useState(false);
   // TEST_TAB
   const [testLogs,         setTestLogs]          = useState([]);
   const [testSummary,      setTestSummary]       = useState(null);
@@ -298,6 +301,16 @@ export default function AdminDashboard({ onBack }) {
     finally { setGeoLoading(false); }
   }, [adminKey]);
 
+  // ── 감사 로그 탭 ───────────────────────────────────────────────
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const d = await adminFetch('/admin/audit-log?limit=100', adminKey);
+      setAuditLogs(d.logs || []);
+    } catch (e) { console.error('[ADMIN_TAB:audit]', e); }
+    finally { setAuditLoading(false); }
+  }, [adminKey]);
+
   // ── 테스트 탭 ──────────────────────────────────────────────────
   const loadTest = useCallback(async (priority = '') => {
     setTestLoading(true);
@@ -318,6 +331,7 @@ export default function AdminDashboard({ onBack }) {
     if (activeTab === 'reports')   { loadReports(); }
     if (activeTab === 'geo')       { loadGeo(); }
     if (activeTab === 'test')      { loadTest(testPriority); }
+    if (activeTab === 'audit')     { loadAudit(); }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (showGate) return <KeyGate onSubmit={handleKeySubmit} />;
@@ -365,6 +379,7 @@ export default function AdminDashboard({ onBack }) {
             { key: 'reports',   label: '🚨 신고'   },
             { key: 'geo',       label: '🗺 지도'   },
             { key: 'test',      label: '🧪 테스트' },
+            { key: 'audit',     label: '🔐 감사로그' },
           ].map(t => (
             <button
               key={t.key}
@@ -428,6 +443,11 @@ export default function AdminDashboard({ onBack }) {
         {/* ══ GEO TAB ══════════════════════════════════════════════ */}
         {activeTab === 'geo' && (
           <GeoTab data={geoData} loading={geoLoading} onRefresh={loadGeo} />
+        )}
+
+        {/* ══ AUDIT TAB ════════════════════════════════════════════ */}
+        {activeTab === 'audit' && (
+          <AuditTab logs={auditLogs} loading={auditLoading} onRefresh={loadAudit} />
         )}
 
         {/* ══ TEST TAB ═════════════════════════════════════════════ */}
@@ -1256,6 +1276,69 @@ function TestTab({ logs, summary, loading, priority, onPriorityChange, onRefresh
                     .map(([k, v]) => `${k}=${v}`)
                     .join(' · ')
                   }
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// AUDIT TAB — 관리자 조치 이력 (DB 저장된 로그)
+// ❗ 보완: console만 찍으면 휘발 → DB에 영구 보존
+// ══════════════════════════════════════════════════════════════════
+const AUDIT_TYPE_META = {
+  user_block:    { icon: '🚫', label: '사용자 차단', color: 'text-red-400'    },
+  status_change: { icon: '🔄', label: '상태 변경',   color: 'text-blue-400'   },
+  geo_fix:       { icon: '📍', label: '위치 수정',   color: 'text-amber-400'  },
+};
+
+function AuditTab({ logs, loading, onRefresh }) {
+  if (loading) {
+    return <div className='flex items-center justify-center py-20 text-gray-500'><RefreshCw size={22} className='animate-spin mr-2' /><span>로딩 중…</span></div>;
+  }
+  return (
+    <div className='space-y-4'>
+      <div className='flex items-center justify-between'>
+        <div>
+          <p className='font-black text-white text-base'>🔐 관리자 조치 이력</p>
+          <p className='text-xs text-gray-500 mt-0.5'>총 {logs.length}건 기록됨</p>
+        </div>
+        <button onClick={onRefresh} className='flex items-center gap-1 px-3 py-1.5 bg-gray-800 rounded-xl text-xs text-gray-300 hover:bg-gray-700'>
+          <RefreshCw size={12} /> 새로고침
+        </button>
+      </div>
+      {logs.length === 0 && (
+        <div className='text-center py-12 text-gray-500'>
+          <p className='text-3xl mb-2'>🔐</p>
+          <p className='text-sm'>아직 관리자 조치 없음</p>
+          <p className='text-xs mt-1'>사용자 차단 / 상태 변경 / 위치 수정 시 자동 기록됩니다</p>
+        </div>
+      )}
+      <div className='bg-gray-900 rounded-2xl border border-gray-800 divide-y divide-gray-800 overflow-hidden'>
+        {logs.map(log => {
+          const m = AUDIT_TYPE_META[log.type] || { icon: '⚙️', label: log.type, color: 'text-gray-400' };
+          return (
+            <div key={log.id} className='px-4 py-3'>
+              <div className='flex items-center gap-2 justify-between'>
+                <div className='flex items-center gap-2 flex-1 min-w-0'>
+                  <span className='text-base'>{m.icon}</span>
+                  <div className='min-w-0'>
+                    <span className={'text-sm font-bold ' + m.color}>{m.label}</span>
+                    {log.targetId && (
+                      <span className='text-xs text-gray-600 font-mono ml-2'>#{log.targetId.slice(0, 8)}</span>
+                    )}
+                  </div>
+                </div>
+                <span className='text-xs text-gray-600 shrink-0'>{timeAgo(log.createdAt)}</span>
+              </div>
+              {log.meta && Object.keys(log.meta).length > 0 && (
+                <div className='mt-1 text-xs text-gray-500 font-mono'>
+                  {Object.entries(log.meta).map(([k, v]) => k + '=' + v).join(' · ')}
+                  {log.ip && <span className='ml-2 text-gray-700'>ip={log.ip}</span>}
                 </div>
               )}
             </div>
