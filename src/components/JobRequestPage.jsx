@@ -562,10 +562,27 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   </p>
                 </div>
               </div>
+              {/* 예시 칩 — 탭하면 바로 입력 */}
+              {!confirmedLocation && geocodeStatus !== 'ok' && (
+                <div className="flex gap-1.5 flex-wrap mb-2">
+                  <span className="text-xs text-gray-400 self-center">예시:</span>
+                  {['경기 화성시 서신면 홍법리', '충남 논산시 연산면', '전북 김제시 죽산면'].map(ex => (
+                    <button
+                      key={ex}
+                      type="button"
+                      onClick={() => { setFarmAddress(ex); setGeocodeStatus('idle'); setConfirmedLocation(false); }}
+                      className="text-xs px-2 py-1 rounded-full bg-white border border-amber-300
+                                 text-amber-700 font-medium active:scale-95 transition-transform"
+                    >
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="flex gap-2">
                 <input
                   className="input text-sm flex-1"
-                  placeholder="예: 경기 화성시 서신면 홍법리 (읍·면·동·리까지)"
+                  placeholder="시·군·읍·면·리까지 입력 (도로명 주소 ❌)"
                   value={farmAddress}
                   onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setConfirmedLocation(false); }}
                   onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
