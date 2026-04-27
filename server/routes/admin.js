@@ -353,4 +353,66 @@ router.get('/top-workers', auth, (req, res) => {
     }
 });
 
+// ── GET /api/admin/geo-quality ───────────────────────────────────
+// GEO_QUALITY 대시보드 — farmAddress vs GPS 비율 + 최근 등록 품질
+router.get('/geo-quality', auth, (req, res) => {
+    try {
+        const total       = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE latitude IS NOT NULL").get()?.n || 0;
+        const withFarm    = db.prepare(
+            "SELECT COUNT(*) AS n FROM jobs WHERE farmAddress IS NOT NULL AND farmAddress != ''"
+        ).get()?.n || 0;
+        const gpsOnly     = total - withFarm;
+        const farmRate    = total > 0 ? Math.round(withFarm / total * 1000) / 10 : 0;
+
+        // 소프트 차단 발생 횟수 (analytics 로그)
+        const softBlocks  = safeGet(() =>
+            db.prepare("SELECT COUNT(*) AS n FROM analytics WHERE event = 'geo_soft_block'").get()
+        )?.n || 0;
+        const bypassed    = safeGet(() =>
+            db.prepare("SELECT COUNT(*) AS n FROM analytics WHERE event = 'geo_soft_block_bypass'").get()
+        )?.n || 0;
+
+        // addrLen 분포 (farmAddress가 있는 것만)
+        const addrRows = db.prepare(
+            "SELECT farmAddress FROM jobs WHERE farmAddress IS NOT NULL AND farmAddress != '' LIMIT 100"
+        ).all();
+        const addrLens  = addrRows.map(r => r.farmAddress.length);
+        const avgLen    = addrLens.length > 0
+            ? Math.round(addrLens.reduce((s, l) => s + l, 0) / addrLens.length)
+            : 0;
+
+        // 최근 20건 품질 로그
+        const recent = db.prepare(
+            "SELECT id, farmAddress, locationText, latitude, longitude, createdAt FROM jobs WHERE latitude IS NOT NULL ORDER BY createdAt DESC LIMIT 20"
+        ).all().map(j => ({
+            id:         j.id.slice(0, 20),
+            source:     j.farmAddress ? 'farmAddress' : 'GPS',
+            addrLen:    j.farmAddress ? j.farmAddress.length : 0,
+            addr:       (j.farmAddress || j.locationText || '').slice(0, 30),
+            lat:        j.latitude  != null ? parseFloat(j.latitude.toFixed(4))  : null,
+            lng:        j.longitude != null ? parseFloat(j.longitude.toFixed(4)) : null,
+            createdAt:  j.createdAt,
+        }));
+
+        console.log(`[GEO_QUALITY_ADMIN] total=${total} farmAddr=${withFarm}(${farmRate}%) gpsOnly=${gpsOnly} softBlocks=${softBlocks} bypassed=${bypassed}`);
+        return res.json({
+            ok: true,
+            summary: {
+                total,
+                withFarmAddr:  withFarm,
+                gpsOnly,
+                farmAddrRate:  farmRate,   // % — 목표: ≥60%
+                avgAddrLen:    avgLen,
+                softBlocks,
+                bypassed,
+                bypassRate:    softBlocks > 0 ? Math.round(bypassed / softBlocks * 1000) / 10 : 0,
+            },
+            recent,
+        });
+    } catch (e) {
+        console.error('[GEO_QUALITY_ADMIN_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: 'GEO_QUALITY 조회 오류: ' + e.message });
+    }
+});
+
 module.exports = router;

@@ -50,6 +50,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const miniMapRef = useRef(null);   // div DOM ref
   const miniMapObj = useRef(null);   // L.Map instance
   const [submitting,    setSubmitting]    = useState(false);
+  // GEO_QUALITY: 소프트 차단 — 농지 주소 없이 제출 시 1회 경고 후 2번째 시도에서 통과
+  const [geoWarnPending, setGeoWarnPending] = useState(false);
   const [done,          setDone]          = useState(false);
   const [error,         setError]         = useState('');
   // PHASE SCALE: 유료 긴급 공고
@@ -259,6 +261,17 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     } else if (gpsLat === null) {
       setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 농지 주소를 입력해주세요.');
       return;
+    } else {
+      // GPS 있지만 농지 주소 없음 — 소프트 차단 (1회 경고 → 2번째 시도에서 통과)
+      if (!geoWarnPending) {
+        setGeoWarnPending(true);
+        setError('📍 농지 주소를 입력하면 작업자를 더 정확하게 매칭할 수 있어요.\nGPS 좌표로만 등록하면 거리 계산이 부정확할 수 있습니다.\n👉 위쪽 "농지 위치 입력" 칸에 읍·면·리까지 입력해보세요.\n그래도 GPS로 등록하려면 아래 버튼을 한 번 더 누르세요.');
+        trackClientEvent('geo_soft_block', { hadGps: true, farmAddrLen: 0 });
+        return;
+      }
+      // 2번째 클릭 → 경고 해제 후 GPS로 진행
+      setGeoWarnPending(false);
+      trackClientEvent('geo_soft_block_bypass', { hadGps: true });
     }
 
     // FIX: lat/lng 강제 숫자 변환 (문자열 방지)
@@ -839,7 +852,10 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
         </section>
 
         {error && (
-          <div className="bg-red-50 text-red-600 rounded-xl px-4 py-3 text-sm font-semibold">
+          <div className={`rounded-xl px-4 py-3 text-sm font-semibold whitespace-pre-line
+                          ${geoWarnPending
+                            ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                            : 'bg-red-50 text-red-600'}`}>
             {error}
           </div>
         )}
@@ -850,17 +866,22 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                       px-4 pt-3 pb-safe pb-4 z-30">
         <button
           onClick={handleSubmit}
+          onTouchStart={() => {}}
           disabled={submitting}
           className={`btn-full text-lg py-4 font-black rounded-2xl flex items-center justify-center gap-2
                       ${isUrgentPaid
                         ? 'bg-red-500 text-white active:scale-95 transition-transform shadow-lg'
-                        : 'btn-primary'}`}
+                        : geoWarnPending
+                          ? 'bg-amber-500 text-white active:scale-95 transition-transform shadow-md shadow-amber-200'
+                          : 'btn-primary'}`}
         >
           {submitting
             ? <><Loader2 size={18} className="animate-spin" /> 등록 중...</>
-            : isUrgentPaid
-              ? <><Flame size={18} /> 긴급 공고 등록</>
-              : simpleMode ? '⚡ 바로 등록' : '요청하기'
+            : geoWarnPending
+              ? '📍 그래도 GPS로 등록하기'
+              : isUrgentPaid
+                ? <><Flame size={18} /> 긴급 공고 등록</>
+                : simpleMode ? '⚡ 바로 등록' : '요청하기'
           }
         </button>
         {simpleMode && !isUrgentPaid && (
