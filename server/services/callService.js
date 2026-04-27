@@ -27,9 +27,14 @@ function getCallInfo(jobId, requestingUserId) {
     // 농민 여부 확인
     const isFarmer = job.requesterId === requestingUserId;
 
-    // 작업자 여부 확인 (workers 테이블의 userId 기준)
-    const selectedWorkerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(job.selectedWorkerId);
-    const isWorker = selectedWorkerRow?.userId === requestingUserId;
+    // BUG_FIX: selectedWorkerId = user-xxx 대응 (workers 프로필 없이 선택된 경우)
+    const selectedWorkerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(job.selectedWorkerId)
+                           || db.prepare('SELECT * FROM workers WHERE userId = ?').get(job.selectedWorkerId);
+
+    // 작업자 여부: workers.userId 일치 OR selectedWorkerId 자체가 userId인 경우
+    const isWorker = selectedWorkerRow
+        ? selectedWorkerRow.userId === requestingUserId
+        : job.selectedWorkerId === requestingUserId;
 
     if (!isFarmer && !isWorker) {
         return { ok: false, error: '이 작업의 연락처를 조회할 권한이 없어요.' };
@@ -38,9 +43,14 @@ function getCallInfo(jobId, requestingUserId) {
     // 농민 연락처
     const farmerUser = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.requesterId);
 
-    // 작업자 연락처 (workers.phone)
-    const workerPhone = selectedWorkerRow?.phone || null;
-    const workerName  = selectedWorkerRow?.name  || '작업자';
+    // 작업자 연락처: workers.phone 우선, 없으면 users.phone fallback
+    let workerPhone = selectedWorkerRow?.phone || null;
+    let workerName  = selectedWorkerRow?.name  || null;
+    if (!workerPhone || !workerName) {
+        const workerUserRow = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.selectedWorkerId);
+        workerPhone = workerPhone || workerUserRow?.phone || null;
+        workerName  = workerName  || workerUserRow?.name  || '작업자';
+    }
     const farmerPhone = farmerUser?.phone || null;
     const farmerName  = farmerUser?.name  || job.requesterName || '농민';
 

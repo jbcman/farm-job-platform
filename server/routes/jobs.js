@@ -961,9 +961,27 @@ router.get('/:id/applicants', (req, res) => {
 
     // 지원자별 스코어 계산
     const raw = apps.map(a => {
-        const worker = normalizeWorker(
-            db.prepare('SELECT * FROM workers WHERE id = ?').get(a.workerId)
-        );
+        // BUG_FIX: workerId = user-xxx (workers 프로필 없이 지원한 경우) 대응
+        // 1) workers.id 조회  2) workers.userId 조회  3) users 테이블 fallback
+        let workerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(a.workerId)
+                     || db.prepare('SELECT * FROM workers WHERE userId = ?').get(a.workerId);
+        if (!workerRow) {
+            const u = db.prepare(
+                'SELECT id, name, phone, lat, lng, locationText, completedJobs, rating FROM users WHERE id = ?'
+            ).get(a.workerId);
+            if (u) workerRow = {
+                id: a.workerId, userId: u.id,
+                name: u.name || '작업자', phone: u.phone,
+                baseLocationText: u.locationText || '', categories: '[]',
+                hasTractor: 0, hasSprayer: 0, hasRotary: 0,
+                completedJobs: u.completedJobs || 0, rating: u.rating || 0,
+                availableTimeText: null, noshowCount: 0,
+                ratingAvg: null, ratingCount: 0,
+                latitude: u.lat, longitude: u.lng,
+                locationUpdatedAt: null, activeNow: 0,
+            };
+        }
+        const worker = normalizeWorker(workerRow);
         const dist = (job.latitude && job.longitude && worker?.latitude && worker?.longitude)
             ? distanceKm(job.latitude, job.longitude, worker.latitude, worker.longitude)
             : null;
@@ -1057,9 +1075,19 @@ router.post('/:id/select-worker', (req, res) => {
         return res.status(400).json({ ok: false, error: '이미 작업자를 선택한 요청이에요.' });
     }
 
-    const worker = normalizeWorker(
-        db.prepare('SELECT * FROM workers WHERE id = ?').get(workerId)
-    );
+    // BUG_FIX: workerId = user-xxx 대응 (workers 프로필 없이 지원한 경우)
+    let workerRowSel = db.prepare('SELECT * FROM workers WHERE id = ?').get(workerId)
+                    || db.prepare('SELECT * FROM workers WHERE userId = ?').get(workerId);
+    if (!workerRowSel) {
+        const u = db.prepare('SELECT id, name, phone FROM users WHERE id = ?').get(workerId);
+        if (u) workerRowSel = {
+            id: workerId, userId: u.id,
+            name: u.name || '작업자', phone: u.phone,
+            categories: '[]', hasTractor: 0, hasSprayer: 0, hasRotary: 0,
+            completedJobs: 0, rating: 0, noshowCount: 0,
+        };
+    }
+    const worker = normalizeWorker(workerRowSel);
     if (!worker) return res.status(404).json({ ok: false, error: '작업자를 찾을 수 없어요.' });
 
     // Phase 7: 실제 농민 연락처 조회
