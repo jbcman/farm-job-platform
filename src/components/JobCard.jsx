@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, Maximize2, Zap, CheckCircle, Play, Flag, Star, Banknote, XCircle, RefreshCw, ImageIcon } from 'lucide-react';
 import { trackClientEvent } from '../utils/api.js';
 import { formatDistance } from '../utils/formatDistance.js';
@@ -7,6 +7,10 @@ import { getMapPageUrl } from '../utils/mapLink.js';
 import { getSMSLink, getCallLink } from '../utils/contactLink.js';
 import { getUserSkillLevel, incrementApplyCount } from '../utils/userProfile.js';
 import { distBadgeColor, SHADOW } from '../config/designSystem.js';
+import CallButton from './common/CallButton.jsx';
+import { logView, logDetail } from '../utils/conversionTracker.js';
+import { estimateWork } from '../utils/workEstimator.js';
+import { trackClick } from '../utils/behaviorScore.js';
 
 // ── 디자인 시스템 V2: 거리 체감 라벨 ─────────────────────────
 function distLabel(km) {
@@ -47,6 +51,17 @@ const CATEGORY_EMOJI = {
   '방제': '💊', '수확 일손': '🌾', '예초': '✂️',
 };
 
+// UX_V2 STEP 7: 장비 타입 → 아이콘
+const EQUIPMENT_ICON = {
+  tractor: '🚜', drone: '🚁', sprayer: '🚁',
+  forklift: '🏗️', excavator: '⛏️', none: '🧤',
+};
+// 카테고리 기반 폴백
+function resolveEquipmentIcon(job) {
+  if (job.equipmentType && EQUIPMENT_ICON[job.equipmentType]) return EQUIPMENT_ICON[job.equipmentType];
+  return CATEGORY_EMOJI[job.category] || '🧤';
+}
+
 // PHASE IMAGE_JOBTYPE_AI: autoJobType 아이콘 (같은 맵 재사용)
 const JOB_ICONS = CATEGORY_EMOJI;
 
@@ -79,6 +94,7 @@ export default function JobCard({
   applied = false,
   userId,
   userLocation,     // DISTANCE_FIX: { lat, lng } | null — 프론트 폴백 거리 계산용
+  isSmartMatch = false, // SMART_V3: 🤖 추천 매칭 여부
 }) {
   // PHASE IMAGE_JOBTYPE_AI: autoJobType 확정 시 우선 아이콘
   const resolvedType = job.autoJobType || job.category;
@@ -142,6 +158,14 @@ export default function JobCard({
   // HOMEPAGE_BRAND_POLISH_V1 STEP 7: 전화 유도 UX — 0.5초 "연결 중..." 로딩
   const [connecting, setConnecting] = useState(false);
 
+  // UX_V2 STEP 1: 카드 노출 로그 (worker+open 전환율 측정)
+  useEffect(() => {
+    if (mode === 'worker' && job.status === 'open' && !applied) {
+      logView(job.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
   // 지도 버튼 핸들러 — 카드 이벤트와 완전 분리
   const handleMapClick = (e) => {
     e.stopPropagation();
@@ -155,12 +179,178 @@ export default function JobCard({
     window.location.href = url;
   };
 
+  // ══ UX_V2: worker + open → 심플 전화 카드 ══
+  if (mode === 'worker' && job.status === 'open' && !applied) {
+    const phone      = job.phone || job.contact || job.phoneFull || job.farmerPhone || null;
+    const callLink   = getCallLink(job);
+    const driveLabel = formatDriveTime(job) ||
+                       (distKm != null ? `🚗 ${distKm < 1 ? `${Math.round(distKm*1000)}m` : `${distKm.toFixed(1)}km`}` : null);
+    const equipIcon  = resolveEquipmentIcon(job);
+    const region     = job.locationText ? job.locationText.split(' ').slice(0, 2).join(' ') : null;
+    const isUrgentNow = job.isUrgent || job.isToday || false;
+    const workEst     = estimateWork(job.areaPyeong, job.category);
+
+    return (
+      <div
+        className={`card animate-fade-in ${urgentBorder}`}
+        style={{ padding: '14px 16px' }}
+      >
+        {/* SMART_V3: 🤖 추천 뱃지 */}
+        {isSmartMatch && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            background: 'linear-gradient(90deg,#d97706,#f59e0b)',
+            color: '#fff', fontWeight: 900, fontSize: 11,
+            borderRadius: 9999, padding: '3px 10px', marginBottom: 8,
+          }}>
+            🤖 추천
+          </div>
+        )}
+
+        {/* STEP 9: 긴급 태그 */}
+        {isUrgentNow && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            background: 'linear-gradient(90deg,#b91c1c,#dc2626)',
+            color: '#fff', fontWeight: 900, fontSize: 12,
+            borderRadius: 9999, padding: '3px 10px', marginBottom: 10,
+          }}>
+            🔥 지금 필요
+          </div>
+        )}
+
+        {/* 스폰서 배너 */}
+        {job.isSponsored && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'linear-gradient(90deg,#f97316,#dc2626)',
+            color: '#fff', fontWeight: 900, fontSize: 11,
+            borderRadius: 8, padding: '4px 10px', marginBottom: 10,
+          }}>
+            <span>🔥 지원자 몰리는 공고</span>
+            <span style={{ opacity: 0.85 }}>추천 1순위</span>
+          </div>
+        )}
+
+        {/* 가격 + 지역 */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+          {job.pay && (
+            <span style={{ fontSize: 28, fontWeight: 900, color: '#15803d', lineHeight: 1 }}>
+              💰 {job.pay}
+            </span>
+          )}
+          {region && (
+            <span style={{ fontSize: 15, color: '#6b7280', fontWeight: 600 }}>
+              📍 {region}
+            </span>
+          )}
+        </div>
+
+        {/* STEP 8: 거리/이동 + 장비 아이콘 */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {driveLabel && (
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#374151' }}>{driveLabel}</span>
+          )}
+          <span style={{ fontSize: 22 }}>{equipIcon}</span>
+          {job.date && (
+            <span style={{ fontSize: 14, color: '#9ca3af' }}>📅 {job.date}</span>
+          )}
+        </div>
+
+        {/* STEP 4: 즉시성 트리거 + 작업 시간 추정 */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+          {isUrgentNow ? (
+            <span style={{
+              fontSize: 13, fontWeight: 800, color: '#15803d',
+              background: '#dcfce7', borderRadius: 8, padding: '4px 10px',
+            }}>
+              ⏰ 오늘 바로 시작 가능
+            </span>
+          ) : (
+            <span style={{
+              fontSize: 13, fontWeight: 700, color: '#6b7280',
+              background: '#f3f4f6', borderRadius: 8, padding: '4px 10px',
+            }}>
+              ⏰ 지금 바로 가능
+            </span>
+          )}
+
+          {/* STEP 2/3: 작업 시간 추정 (메인) */}
+          {workEst.label && (
+            <span className="work-time">{workEst.label}</span>
+          )}
+
+          {/* STEP 5: 숫자 트리거 — applicantCount 존재 시 */}
+          {(job.applicationCount ?? 0) > 0 && (
+            <span style={{
+              fontSize: 13, fontWeight: 800, color: '#b91c1c',
+              background: '#fef2f2', borderRadius: 8, padding: '4px 10px',
+            }}>
+              🔥 현재 {job.applicationCount}명 확인 중
+            </span>
+          )}
+        </div>
+
+        {/* STEP 3: 평수 보조 표시 */}
+        {job.areaPyeong && (
+          <div className="work-area">
+            🌾 {job.areaPyeong.toLocaleString()}평
+            {workEst.sublabel && <span style={{ marginLeft: 6, color: '#9ca3af' }}>({workEst.sublabel})</span>}
+          </div>
+        )}
+
+        {/* STEP 2/10: CallButton — 전화 CTA 주인공 */}
+        <CallButton
+          phone={callLink ? (phone || 'has_link') : null}
+          jobId={job.id}
+          onFallback={() => {
+            // 연락처 없음 → SMS 지원 흐름
+            incrementApplyCount();
+            try { trackClientEvent('contact_apply', { jobId: job.id }); } catch (_) {}
+            const storedId   = localStorage.getItem('farm-userId') || 'anonymous';
+            const storedName = localStorage.getItem('farm-userName') || '작업자';
+            fetch(`/api/jobs/${job.id}/contact-apply`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ workerId: storedId, workerName: storedName }),
+            }).catch(() => {});
+            const sms = getSMSLink(job, getUserSkillLevel());
+            if (sms) setTimeout(() => { window.location.href = sms; }, 500);
+            else onApply?.(job);
+          }}
+        />
+
+        {/* STEP 5/6: 상세 — Secondary, 작게, 채팅 없음 */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            logDetail(job.id);
+            logBehavior(job, 'view');
+            trackClick(job.id);    // SMART_V4: 클릭 행동 기록
+            onViewDetail?.(job);
+          }}
+          style={{
+            display: 'block', width: '100%',
+            marginTop: 8, padding: '6px 0',
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 13, color: '#9ca3af', textDecoration: 'underline',
+            textAlign: 'center',
+          }}
+        >
+          상세보기
+        </button>
+      </div>
+    );
+  }
+  // ══ END UX_V2 ══
+
   return (
     <div
       className={`card animate-fade-in ${urgentBorder}`}
       onClick={(e) => {
         if (e.target.closest('button, a')) return;
         logBehavior(job, 'view');
+        trackClick(job.id);    // SMART_V4: 카드 클릭 행동 기록
         onViewDetail && onViewDetail(job);
       }}
     >
@@ -368,6 +558,9 @@ export default function JobCard({
             <div className="flex items-center gap-1.5">
               <Maximize2 size={14} className="text-farm-green shrink-0" />
               <span className="font-semibold text-farm-green">{areaDisplay}</span>
+              {(() => { const w = estimateWork(job.areaPyeong, job.category); return w.label ? (
+                <span className="work-time" style={{ marginLeft: 2 }}>{w.label}</span>
+              ) : null; })()}
             </div>
           )}
           {driveMinLabel && (

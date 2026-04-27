@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: farm-job-platform
+    runtime: node
+    buildCommand: npm install && cd server && npm install && cd .. && npm run build
+    startCommand: node server/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production

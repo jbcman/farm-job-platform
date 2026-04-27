@@ -430,5 +430,22 @@ try { db.exec("ALTER TABLE jobs ADD COLUMN paymentId     TEXT DEFAULT NULL");   
 try { db.exec("ALTER TABLE jobs ADD COLUMN fee           INTEGER DEFAULT 0");       } catch (_) {}
 try { db.exec("ALTER TABLE jobs ADD COLUMN netAmount     INTEGER DEFAULT 0");       } catch (_) {}
 
+// TRUST_SYSTEM: 리뷰 태그 + 블라인드 공개 + 노쇼 추적
+try { db.exec("ALTER TABLE reviews ADD COLUMN tags     TEXT    DEFAULT NULL");  } catch (_) {}
+try { db.exec("ALTER TABLE reviews ADD COLUMN isPublic INTEGER DEFAULT 0");     } catch (_) {}
+try { db.exec("ALTER TABLE workers ADD COLUMN noshowCount INTEGER DEFAULT 0"); } catch (_) {}
+
+// REVIEW_UX: reviewerRole 추적 + 작업자/농민 누적 평점
+try { db.exec("ALTER TABLE reviews ADD COLUMN reviewerRole TEXT DEFAULT NULL"); } catch (_) {}
+try { db.exec("ALTER TABLE workers ADD COLUMN ratingAvg   REAL    DEFAULT NULL"); } catch (_) {}
+try { db.exec("ALTER TABLE workers ADD COLUMN ratingCount INTEGER DEFAULT 0");   } catch (_) {}
+
+// AI_MATCH_V2: 작물/스킬/시간대/즉시가능 매칭 보정
+try { db.exec("ALTER TABLE jobs    ADD COLUMN cropType     TEXT    DEFAULT NULL"); } catch (_) {}
+try { db.exec("ALTER TABLE jobs    ADD COLUMN autoAssign   INTEGER DEFAULT 0");    } catch (_) {}
+try { db.exec("ALTER TABLE workers ADD COLUMN skillTags    TEXT    DEFAULT NULL"); } catch (_) {}  // JSON 배열
+try { db.exec("ALTER TABLE workers ADD COLUMN preferredTime TEXT   DEFAULT NULL"); } catch (_) {}  // '오전'|'오후'|'저녁'
+try { db.exec("ALTER TABLE workers ADD COLUMN activeNow    INTEGER DEFAULT 0");    } catch (_) {}
+
 console.log(`[DB] SQLite 연결 완료 → ${DB_PATH}`);
 module.exports = db;

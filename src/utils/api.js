@@ -83,6 +83,11 @@ export async function getMyApplications(userId) {
 
 // ─── 작업자 API ───────────────────────────────────────────────
 
+/** ACTIVE_NOW_RELIABILITY: 작업자 활동 중 신호 (10분마다 호출 권장) */
+export async function workerHeartbeat() {
+    return req('POST', '/workers/heartbeat', {});
+}
+
 /** 근처 작업자 */
 export async function getNearbyWorkers({ lat, lon, category } = {}) {
     const params = new URLSearchParams();
@@ -121,9 +126,26 @@ export async function completeWork(jobId, workerId) {
     return req('POST', `/jobs/${jobId}/complete-work`, { workerId });
 }
 
-/** PHASE 22: 후기 작성 (workerId 기반, 완료 상태 필수) */
-export async function submitJobReview(jobId, { workerId, rating, review }) {
-    return req('POST', `/jobs/${jobId}/review`, { workerId, rating, review });
+/** PHASE 22 / REVIEW_UX: 후기 작성 (양방향, 태그, 블라인드 지원) */
+export async function submitJobReview(jobId, {
+    workerId,                // backward compat
+    reviewerId,              // 명시적 작성자 ID
+    targetId,                // 명시적 대상 ID
+    reviewerRole,            // 'farmer' | 'worker'
+    rating,
+    review,                  // comment alias
+    comment,
+    tags,                    // string[]
+}) {
+    return req('POST', `/jobs/${jobId}/review`, {
+        workerId,
+        reviewerId,
+        targetId,
+        reviewerRole,
+        rating,
+        review: review || comment || '',
+        tags,
+    });
 }
 
 /** PHASE 26: 탭바 배지 카운트 (30초 폴링) */
@@ -139,6 +161,21 @@ export async function getNearbyJobs(lat, lng, radius = 3) {
 /** PHASE RETENTION: 미선택 지원자 재매칭 */
 export async function rematchJob(jobId, requesterId) {
     return req('POST', `/jobs/${jobId}/rematch`, { requesterId });
+}
+
+/** AUTO_MATCH: 긴급 전환 (무료 — isUrgent=1, 매칭 +100 boost) */
+export async function setJobUrgent(jobId, requesterId) {
+    return req('POST', `/jobs/${jobId}/urgent`, { requesterId });
+}
+
+/** AI_MATCH_V2: 농민 명시적 자동 배정 — 지금 바로 최적 작업자 선택 */
+export async function autoAssignWorker(jobId, requesterId) {
+    return req('POST', `/jobs/${jobId}/auto-assign`, { requesterId });
+}
+
+/** AI_MATCH_V2: 자동 배정 opt-in 토글 (enable: true=켜기 / false=끄기) */
+export async function setAutoAssign(jobId, requesterId, enable) {
+    return req('POST', `/jobs/${jobId}/set-auto-assign`, { requesterId, enable });
 }
 
 /** PHASE SCALE: 스폰서 등록 (type: 'sponsored' | 'urgentPaid') */

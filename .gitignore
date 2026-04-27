@@ -1,7 +1,6 @@
 node_modules/
 server/node_modules/
 .env
-dist/
 *.log
 *.txt
 BACKUP_*

@@ -10,7 +10,8 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, Loader2, Phone } from 'lucide-react';
-import { getMyApplications, completeWork, submitJobReview } from '../utils/api.js';
+import { getMyApplications, completeWork } from '../utils/api.js';
+import ReviewModal from './ReviewModal.jsx';
 
 // ── 상태 배지 ────────────────────────────────────────────────────
 function getStatusInfo(appStatus, jobStatus) {
@@ -31,79 +32,7 @@ function getStatusInfo(appStatus, jobStatus) {
   return { label: '선택 대기중', cls: 'bg-amber-50 text-amber-700', icon: '⏳' };
 }
 
-// ── 별점 선택 컴포넌트 ────────────────────────────────────────────
-function StarRating({ value, onChange, disabled = false }) {
-  return (
-    <div className="flex gap-0.5">
-      {[1, 2, 3, 4, 5].map(n => (
-        <button
-          key={n}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange?.(n)}
-          style={{
-            background: 'none', border: 'none', padding: '2px 3px',
-            fontSize: 28, cursor: disabled ? 'default' : 'pointer',
-            color: n <= value ? '#f59e0b' : '#e5e7eb',
-            transition: 'color .1s',
-          }}
-        >
-          ★
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── 인라인 후기 폼 ────────────────────────────────────────────────
-function ReviewForm({ jobId, workerId, onSubmitted }) {
-  const [rating,  setRating]  = useState(0);
-  const [review,  setReview]  = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
-
-  async function handleSubmit() {
-    if (rating === 0) { setError('별점을 먼저 선택해주세요.'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      await submitJobReview(jobId, { workerId, rating, review });
-      onSubmitted();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
-      <p className="text-xs font-semibold text-gray-500 mb-2">이 농민에게 후기를 남겨주세요</p>
-      <StarRating value={rating} onChange={setRating} />
-      <textarea
-        value={review}
-        onChange={e => setReview(e.target.value)}
-        placeholder="작업 경험을 공유해주세요 (선택 사항)"
-        rows={2}
-        className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-xl text-sm
-                   focus:outline-none focus:border-farm-green resize-none"
-      />
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-      <button
-        onClick={handleSubmit}
-        disabled={loading}
-        className="mt-2 w-full py-2.5 bg-amber-400 text-white font-black text-sm
-                   rounded-xl flex items-center justify-center gap-2 disabled:opacity-60
-                   active:scale-95 transition-transform shadow-sm"
-      >
-        {loading
-          ? <><Loader2 size={14} className="animate-spin" /> 등록 중...</>
-          : '⭐ 후기 등록하기'
-        }
-      </button>
-    </div>
-  );
-}
+// StarRating, ReviewForm → ReviewModal로 이전 (REVIEW_UX)
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────
 export default function MyApplicationsPage({ userId, onBack }) {
@@ -111,7 +40,8 @@ export default function MyApplicationsPage({ userId, onBack }) {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState('');
   const [toast,        setToast]        = useState('');
-  const [completing,   setCompleting]   = useState(null); // 완료 처리 중인 appId
+  const [completing,   setCompleting]   = useState(null);   // 완료 처리 중인 appId
+  const [reviewApp,    setReviewApp]    = useState(null);   // ReviewModal 대상 { app, job }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -140,7 +70,9 @@ export default function MyApplicationsPage({ userId, onBack }) {
     setCompleting(app.id);
     try {
       await completeWork(jobId, userId);
-      showToast('작업 완료 처리됐어요!');
+      showToast('작업 완료 처리됐어요! 🎉');
+      // 완료 직후 후기 모달 자동 노출
+      setReviewApp({ app, job: app.job });
       load();
     } catch (e) {
       showToast(e.message);
@@ -272,17 +204,23 @@ export default function MyApplicationsPage({ userId, onBack }) {
 
               {/* 후기 섹션 (completed) */}
               {isCompleted && !hasReview && (
-                <ReviewForm
-                  jobId={job.id}
-                  workerId={userId}
-                  onSubmitted={() => { showToast('후기가 등록됐어요! ⭐'); load(); }}
-                />
+                <div className="mt-1 pt-3 border-t border-dashed border-gray-200">
+                  <p className="text-xs text-gray-400 mb-2">농민분께 후기를 남겨보세요</p>
+                  <button
+                    onClick={() => setReviewApp({ app: a, job })}
+                    className="w-full py-2.5 bg-amber-400 text-white font-bold text-sm
+                               rounded-xl flex items-center justify-center gap-1.5
+                               active:scale-95 transition-transform shadow-sm"
+                  >
+                    ⭐ 후기 남기기
+                  </button>
+                </div>
               )}
 
               {isCompleted && hasReview && (
                 <div className="mt-1 pt-3 border-t border-dashed border-gray-200">
                   <p className="text-xs text-gray-400 mb-1.5">내가 남긴 후기</p>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap">
                     {[1,2,3,4,5].map(n => (
                       <span key={n} style={{ fontSize: 18, color: n <= a.review.rating ? '#f59e0b' : '#e5e7eb' }}>★</span>
                     ))}
@@ -296,6 +234,22 @@ export default function MyApplicationsPage({ userId, onBack }) {
           );
         })}
       </div>
+
+      {/* REVIEW_UX: 후기 모달 (완료 직후 자동 + 수동 트리거) */}
+      {reviewApp && (
+        <ReviewModal
+          job={reviewApp.job}
+          reviewerRole="worker"
+          reviewerId={userId}
+          targetId={reviewApp.job?.requesterId}
+          showIncentive={true}
+          onClose={() => setReviewApp(null)}
+          onSubmit={() => {
+            showToast('후기가 등록됐어요! ⭐');
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

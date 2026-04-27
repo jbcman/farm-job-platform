@@ -27,20 +27,35 @@ function getCallInfo(jobId, requestingUserId) {
     // 농민 여부 확인
     const isFarmer = job.requesterId === requestingUserId;
 
-    // 작업자 여부 확인 (workers 테이블의 userId 기준)
-    const selectedWorkerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(job.selectedWorkerId);
-    const isWorker = selectedWorkerRow?.userId === requestingUserId;
+    // BUG_FIX: selectedWorkerId = user-xxx 대응 (workers 프로필 없이 선택된 경우)
+    const selectedWorkerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(job.selectedWorkerId)
+                           || db.prepare('SELECT * FROM workers WHERE userId = ?').get(job.selectedWorkerId);
 
+    // 작업자 여부: 3단계 체크
+    // 1) workers.userId === requestingUserId  (일반 케이스 — 사용자 고유 ID)
+    // 2) workers.id === requestingUserId      (엣지 케이스 — workers.id가 직접 전달된 경우)
+    // 3) selectedWorkerId === requestingUserId (workers 행 없는 경우 — userId 형식 직접 비교)
+    const isWorker = selectedWorkerRow
+        ? (selectedWorkerRow.userId === requestingUserId || selectedWorkerRow.id === requestingUserId)
+        : job.selectedWorkerId === requestingUserId;
+
+    console.log(`[TRACE][CALL_AUTH] jobId=${jobId} requestingUserId=${requestingUserId} isFarmer=${isFarmer} isWorker=${isWorker} selectedWorkerId=${job.selectedWorkerId}`);
     if (!isFarmer && !isWorker) {
+        console.warn(`[BROKEN_LINK][CALL_AUTH] 403 — requestingUserId=${requestingUserId} is neither farmer(${job.requesterId}) nor worker(${job.selectedWorkerId})`);
         return { ok: false, error: '이 작업의 연락처를 조회할 권한이 없어요.' };
     }
 
     // 농민 연락처
     const farmerUser = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.requesterId);
 
-    // 작업자 연락처 (workers.phone)
-    const workerPhone = selectedWorkerRow?.phone || null;
-    const workerName  = selectedWorkerRow?.name  || '작업자';
+    // 작업자 연락처: workers.phone 우선, 없으면 users.phone fallback
+    let workerPhone = selectedWorkerRow?.phone || null;
+    let workerName  = selectedWorkerRow?.name  || null;
+    if (!workerPhone || !workerName) {
+        const workerUserRow = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.selectedWorkerId);
+        workerPhone = workerPhone || workerUserRow?.phone || null;
+        workerName  = workerName  || workerUserRow?.name  || '작업자';
+    }
     const farmerPhone = farmerUser?.phone || null;
     const farmerName  = farmerUser?.name  || job.requesterName || '농민';
 

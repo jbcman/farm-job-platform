@@ -38,6 +38,8 @@ const payRoutes               = require('./routes/pay');
 const adminLogsRoutes         = require('./routes/adminLogs');
 const adminStreamRoutes       = require('./routes/adminStream');
 const adminSystemRoutes       = require('./routes/adminSystem');
+const phoneRoutes             = require('./routes/phone');
+const abRoutes                = require('./routes/ab');
 const { seed }                      = require('./seed');
 const { initWS }                    = require('./ws');
 const { recoverDepartureReminders } = require('./services/reminderRecovery');
@@ -64,6 +66,7 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true })); // MAP_CORE: form-encoded body 방어
 
 // ─── 요청 로그 ────────────────────────────────────────────────────
 app.use((req, _res, next) => {
@@ -95,6 +98,35 @@ app.get('/api/health', (_req, res) =>
     })
 );
 
+// ─── GET /api/geocode — 주소 → 좌표 변환 (JobRequestPage 농지 주소 입력용) ──
+// farmAddress 입력 후 "위치 찾기" 버튼이 이 엔드포인트를 호출함
+const { geocodeAddress } = require('./services/geocodeService');
+app.get('/api/geocode', async (req, res) => {
+    const { address } = req.query;
+    if (!address || !address.trim()) {
+        return res.status(400).json({ ok: false, error: '주소가 필요해요.' });
+    }
+    // GEO_QUALITY: 8자 미만 = 도시/군 단위 → 정확도 낮음 → 차단
+    if (address.trim().length < 8) {
+        return res.status(400).json({
+            ok: false,
+            error: `"${address.trim()}" 주소가 너무 짧아요. 읍·면·리·동까지 입력해주세요. 예) 경기 화성시 서신면 홍법리`,
+        });
+    }
+    try {
+        const result = await geocodeAddress(address.trim());
+        if (!result) {
+            console.warn(`[GEOCODE_API_MISS] "${address}"`);
+            return res.status(404).json({ ok: false, error: `"${address.trim()}" 위치를 찾을 수 없어요. 시·군·읍·면·리 형식으로 더 구체적으로 입력해주세요.` });
+        }
+        console.log(`[GEOCODE_API_OK] "${address}" → (${result.lat}, ${result.lng})`);
+        return res.json({ ok: true, lat: result.lat, lng: result.lng });
+    } catch (e) {
+        console.error('[GEOCODE_API_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '위치 검색 중 오류가 발생했어요.' });
+    }
+});
+
 // ─── API 라우트 ──────────────────────────────────────────────────
 app.use('/api/jobs',        jobRoutes);
 app.use('/api/workers',     workerRoutes);
@@ -116,6 +148,8 @@ app.use('/api/pay',                     payRoutes);
 app.use('/api/admin/logs',              adminLogsRoutes);
 app.use('/api/admin/stream',            adminStreamRoutes);
 app.use('/api/admin/system',            adminSystemRoutes);
+app.use('/api/phone',                   phoneRoutes);
+app.use('/api/ab',                      abRoutes);
 
 // ─── SPA 폴백 ────────────────────────────────────────────────────
 const indexHtml = path.join(distPath, 'index.html');

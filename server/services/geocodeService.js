@@ -30,6 +30,39 @@ let _nominatimLastCallTs = 0;
 const NOMINATIM_RATE_MS  = 1100;
 
 /**
+ * _normalizeAddress(address) — 주소 정규화
+ * Nominatim은 도로명 주소(길/로)와 지번 번호를 잘 처리 못함
+ * 전략: 읍·면·리·동 단위까지만 추출하여 재시도
+ *
+ * "경기 화성시 서신면 홍법리 123-4"  → "경기 화성시 서신면 홍법리"
+ * "경기도 양주시 엄상동길 30-22"     → "경기도 양주시"  (도로명은 시/군까지만)
+ * "경기 양주시 장흥면 산북리"         → 그대로
+ */
+function _normalizeAddress(address) {
+    const trimmed = address.trim();
+
+    // 1단계: 도로명 주소 감지 (길, 로, 대로, 가 뒤에 번호) → 도시/군 단위로 축약
+    // 예: "경기도 양주시 엄상동길 30-22" → "경기도 양주시"
+    const roadMatch = trimmed.match(/^(.+?(?:시|군|구))\s+\S+(?:길|로|대로|가)\s+\d/);
+    if (roadMatch) {
+        const normalized = roadMatch[1].trim();
+        console.log(`[GEOCODE_NORMALIZE] 도로명 감지 "${trimmed}" → "${normalized}"`);
+        return normalized;
+    }
+
+    // 2단계: 지번 번호 제거 (리/동/가 뒤 숫자)
+    // 예: "경기 화성시 서신면 홍법리 123-4" → "경기 화성시 서신면 홍법리"
+    const lotMatch = trimmed.match(/^(.+?(?:리|동|가|읍|면|로))\s+\d[\d\-]*$/);
+    if (lotMatch) {
+        const normalized = lotMatch[1].trim();
+        console.log(`[GEOCODE_NORMALIZE] 지번 제거 "${trimmed}" → "${normalized}"`);
+        return normalized;
+    }
+
+    return null; // 정규화 불필요
+}
+
+/**
  * geocodeAddress(address)
  * @param {string} address  한국어 주소 (예: "경기 화성시 서신면 홍법리")
  * @returns {Promise<{lat: number, lng: number}|null>}
@@ -46,7 +79,7 @@ async function geocodeAddress(address) {
         return cached;
     }
 
-    // ② Kakao API (키 있을 때 우선)
+    // ② Kakao API (키 있을 때 우선 — 도로명 포함 모든 주소 처리 가능)
     if (KAKAO_KEY) {
         const result = await _fetchKakao(address.trim());
         if (result) {
@@ -64,8 +97,33 @@ async function geocodeAddress(address) {
     }
     _nominatimLastCallTs = Date.now();
 
-    const result = await _fetchNominatim(address.trim());
-    _geoCache.set(key, result); // 실패(null)도 캐싱하여 재시도 방지
+    let result = await _fetchNominatim(address.trim());
+
+    // ④ Nominatim 실패 → 주소 정규화 후 1회 재시도
+    if (!result) {
+        const normalized = _normalizeAddress(address.trim());
+        if (normalized && normalized !== address.trim()) {
+            const normKey = normalized.toLowerCase();
+            if (_geoCache.has(normKey)) {
+                result = _geoCache.get(normKey);
+                console.log(`[GEOCODE_NORM_CACHE_HIT] "${normalized}"`);
+            } else {
+                // rate limit 준수
+                const elapsed2 = Date.now() - _nominatimLastCallTs;
+                if (elapsed2 < NOMINATIM_RATE_MS) {
+                    await new Promise(r => setTimeout(r, NOMINATIM_RATE_MS - elapsed2));
+                }
+                _nominatimLastCallTs = Date.now();
+                result = await _fetchNominatim(normalized);
+                _geoCache.set(normKey, result);
+                if (result) {
+                    console.log(`[GEOCODE_NORM_OK] "${address}" → 정규화 후 성공 "${normalized}"`);
+                }
+            }
+        }
+    }
+
+    _geoCache.set(key, result); // 원본 주소도 캐싱 (성공/실패 모두)
     return result;
 }
 

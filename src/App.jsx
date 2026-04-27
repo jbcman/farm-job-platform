@@ -18,6 +18,7 @@ import MapExplorePage        from './pages/MapExplorePage.jsx';
 import RevenueDashboard      from './pages/RevenueDashboard.jsx';
 import { getUserId, trackClientEvent, getNotifications } from './utils/api.js';
 import { getOrCreateUser } from './utils/userProfile.js';
+import { pushView, replaceView } from './utils/historyManager.js';
 
 /**
  * App.jsx — 메인 상태 관리 + 화면 라우팅
@@ -39,6 +40,15 @@ import { getOrCreateUser } from './utils/userProfile.js';
  *   ngrok / ngrok-free.app / ngrok.io 호스트 감지 시 게스트 유저 자동 생성
  *   → 온보딩/로그인 우회, localStorage 정상 저장, 무한 리로드 없음
  */
+
+// STEP 2: 개발 모드 모바일 환경 권장 경고 (1회)
+if (import.meta.env.DEV && typeof navigator !== 'undefined') {
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (!isMobile) {
+    console.warn('⚠ [FARM UX V2] 모바일 환경에서 테스트 권장 — 전환율 측정 정확도↑');
+    console.log('  크롬 DevTools → Toggle device toolbar (Ctrl+Shift+M) → 모바일 시뮬레이션');
+  }
+}
 
 /** /admin 경로 감지 */
 function isAdminPath() {
@@ -170,6 +180,8 @@ export default function App() {
   const [deepSource,  setDeepSource]  = useState('direct');
   // Phase 11: 재등록용 prefill
   const [prefillJob,  setPrefillJob]  = useState(null);
+  // BACK_NAV: job-detail에서 돌아갈 이전 페이지 추적
+  const [prevPage,    setPrevPage]    = useState('home');
 
   // 앱 시작 시 로컬스토리지 확인 + 딥링크 감지 + Phase 14 외부 자동 진입
   useEffect(() => {
@@ -225,6 +237,11 @@ export default function App() {
       ua:     navigator.userAgent.slice(0, 80),
       screen: `${window.screen.width}x${window.screen.height}`,
     });
+
+    // BACK_NAV: 홈 진입 시 history state 초기화 (replaceState → 뒤로가기 체인 기준점)
+    if (!jobId) {
+      replaceView('home', {});
+    }
   }, []);
 
   const userId = user?.id || getUserId();
@@ -242,14 +259,63 @@ export default function App() {
     return () => clearInterval(notifTimer.current);
   }, [userId]);
 
+  // BACK_NAV: OS 뒤로가기(popstate) → 이전 뷰 복원
+  useEffect(() => {
+    const handler = (e) => {
+      const state = e.state;
+      if (!state?.view) {
+        console.log('[BACK_NAV] no state → 홈 유지');
+        return;
+      }
+      const { view, params = {} } = state;
+      console.log('[BACK_NAV]', view, params);
+
+      if (params.job)    setSelectedJob(params.job);
+      if (params.jobId)  setDeepJobId(params.jobId);
+      if (params.source) setDeepSource(params.source);
+      setPrevPage(page); // 현재 페이지를 prevPage로 저장
+      setPage(view);
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, [page]); // page 의존성 → setPrevPage(page) 정확히 캡처
+
   function navigate(p, extras = {}) {
+    if (p === 'job-detail') setPrevPage(page); // 이전 페이지 저장
     if (extras.job)     setSelectedJob(extras.job);
     if (extras.jobId)   setDeepJobId(extras.jobId);
     if (extras.source)  setDeepSource(extras.source);
+
+    // BACK_NAV: history stack 관리
+    // - 같은 뷰면 replaceState (stack 중복 방지 — 뒤로가기 연타 방지)
+    // - 다른 뷰면 pushState (뒤로가기 가능하도록 새 entry 추가)
+    const histParams = {
+      jobId:  extras.jobId  ?? extras.job?.id ?? null,
+      source: extras.source ?? null,
+      job: extras.job ? {
+        id:           extras.job.id,
+        category:     extras.job.category,
+        locationText: extras.job.locationText,
+        date:         extras.job.date,
+        status:       extras.job.status,
+        requesterId:  extras.job.requesterId,
+        pay:          extras.job.pay,
+      } : null,
+    };
+
+    if (p === page) {
+      // 같은 뷰 재진입(필터 변경 등) → replace (stack 오염 방지)
+      replaceView(p, histParams);
+    } else {
+      // 다른 뷰 이동 → push (뒤로가기 entry 생성)
+      pushView(p, histParams);
+    }
+
     setPage(p);
   }
 
   function goHome() {
+    replaceView('home', {}); // BACK_NAV: 홈은 항상 replace (stack의 기준점)
     setPage('home');
     // 딥링크 state 초기화
     setDeepJobId(null);
@@ -405,7 +471,14 @@ export default function App() {
       {page === 'job-detail' && (
         <JobDetailPage
           jobId={deepJobId}
-          onBack={goHome}
+          onBack={() => {
+            // 이전 페이지로 복귀 (리스트 → 상세 → 뒤로 = 리스트)
+            if (prevPage && prevPage !== 'home' && prevPage !== 'job-detail') {
+              setPage(prevPage);
+            } else {
+              goHome();
+            }
+          }}
           source={deepSource}
           onCopyJob={handleCopyJob}
         />
