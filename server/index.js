@@ -105,6 +105,13 @@ app.get('/api/geocode', async (req, res) => {
     if (!address || !address.trim()) {
         return res.status(400).json({ ok: false, error: '주소가 필요해요.' });
     }
+    // GEO_QUALITY: 8자 미만 = 도시/군 단위 → 정확도 낮음 → 차단
+    if (address.trim().length < 8) {
+        return res.status(400).json({
+            ok: false,
+            error: `"${address.trim()}" 주소가 너무 짧아요. 읍·면·리·동까지 입력해주세요. 예) 경기 화성시 서신면 홍법리`,
+        });
+    }
     try {
         const result = await geocodeAddress(address.trim());
         if (!result) {

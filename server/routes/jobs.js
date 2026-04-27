@@ -276,6 +276,7 @@ router.post('/', async (req, res) => {
             resolvedLat = geo.lat;
             resolvedLng = geo.lng;
             console.log(`[SERVER_COORD_FARMADDR] "${farmAddressRaw.trim()}" → (${resolvedLat}, ${resolvedLng})`);
+            console.log(`[GEO_QUALITY] source=farmAddress addr="${farmAddressRaw.trim()}" lat=${resolvedLat.toFixed(4)} lng=${resolvedLng.toFixed(4)} addrLen=${farmAddressRaw.trim().length}`);
         } else {
             // 지오코딩 실패 → 등록 거부 (GPS로 대체하지 않음)
             console.warn(`[SERVER_GEOCODE_FAIL] "${farmAddressRaw.trim()}" → 좌표 획득 실패, 등록 거부`);
@@ -289,6 +290,7 @@ router.post('/', async (req, res) => {
         resolvedLat = rawLat;
         resolvedLng = rawLng;
         console.log('[SERVER_COORD_GPS]', locationText, resolvedLat, resolvedLng);
+        console.log(`[GEO_QUALITY] source=GPS locationText="${locationText}" lat=${resolvedLat.toFixed(4)} lng=${resolvedLng.toFixed(4)}`);
     } else {
         // ③ 둘 다 없음 → 등록 거부
         console.warn('[SERVER_COORD_REQUIRED]', locationText, '→ lat/lng 없음 + farmAddress 없음, 등록 거부');

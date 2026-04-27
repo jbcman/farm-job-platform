@@ -104,10 +104,17 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   // LOCATION_FIX: 주소 → 좌표 변환 (서버 /api/geocode 경유)
   // 농지 주소 좌표를 userLocation에 저장하지 않음 (작업자 위치 오염 방지)
   const handleGeocodeAddress = useCallback(async () => {
-    if (!farmAddress.trim()) return;
+    const trimmed = farmAddress.trim();
+    if (!trimmed) return;
+    // GEO_QUALITY: 짧은 주소(8자 미만) — 도시 단위, 정확도 낮음 → 차단
+    if (trimmed.length < 8) {
+      setGeocodeStatus('error');
+      try { trackClientEvent('geocode_short_address', { address: trimmed, len: trimmed.length }); } catch (_) {}
+      return;
+    }
     setGeocodeStatus('loading');
     try {
-      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(farmAddress.trim())}`);
+      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(trimmed)}`);
       const data = await res.json();
       if (!res.ok || !data.lat) throw new Error('주소를 찾을 수 없어요');
       // 농지 좌표 — gpsLat/gpsLng에 저장하되 userLocation(내 위치)에는 저장 안 함
@@ -116,13 +123,15 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       setGpsStatus('ok');         // LOCATION_FIX: setGeoStatus → setGpsStatus (정의된 함수)
       setGeocodeStatus('ok');
       // ❌ localStorage.setItem('userLocation', ...) 제거 — 농지 위치 ≠ 내 위치
-      try { trackClientEvent('geocode_success', { address: farmAddress.trim() }); } catch (_) {}
+      // GEO_QUALITY: 주소 기반 좌표 품질 추적
+      try { trackClientEvent('geocode_success', { address: trimmed, lat: data.lat, lng: data.lng, addrLen: trimmed.length }); } catch (_) {}
+      console.log(`[GEO_QUALITY] 주소="${trimmed}" → (${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}) addrLen=${trimmed.length}`);
     } catch (e) {
       setGeocodeStatus('error');
       // 미리 획득한 GPS 좌표도 지워서 잘못된 위치 사용 방지
       setGpsLat(null);
       setGpsLng(null);
-      try { trackClientEvent('geocode_fail', { address: farmAddress.trim() }); } catch (_) {}
+      try { trackClientEvent('geocode_fail', { address: trimmed }); } catch (_) {}
     }
   }, [farmAddress]);
 
@@ -513,12 +522,16 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
             📍 위치 좌표가 있어야 지도에 정확히 표시돼요
           </p>
 
-          {/* PHASE MAP_FIX / DESIGN_V2: GPS 미확인 시 농지 주소 직접 입력 + 위치 찾기 */}
-          {gpsStatus !== 'ok' && (
-            <div className="mt-3">
+          {/* PHASE MAP_FIX / GEO_QUALITY: 농지 주소 입력 — GPS 있어도 항상 표시
+              이유: GPS = 현재 위치(집/차량). 농지 주소를 입력하면 정확한 농지 좌표 사용 가능 */}
+          <div className="mt-3">
               <p className="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
                 <MapPin size={11} className="text-farm-green" />
-                농지 주소 입력 <span className="font-normal text-gray-400">(GPS 대신 사용)</span>
+                농지 주소
+                {gpsStatus === 'ok'
+                  ? <span className="font-normal text-gray-400">(입력하면 더 정확한 위치 사용 — 권장)</span>
+                  : <span className="font-normal text-gray-400">(GPS 대신 사용)</span>
+                }
               </p>
               <div className="flex gap-2">
                 <input
@@ -611,16 +624,17 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
               )}
               {geocodeStatus === 'error' && (
                 <p className="text-xs text-red-500 font-semibold mt-1">
-                  ⚠️ 주소를 찾을 수 없어요. 더 자세히 입력해주세요.
+                  {farmAddress.trim().length < 8
+                    ? '⚠️ 주소가 너무 짧아요. 예: "경기도 화성시 서신면 홍법리" 처럼 읍면리까지 입력해주세요.'
+                    : '⚠️ 주소를 찾을 수 없어요. 더 자세히 입력해주세요.'}
                 </p>
               )}
               {geocodeStatus === 'idle' && (
                 <p className="text-xs text-gray-400 mt-1">
-                  주소 입력 후 "위치 찾기"를 눌러 지도에 표시하세요
+                  읍·면·리까지 입력 후 "위치 찾기" → 지도 확인 순서로 진행하세요
                 </p>
               )}
             </div>
-          )}
         </section>
 
         {/* 3. 날짜 (간편 모드에서도 항상 표시) */}
