@@ -102,6 +102,20 @@ export default function JobCard({
   const statusBadge = STATUS_BADGE[job.status];
   const isOwner  = userId && job.requesterId === userId;
 
+  // STEP 1: 역할 배지 — 사용자가 이 카드에서 맡는 역할을 즉시 인지
+  const roleBadge = (() => {
+    if (isOwner) {
+      if (job.status === 'in_progress') return { label: '🔵 진행중',    cls: 'bg-blue-100 text-blue-700' };
+      if (job.status === 'done')        return { label: '⭐ 완료',      cls: 'bg-gray-100 text-gray-600' };
+      return { label: '🧑‍🌾 내가 올린 일', cls: 'bg-farm-light text-farm-green border border-farm-green' };
+    }
+    if (userId && job.selectedWorkerId === userId)
+      return { label: '🎯 선택됨',       cls: 'bg-green-100 text-green-700 border border-green-300' };
+    if (applied)
+      return { label: '👷 내가 지원한 일', cls: 'bg-blue-50 text-blue-600 border border-blue-200' };
+    return null;
+  })();
+
   // PHASE 26: 평수 표시 문자열 (areaPyeong 우선, fallback → areaSize+areaUnit)
   const areaDisplay = job.areaPyeong
     ? `${job.areaPyeong.toLocaleString()}평`
@@ -195,6 +209,13 @@ export default function JobCard({
         className={`card animate-fade-in ${urgentBorder}`}
         style={{ padding: '14px 16px' }}
       >
+        {/* STEP 1: 역할 배지 */}
+        {roleBadge && (
+          <div className={`inline-flex items-center text-xs font-black rounded-full px-3 py-1 mb-2 ${roleBadge.cls}`}>
+            {roleBadge.label}
+          </div>
+        )}
+
         {/* SMART_V3: 🤖 추천 뱃지 */}
         {isSmartMatch && (
           <div style={{
@@ -354,6 +375,13 @@ export default function JobCard({
         onViewDetail && onViewDetail(job);
       }}
     >
+
+      {/* STEP 1: 역할 배지 (풀 카드) */}
+      {roleBadge && (
+        <div className={`inline-flex items-center text-xs font-black rounded-full px-3 py-1 mb-2 ${roleBadge.cls}`}>
+          {roleBadge.label}
+        </div>
+      )}
 
       {/* VISUAL_JOB_LITE: 카테고리 대표 이미지 배너 (imageUrl 또는 기본 이미지) */}
       {(thumbUrl || job.imageUrl) && !job.isUrgent && (
