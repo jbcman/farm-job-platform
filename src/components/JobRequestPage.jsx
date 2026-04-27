@@ -522,17 +522,33 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
             📍 위치 좌표가 있어야 지도에 정확히 표시돼요
           </p>
 
-          {/* PHASE MAP_FIX / GEO_QUALITY: 농지 주소 입력 — GPS 있어도 항상 표시
-              이유: GPS = 현재 위치(집/차량). 농지 주소를 입력하면 정확한 농지 좌표 사용 가능 */}
-          <div className="mt-3">
-              <p className="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
-                <MapPin size={11} className="text-farm-green" />
-                농지 주소
-                {gpsStatus === 'ok'
-                  ? <span className="font-normal text-gray-400">(입력하면 더 정확한 위치 사용 — 권장)</span>
-                  : <span className="font-normal text-gray-400">(GPS 대신 사용)</span>
-                }
-              </p>
+          {/* GEO_QUALITY: 농지 주소 — GPS와 무관하게 항상 강조 표시
+              확인됨 상태면 초록 테두리, 아직 안 했으면 amber 강조 */}
+          <div className={`mt-3 rounded-2xl p-3 border-2 transition-colors ${
+            confirmedLocation
+              ? 'border-green-300 bg-green-50/40'
+              : geocodeStatus === 'ok'
+                ? 'border-green-200 bg-green-50/20'
+                : 'border-amber-300 bg-amber-50'
+          }`}>
+              {/* 헤더 — 강조 레벨 */}
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="text-sm font-black text-gray-800 flex items-center gap-1.5">
+                    <MapPin size={13} className={confirmedLocation ? 'text-green-600' : 'text-amber-500'} />
+                    📍 농지 위치 입력
+                    {confirmedLocation
+                      ? <span className="text-xs font-bold text-green-600 ml-1">✔ 확인 완료</span>
+                      : <span className="text-xs font-bold text-amber-700 ml-1">정확한 매칭을 위해 꼭 필요합니다</span>
+                    }
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5 ml-5">
+                    {confirmedLocation
+                      ? '농지 좌표가 정확히 저장됩니다'
+                      : 'GPS는 현재 위치 — 농지 주소를 입력해야 정확한 작업자 매칭이 됩니다'}
+                  </p>
+                </div>
+              </div>
               <div className="flex gap-2">
                 <input
                   className="input text-sm flex-1"
@@ -544,14 +560,19 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                 <button
                   type="button"
                   onClick={handleGeocodeAddress}
+                  onTouchStart={() => {}}
                   disabled={geocodeStatus === 'loading' || !farmAddress.trim()}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-2
-                             bg-farm-green text-white text-xs font-bold rounded-xl
-                             disabled:opacity-50 active:scale-95 transition-transform"
+                  className={`shrink-0 flex items-center gap-1.5 px-4 py-2
+                             text-white text-sm font-black rounded-xl
+                             disabled:opacity-50 active:scale-95 transition-all
+                             ${confirmedLocation
+                               ? 'bg-green-500'
+                               : 'bg-amber-500 shadow-md shadow-amber-200'
+                             }`}
                 >
                   {geocodeStatus === 'loading'
-                    ? <Loader2 size={13} className="animate-spin" />
-                    : <Search size={13} />}
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <Search size={14} />}
                   위치 찾기
                 </button>
               </div>
@@ -623,15 +644,15 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                 </div>
               )}
               {geocodeStatus === 'error' && (
-                <p className="text-xs text-red-500 font-semibold mt-1">
+                <p className="text-xs text-red-600 font-bold mt-2">
                   {farmAddress.trim().length < 8
                     ? '⚠️ 주소가 너무 짧아요. 예: "경기도 화성시 서신면 홍법리" 처럼 읍면리까지 입력해주세요.'
                     : '⚠️ 주소를 찾을 수 없어요. 더 자세히 입력해주세요.'}
                 </p>
               )}
-              {geocodeStatus === 'idle' && (
-                <p className="text-xs text-gray-400 mt-1">
-                  읍·면·리까지 입력 후 "위치 찾기" → 지도 확인 순서로 진행하세요
+              {geocodeStatus === 'idle' && !confirmedLocation && (
+                <p className="text-xs text-amber-700 font-semibold mt-2">
+                  👆 읍·면·리까지 입력 후 "위치 찾기" → 지도 확인하세요
                 </p>
               )}
             </div>
