@@ -49,6 +49,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [geocodePrecision, setGeocodePrecision] = useState(null); // null | 'full' | 'partial'
   // GEO_PIN_MOVED: partial 경고 후 사용자가 실제로 핀을 이동했는지 추적
   const [pinMoved, setPinMoved] = useState(false);
+  // GEO_PIN_HINT: partial 시 지도 위 안내 오버레이 표시 여부 (2초 fade out)
+  const [showPinHint, setShowPinHint] = useState(false);
   // LOCATION_CONFIRM: 지도에서 위치 확인 여부
   const [confirmedLocation, setConfirmedLocation] = useState(false);
   const miniMapRef = useRef(null);   // div DOM ref
@@ -201,7 +203,21 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
     miniMapObj.current = map;
 
+    // GEO_PIN_HINT: partial일 때 — 핀 흔들림(3회) + 안내 오버레이(2.2초)
+    let hintTimer = null;
+    if (geocodePrecision === 'partial') {
+      // 300ms 후 마커 DOM 접근 (Leaflet 렌더 완료 대기)
+      setTimeout(() => {
+        const el = marker.getElement();
+        if (el) el.style.animation = 'pinShake 0.45s ease-in-out 3';
+      }, 300);
+      // 안내 오버레이 표시 → 2.2초 후 fade out
+      setShowPinHint(true);
+      hintTimer = setTimeout(() => setShowPinHint(false), 2200);
+    }
+
     return () => {
+      if (hintTimer) clearTimeout(hintTimer);
       if (miniMapObj.current) {
         miniMapObj.current.remove();
         miniMapObj.current = null;
@@ -671,22 +687,60 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                     <span style={{ fontWeight: 400, color: '#9ca3af' }}>· 핀 드래그로 조정 가능</span>
                   </p>
 
-                  {/* 미니맵 — partial: 높이 210px(전체 지역 조망), full: 180px(상세) */}
-                  <div
-                    ref={miniMapRef}
-                    style={{
-                      width: '100%',
-                      height: geocodePrecision === 'partial' ? 210 : 180,
-                      borderRadius: 12,
-                      border: confirmedLocation
-                        ? '2px solid #2d8a4e'
-                        : geocodePrecision === 'partial'
-                          ? '2px solid #f59e0b'
-                          : '2px solid #d1d5db',
-                      overflow: 'hidden',
-                      position: 'relative',
-                    }}
-                  />
+                  {/* pinShake 키프레임 — partial 핀 흔들림용 */}
+                  <style>{`
+                    @keyframes pinShake {
+                      0%,100% { transform: translateX(0) translateY(0); }
+                      15%     { transform: translateX(-7px) translateY(0); }
+                      30%     { transform: translateX(7px)  translateY(0); }
+                      45%     { transform: translateX(-5px) translateY(0); }
+                      60%     { transform: translateX(5px)  translateY(0); }
+                      75%     { transform: translateX(-3px) translateY(0); }
+                      90%     { transform: translateX(3px)  translateY(0); }
+                    }
+                  `}</style>
+
+                  {/* 미니맵 wrapper — overlay 기준점 */}
+                  <div style={{ position: 'relative' }}>
+                    {/* 미니맵 — partial: 높이 210px(전체 지역 조망), full: 180px(상세) */}
+                    <div
+                      ref={miniMapRef}
+                      style={{
+                        width: '100%',
+                        height: geocodePrecision === 'partial' ? 210 : 180,
+                        borderRadius: 12,
+                        border: confirmedLocation
+                          ? '2px solid #2d8a4e'
+                          : geocodePrecision === 'partial'
+                            ? '2px solid #f59e0b'
+                            : '2px solid #d1d5db',
+                        overflow: 'hidden',
+                        position: 'relative',
+                      }}
+                    />
+
+                    {/* 핀 이동 안내 오버레이 — partial 시 지도 중앙에 2초 표시 후 fade */}
+                    {geocodePrecision === 'partial' && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50%', left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        background: 'rgba(0,0,0,0.74)',
+                        color: '#fff',
+                        borderRadius: 20,
+                        padding: '8px 18px',
+                        fontSize: 13, fontWeight: 800,
+                        zIndex: 1000,
+                        pointerEvents: 'none',
+                        whiteSpace: 'nowrap',
+                        transition: 'opacity 0.55s ease',
+                        opacity: showPinHint ? 1 : 0,
+                        letterSpacing: '-0.2px',
+                      }}>
+                        👇 핀을 실제 농지 위치로 옮겨주세요
+                      </div>
+                    )}
+                  </div>
 
                   {/* GEO_PRECISION: partial 경고 — 시/군 중심 좌표, 핀 이동 강하게 유도 */}
                   {geocodePrecision === 'partial' && !confirmedLocation && (
