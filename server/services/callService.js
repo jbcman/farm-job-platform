@@ -31,12 +31,17 @@ function getCallInfo(jobId, requestingUserId) {
     const selectedWorkerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(job.selectedWorkerId)
                            || db.prepare('SELECT * FROM workers WHERE userId = ?').get(job.selectedWorkerId);
 
-    // 작업자 여부: workers.userId 일치 OR selectedWorkerId 자체가 userId인 경우
+    // 작업자 여부: 3단계 체크
+    // 1) workers.userId === requestingUserId  (일반 케이스 — 사용자 고유 ID)
+    // 2) workers.id === requestingUserId      (엣지 케이스 — workers.id가 직접 전달된 경우)
+    // 3) selectedWorkerId === requestingUserId (workers 행 없는 경우 — userId 형식 직접 비교)
     const isWorker = selectedWorkerRow
-        ? selectedWorkerRow.userId === requestingUserId
+        ? (selectedWorkerRow.userId === requestingUserId || selectedWorkerRow.id === requestingUserId)
         : job.selectedWorkerId === requestingUserId;
 
+    console.log(`[TRACE][CALL_AUTH] jobId=${jobId} requestingUserId=${requestingUserId} isFarmer=${isFarmer} isWorker=${isWorker} selectedWorkerId=${job.selectedWorkerId}`);
     if (!isFarmer && !isWorker) {
+        console.warn(`[BROKEN_LINK][CALL_AUTH] 403 — requestingUserId=${requestingUserId} is neither farmer(${job.requesterId}) nor worker(${job.selectedWorkerId})`);
         return { ok: false, error: '이 작업의 연락처를 조회할 권한이 없어요.' };
     }
 

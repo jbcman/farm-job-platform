@@ -1056,6 +1056,12 @@ router.get('/:id/applicants', (req, res) => {
     // PHASE 28: matchScore 내림차순 정렬 + rank 부여
     const result = rankApplicants(raw);
 
+    // TRACE: null worker 건수 추적 — worker 없는 지원서는 렌더 스킵됨
+    const nullWorkerCount = result.filter(a => !a.worker).length;
+    if (nullWorkerCount > 0) {
+        console.warn(`[BROKEN_LINK][APPLICANTS] jobId=${job.id} nullWorkers=${nullWorkerCount}/${result.length} — workerIds=${raw.filter(a => !a.worker).map(a => a.applicationId).join(',')}`);
+    }
+    console.log(`[TRACE][APPLICANTS] jobId=${job.id} total=${result.length} nullWorkers=${nullWorkerCount} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
     console.log(`[APPLICANT_VIEWED_RANKED] jobId=${job.id} count=${result.length} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
     return res.json({ ok: true, applicants: result });
 });
@@ -1088,7 +1094,11 @@ router.post('/:id/select-worker', (req, res) => {
         };
     }
     const worker = normalizeWorker(workerRowSel);
-    if (!worker) return res.status(404).json({ ok: false, error: '작업자를 찾을 수 없어요.' });
+    console.log(`[TRACE][SELECT_WORKER] jobId=${req.params.id} workerId=${workerId} resolved=${worker ? worker.name : 'NULL'}`);
+    if (!worker) {
+        console.warn(`[BROKEN_LINK][SELECT_WORKER] workerId=${workerId} not found in workers or users`);
+        return res.status(404).json({ ok: false, error: '작업자를 찾을 수 없어요.' });
+    }
 
     // Phase 7: 실제 농민 연락처 조회
     const farmerUser = db.prepare('SELECT phone FROM users WHERE id = ?').get(job.requesterId);
@@ -1150,9 +1160,11 @@ router.post('/:id/connect-call', (req, res) => {
 
     const result = getCallInfo(req.params.id, requestingUserId);
     if (!result.ok) {
+        console.warn(`[BROKEN_LINK][CONNECT_CALL] jobId=${req.params.id} userId=${requestingUserId} error=${result.error}`);
         return res.status(403).json(result);
     }
 
+    console.log(`[TRACE][CONNECT_CALL] jobId=${req.params.id} userId=${requestingUserId} farmerPhone=${result.farmerPhone ? '***'+result.farmerPhone.slice(-4) : 'null'} workerPhone=${result.workerPhone ? '***'+result.workerPhone.slice(-4) : 'null'}`);
     console.log(`[CONNECT_CALL] jobId=${req.params.id} userId=${requestingUserId}`);
     return res.json(result);
 });

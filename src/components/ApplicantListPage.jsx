@@ -69,6 +69,12 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     getApplicants(job.id, userId)
       .then(d => {
         const list = d.applicants || [];
+        // TRACE: 응답 확인 — null worker 카드 조기 경보
+        const nullCount = list.filter(a => !a.worker).length;
+        console.log(`[TRACE][FETCH_RESULT] jobId=${job.id} total=${list.length} nullWorkers=${nullCount}`);
+        if (nullCount > 0) {
+          console.warn(`[BROKEN_LINK][FRONT] ${nullCount}개 지원자의 worker 데이터가 null — 카드 스킵됨`);
+        }
         setApplicants(list);
         // 페이지 열 때 이미 선택된 지원자가 있으면 ref 표시 → 폴링 시 false 알림 차단
         hadSelectedRef.current = list.some(a => a.status === 'selected');
@@ -114,6 +120,13 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     cards.forEach(el => observer.observe(el));
     return () => observer.disconnect();
   }, [applicants, job.id]);
+
+  // TRACE: 렌더 카운트 — applicants 상태 변경 시마다 확인
+  useEffect(() => {
+    if (!loading) {
+      console.log(`[TRACE][RENDER_COUNT] jobId=${job.id} rendered=${applicants.length} selected=${applicants.filter(a => a.status === 'selected').length} readOnly=${isReadOnly}`);
+    }
+  }, [applicants, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // KPI_EVENTS: 첫 액션 시각 기록 + anyAction 마킹
   // decision_time = firstActionAt - viewApplicantsAt  (고민 시간)
@@ -408,6 +421,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
             {/* 전화 버튼 — auto_match_call_click 별도 추적 */}
             {autoMatched.worker?.id && (
               <button
+                onTouchStart={() => {}} // iOS 300ms 딜레이 제거
                 onClick={() => {
                   didCallRef.current = true;
                   clearTimeout(abandonTimerRef.current);
@@ -793,6 +807,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                   {/* PHASE 29: 역할 기반 전화 버튼 */}
                   <button
                     onClick={() => handleCall(w.id)}
+                    onTouchStart={() => {}} // iOS 300ms 딜레이 제거
                     disabled={calling === w.id}
                     className="btn-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-2xl"
                   >
@@ -823,6 +838,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
               ) : applicant.status === 'applied' && !isReadOnly ? (
                 <button
                   onClick={() => handleSelectAndCall(applicant)}
+                  onTouchStart={() => {}} // iOS 300ms 딜레이 제거 (passive touch)
                   disabled={!!selecting}
                   className={`btn-full flex items-center justify-center gap-2 ${
                     rank === 1
