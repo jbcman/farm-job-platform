@@ -552,7 +552,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
               <div className="flex gap-2">
                 <input
                   className="input text-sm flex-1"
-                  placeholder="예: 경기 화성시 서신면 홍법리 123"
+                  placeholder="예: 경기 화성시 서신면 홍법리 (읍·면·동·리까지)"
                   value={farmAddress}
                   onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setConfirmedLocation(false); }}
                   onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
@@ -646,8 +646,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
               {geocodeStatus === 'error' && (
                 <p className="text-xs text-red-600 font-bold mt-2">
                   {farmAddress.trim().length < 8
-                    ? '⚠️ 주소가 너무 짧아요. 예: "경기도 화성시 서신면 홍법리" 처럼 읍면리까지 입력해주세요.'
-                    : '⚠️ 주소를 찾을 수 없어요. 더 자세히 입력해주세요.'}
+                    ? '⚠️ 주소가 너무 짧아요. 예: "경기 화성시 서신면 홍법리" 처럼 읍·면·리까지 입력해주세요.'
+                    : '⚠️ 주소를 찾을 수 없어요. 도로명 주소 말고 읍·면·리·동 형식으로 입력해보세요.'}
                 </p>
               )}
               {geocodeStatus === 'idle' && !confirmedLocation && (
