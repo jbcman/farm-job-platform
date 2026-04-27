@@ -166,13 +166,17 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
     });
 
+    // GEO_PRECISION: partial → zoom 11 (시·군 전체 보임, "이상함" 즉각 인지)
+    //                full   → zoom 16 (지번 수준, 정확 확인)
+    const zoomLevel = geocodePrecision === 'partial' ? 11 : 16;
+
     const map = L.map(miniMapRef.current, {
       zoomControl:       true,
       scrollWheelZoom:   false,
       dragging:          true,
       doubleClickZoom:   false,
       attributionControl: false,
-    }).setView([gpsLat, gpsLng], 16);
+    }).setView([gpsLat, gpsLng], zoomLevel);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -180,7 +184,11 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
     // MAP_PIN_DRAG: 드래그 가능 마커 — 이동 시 좌표 업데이트 + 재확인 요구
     const marker = L.marker([gpsLat, gpsLng], { draggable: true }).addTo(map);
-    marker.bindPopup('📍 핀을 움직여 위치를 조정하세요').openPopup();
+    // partial: 핀 이동 강하게 유도 / full: 기본 안내
+    const popupText = geocodePrecision === 'partial'
+      ? '⚠️ 시·군 중심입니다. 실제 농지로 핀을 옮겨주세요'
+      : '📍 핀을 움직여 위치를 조정하세요';
+    marker.bindPopup(popupText).openPopup();
 
     marker.on('dragend', () => {
       const { lat, lng } = marker.getLatLng();
@@ -663,34 +671,43 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                     <span style={{ fontWeight: 400, color: '#9ca3af' }}>· 핀 드래그로 조정 가능</span>
                   </p>
 
-                  {/* 미니맵 */}
+                  {/* 미니맵 — partial: 높이 210px(전체 지역 조망), full: 180px(상세) */}
                   <div
                     ref={miniMapRef}
                     style={{
-                      width: '100%', height: 180,
+                      width: '100%',
+                      height: geocodePrecision === 'partial' ? 210 : 180,
                       borderRadius: 12,
                       border: confirmedLocation
                         ? '2px solid #2d8a4e'
-                        : '2px solid #d1d5db',
+                        : geocodePrecision === 'partial'
+                          ? '2px solid #f59e0b'
+                          : '2px solid #d1d5db',
                       overflow: 'hidden',
                       position: 'relative',
                     }}
                   />
 
-                  {/* GEO_PRECISION: partial 경고 — 시/군 중심 좌표임을 사용자에게 알림 */}
+                  {/* GEO_PRECISION: partial 경고 — 시/군 중심 좌표, 핀 이동 강하게 유도 */}
                   {geocodePrecision === 'partial' && !confirmedLocation && (
                     <div style={{
-                      marginTop: 8, padding: '8px 12px',
+                      marginTop: 8, padding: '10px 12px',
                       borderRadius: 10,
                       background: '#fffbeb',
-                      border: '1px solid #fcd34d',
-                      display: 'flex', alignItems: 'flex-start', gap: 6,
+                      border: '2px solid #f59e0b',
+                      display: 'flex', alignItems: 'flex-start', gap: 8,
                     }}>
-                      <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span>
-                      <p style={{ fontSize: 11, fontWeight: 700, color: '#92400e', margin: 0, lineHeight: 1.5 }}>
-                        읍·면·리 단위를 찾지 못해 <strong>시·군 중심 좌표</strong>로 표시됐어요.
-                        핀을 드래그해서 실제 농지 위치로 옮겨주세요.
-                      </p>
+                      {/* bounce 애니메이션 아이콘 */}
+                      <span className="animate-bounce" style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>⚠️</span>
+                      <div>
+                        <p style={{ fontSize: 12, fontWeight: 800, color: '#92400e', margin: 0, lineHeight: 1.5 }}>
+                          읍·면·리를 찾지 못해 <span style={{ color: '#b45309' }}>시·군 중심</span>으로 표시됐어요.
+                        </p>
+                        <p style={{ fontSize: 11, fontWeight: 600, color: '#b45309', margin: '4px 0 0', lineHeight: 1.5 }}>
+                          👇 지도 핀을 드래그해서 실제 농지 위치로 옮겨주세요.
+                          <br />정확한 위치일수록 작업자 매칭이 빠릅니다.
+                        </p>
+                      </div>
                     </div>
                   )}
 
