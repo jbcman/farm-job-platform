@@ -14,6 +14,7 @@ const { sendJobAlert, sendApplyAlert, sendDepartureReminder, sendContactAlert } 
 const { sortRecommendedJobs }          = require('../services/recommendationService');
 const { reengageUnselectedApplicants } = require('../services/reengageService');
 const { checkAndAutoSelect }           = require('../services/autoSelect');
+const { calcV2Bonus }                  = require('../services/aiMatchV2');
 const { getCallInfo }                  = require('../services/callService');
 const { tryFireReminder }              = require('../services/reminderRecovery');
 const { geocodeAddress }               = require('../services/geocodeService');
@@ -234,6 +235,11 @@ router.post('/smart-assist', (req, res) => {
 
 // ─── POST /api/jobs ───────────────────────────────────────────
 router.post('/', async (req, res) => {
+  try { // MAP_CORE: 전체 핸들러 try/catch — 비동기 throw 시 502 완전 차단
+    // MAP_CORE: body 디버그 로그 (farmImages 제외)
+    const { farmImages: _fi, ...bodyLog } = req.body || {};
+    console.log('[API /jobs POST] body:', bodyLog);
+
     const {
         requesterId, requesterName, category, locationText,
         latitude, longitude,
@@ -243,7 +249,7 @@ router.post('/', async (req, res) => {
         farmImages: farmImagesRaw,   // PHASE 26: 다중 이미지 배열 (JSON string or array)
         farmAddress: farmAddressRaw, // PHASE MAP_FIX: 농지 주소 (지오코딩 소스)
         isUrgentPaid: isUrgentPaidRaw, // PHASE SCALE: 유료 긴급 공고
-    } = req.body;
+    } = req.body || {};
 
     if (!requesterId || !category || !locationText || !date) {
         return res.status(400).json({ ok: false, error: '필수 항목이 빠졌어요.' });
@@ -254,42 +260,44 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ ok: false, error: '농지 주소가 너무 짧아요. 예: "경기 화성시 서신면" 형식으로 입력해주세요.' });
     }
 
-    // PHASE MAP_FIX: GPS 우선, GPS 없으면 farmAddress 지오코딩 시도
+    // LOCATION_FIX: 우선순위 — farmAddress(농지주소) > GPS(현재위치)
+    // 이유: GPS = 농민의 집일 수 있음. farmAddress가 있으면 반드시 농지 좌표 사용.
     let resolvedLat = null;
     let resolvedLng = null;
 
     const rawLat = parseFloat(bodyLat ?? latitude);
     const rawLng = parseFloat(bodyLng ?? longitude);
+    const hasFarmAddress = farmAddressRaw && farmAddressRaw.trim().length >= 5;
 
-    if (Number.isFinite(rawLat) && Number.isFinite(rawLng)) {
-        // ① GPS 있음 — 그대로 사용
-        resolvedLat = rawLat;
-        resolvedLng = rawLng;
-        console.log('[SERVER_COORD_GPS]', locationText, resolvedLat, resolvedLng);
-    } else if (farmAddressRaw && farmAddressRaw.trim()) {
-        // ② GPS 없음 + 농지 주소 있음 → Nominatim 지오코딩
+    if (hasFarmAddress) {
+        // ① 농지 주소 있음 → 지오코딩 필수 (GPS 완전 무시)
         const geo = await geocodeAddress(farmAddressRaw.trim());
         if (geo) {
             resolvedLat = geo.lat;
             resolvedLng = geo.lng;
-            console.log(`[SERVER_COORD_GEOCODED] "${farmAddressRaw.trim()}" → (${resolvedLat}, ${resolvedLng})`);
+            console.log(`[SERVER_COORD_FARMADDR] "${farmAddressRaw.trim()}" → (${resolvedLat}, ${resolvedLng})`);
+            console.log(`[GEO_QUALITY] source=farmAddress addr="${farmAddressRaw.trim()}" lat=${resolvedLat.toFixed(4)} lng=${resolvedLng.toFixed(4)} addrLen=${farmAddressRaw.trim().length}`);
         } else {
-            console.warn(`[SERVER_GEOCODE_FAIL] "${farmAddressRaw.trim()}" → 좌표 획득 실패, null 저장`);
+            // 지오코딩 실패 → 등록 거부 (GPS로 대체하지 않음)
+            console.warn(`[SERVER_GEOCODE_FAIL] "${farmAddressRaw.trim()}" → 좌표 획득 실패, 등록 거부`);
+            return res.status(400).json({
+                ok: false,
+                error: `"${farmAddressRaw.trim()}" 주소의 위치를 찾을 수 없어요. 시·군·읍·면·리 형식으로 더 정확하게 입력해주세요. 예) 경기 포천시 창수면 오가리`,
+            });
         }
+    } else if (Number.isFinite(rawLat) && Number.isFinite(rawLng)) {
+        // ② 농지 주소 없음 + GPS 있음 → GPS 사용 (현장에서 직접 등록하는 경우)
+        resolvedLat = rawLat;
+        resolvedLng = rawLng;
+        console.log('[SERVER_COORD_GPS]', locationText, resolvedLat, resolvedLng);
+        console.log(`[GEO_QUALITY] source=GPS locationText="${locationText}" lat=${resolvedLat.toFixed(4)} lng=${resolvedLng.toFixed(4)}`);
     } else {
-        // ③ GPS도 없고 주소도 없음 → PHASE 25 차단
+        // ③ 둘 다 없음 → 등록 거부
         console.warn('[SERVER_COORD_REQUIRED]', locationText, '→ lat/lng 없음 + farmAddress 없음, 등록 거부');
         return res.status(400).json({
             ok: false,
             error: '위치 좌표가 필요해요. GPS를 허용하거나 농지 주소를 입력해주세요.',
         });
-    }
-
-    const hasGps = resolvedLat !== null && resolvedLng !== null;
-    if (!hasGps) {
-        // 지오코딩 실패 → 지도 미표시로 저장 (등록 자체는 허용)
-        console.warn('[SERVER_NO_COORD]', locationText,
-            '→ 지오코딩 실패, lat/lng=null 저장, 지도 미표시 처리됨');
     }
 
     const isUrgent   = suggestUrgent({ note: note || '', date });
@@ -346,7 +354,7 @@ router.post('/', async (req, res) => {
          @areaPyeong, @farmImages, @farmAddress, @isUrgentPaid)
     `).run(row);
 
-    console.log(`[JOB_CREATED] id=${id} category=${category} location=${locationText} gps=${hasGps ? resolvedLat+','+resolvedLng : 'none'} urgent=${isUrgent}`);
+    console.log(`[JOB_CREATED] id=${id} category=${category} location=${locationText} lat=${resolvedLat ?? 'none'} lng=${resolvedLng ?? 'none'} urgent=${isUrgent}`);
     trackEvent('job_created', { jobId: id, userId: requesterId, meta: { category } });
 
     // Phase 11: 미선택 지원자 재매칭 알림 (비동기, fail-safe)
@@ -407,6 +415,14 @@ router.post('/', async (req, res) => {
     });
 
     return res.status(201).json({ ok: true, job: jobView(normalizeJob(row)) });
+
+  } catch (e) {
+    // MAP_CORE: 최상위 catch — async 핸들러 내 미처리 throw → 502 방지
+    console.error('[JOB_CREATE_FATAL]', e.message, e.stack?.split('\n')[1] || '');
+    if (!res.headersSent) {
+        return res.status(500).json({ ok: false, error: '서버 오류가 발생했어요. 잠시 후 다시 시도해주세요.' });
+    }
+  }
 });
 
 // ─── GET /api/jobs ────────────────────────────────────────────
@@ -530,30 +546,50 @@ router.get('/nearby', (req, res) => {
 
 // ─── GET /api/jobs/map ────────────────────────────────────────
 // 지도 마커용 경량 데이터 (open + 실제 GPS 좌표만)
+// GEO_AI_PAID: isSponsored + aiScore 포함, 스폰서 우선 정렬
 router.get('/map', (req, res) => {
     const { lat, lon } = req.query;
     const userLat = lat ? parseFloat(lat) : null;
     const userLon = lon ? parseFloat(lon) : null;
     const today   = new Date().toISOString().slice(0, 10);
+    const now     = Date.now();
 
     const rows = db.prepare(`
         SELECT id, category, locationText, pay, date, latitude, longitude,
-               isUrgent, areaPyeong, areaSize, areaUnit, farmImages, imageUrl,
-               farmAddress
+               isUrgent, isUrgentPaid, areaPyeong, areaSize, areaUnit,
+               farmImages, imageUrl, farmAddress, difficulty
         FROM   jobs
         WHERE  status   = 'open'
           AND  latitude  IS NOT NULL
           AND  longitude IS NOT NULL
           AND  NOT (latitude = 37.5 AND longitude = 127.0)
-    `).all().map(r => ({ ...r, isUrgent: !!r.isUrgent }));
+    `).all().map(r => ({ ...r, isUrgent: !!r.isUrgent, isUrgentPaid: !!r.isUrgentPaid }));
+
+    // 스폰서 ID 셋 (만료 안 된 것만)
+    const sponsoredIds = new Set(
+        db.prepare('SELECT jobId FROM sponsored_jobs WHERE expiresAt > ?').all(now).map(r => r.jobId)
+    );
 
     const markers = rows.map(job => {
         const dist = (userLat && userLon)
             ? distanceKm(userLat, userLon, job.latitude, job.longitude)
             : null;
-        // PHASE 26: 첫 번째 이미지 → 팝업 썸네일
-        const imgs    = parseFarmImages(job.farmImages);
+        const imgs     = parseFarmImages(job.farmImages);
         const thumbUrl = imgs[0] || job.imageUrl || null;
+        const isSpon   = sponsoredIds.has(job.id);
+        const isToday  = !!(job.date && job.date.slice(0, 10) === today);
+
+        // ── AI 추천 점수 계산 (GEO_AI_PAID) ──
+        // 스폰서(+50) > 급구유료(+35) > 급구(+20) > 오늘(+15) > 거리 근접(최대+20)
+        let aiScore = 0;
+        if (isSpon)              aiScore += 50;
+        if (job.isUrgentPaid)    aiScore += 35;
+        if (job.isUrgent)        aiScore += 20;
+        if (isToday)             aiScore += 15;
+        if (dist !== null)       aiScore += Math.max(0, 20 - Math.floor(dist));
+        // 난이도 낮을수록 접근성 ↑ (+최대 10)
+        if (job.difficulty != null) aiScore += Math.round((1 - job.difficulty) * 10);
+
         return {
             id:           job.id,
             category:     job.category,
@@ -562,24 +598,22 @@ router.get('/map', (req, res) => {
             date:         job.date,
             lat:          job.latitude,
             lng:          job.longitude,
-            isToday:      !!(job.date && job.date.slice(0, 10) === today),
+            isToday,
             isUrgent:     job.isUrgent,
+            isUrgentPaid: job.isUrgentPaid,
+            isSponsored:  isSpon,
+            aiScore,
             distKm:       dist !== null ? Math.round(dist * 10) / 10 : null,
-            // PHASE 26
             areaPyeong:   job.areaPyeong || null,
             thumbUrl,
-            // PHASE MAP_FIX
             farmAddress:  job.farmAddress || null,
         };
     });
 
-    // 오늘 → 거리 순 정렬
-    markers.sort((a, b) => {
-        if (a.isToday !== b.isToday) return a.isToday ? -1 : 1;
-        return (a.distKm ?? 9999) - (b.distKm ?? 9999);
-    });
+    // GEO_AI_PAID: AI 점수 내림차순 정렬 (스폰서 자동 상단)
+    markers.sort((a, b) => b.aiScore - a.aiScore);
 
-    console.log(`[MAP_DATA_FETCH] count=${markers.length} gps=${userLat ? 'on' : 'off'}`);
+    console.log(`[MAP_DATA_FETCH] count=${markers.length} sponsored=${[...sponsoredIds].length} gps=${userLat ? 'on' : 'off'}`);
     return res.json({ ok: true, markers });
 });
 
@@ -929,9 +963,27 @@ router.get('/:id/applicants', (req, res) => {
 
     // 지원자별 스코어 계산
     const raw = apps.map(a => {
-        const worker = normalizeWorker(
-            db.prepare('SELECT * FROM workers WHERE id = ?').get(a.workerId)
-        );
+        // BUG_FIX: workerId = user-xxx (workers 프로필 없이 지원한 경우) 대응
+        // 1) workers.id 조회  2) workers.userId 조회  3) users 테이블 fallback
+        let workerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(a.workerId)
+                     || db.prepare('SELECT * FROM workers WHERE userId = ?').get(a.workerId);
+        if (!workerRow) {
+            const u = db.prepare(
+                'SELECT id, name, phone, lat, lng, locationText, completedJobs, rating FROM users WHERE id = ?'
+            ).get(a.workerId);
+            if (u) workerRow = {
+                id: a.workerId, userId: u.id,
+                name: u.name || '작업자', phone: u.phone,
+                baseLocationText: u.locationText || '', categories: '[]',
+                hasTractor: 0, hasSprayer: 0, hasRotary: 0,
+                completedJobs: u.completedJobs || 0, rating: u.rating || 0,
+                availableTimeText: null, noshowCount: 0,
+                ratingAvg: null, ratingCount: 0,
+                latitude: u.lat, longitude: u.lng,
+                locationUpdatedAt: null, activeNow: 0,
+            };
+        }
+        const worker = normalizeWorker(workerRow);
         const dist = (job.latitude && job.longitude && worker?.latitude && worker?.longitude)
             ? distanceKm(job.latitude, job.longitude, worker.latitude, worker.longitude)
             : null;
@@ -947,10 +999,12 @@ router.get('/:id/applicants', (req, res) => {
             ? (db.prepare('SELECT COUNT(*) AS cnt FROM reviews WHERE targetId = ?').get(worker.id)?.cnt || 0)
             : 0;
 
-        // PHASE 28+30: 매칭 점수 (worker 없으면 null)
-        const matchScore = worker
+        // PHASE 28+30 + AI_MATCH_V2: 매칭 점수 (worker 없으면 null)
+        const baseScore = worker
             ? calcApplicantMatchScore(worker, a, job, distKm, reviewCount)
             : null;
+        const v2Bonus  = worker ? calcV2Bonus(worker, job) : 0;
+        const matchScore = baseScore !== null ? Math.round(baseScore + v2Bonus) : null;
 
         return {
             applicationId: a.id,
@@ -971,8 +1025,32 @@ router.get('/:id/applicants', (req, res) => {
                 completedJobs:    worker.completedJobs,
                 rating:           worker.rating,
                 availableTimeText: worker.availableTimeText,
+                noshowCount:      worker.noshowCount  || 0, // TRUST_SYSTEM
+                ratingAvg:        worker.ratingAvg   ?? null, // REVIEW_UX
+                ratingCount:      worker.ratingCount ?? 0,
+                topTags:          (() => {
+                    const tagRows = db.prepare(
+                        'SELECT tags FROM reviews WHERE targetId = ? AND isPublic = 1 AND tags IS NOT NULL'
+                    ).all(worker.id);
+                    const freq = {};
+                    tagRows.forEach(row => {
+                        try {
+                            const arr = JSON.parse(row.tags);
+                            if (Array.isArray(arr)) arr.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+                        } catch {}
+                    });
+                    return Object.entries(freq)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 3)
+                        .map(([tag]) => tag);
+                })(),
                 distKm,
                 distLabel:        dist !== null ? distLabel(dist) : null,
+                // ACTIVE_NOW_RELIABILITY: 클라이언트 상대 시간 표시용
+                locationUpdatedAt: worker.locationUpdatedAt ?? null,
+                activeNow:         worker.activeNow         ?? 0,
+                // AUTO_MATCH_NOTIFY: 선택 시각 (서버 기준) — 경과 시간 정확도 보장
+                matchedAt: a.status === 'selected' ? (job.selectedAt ?? null) : null,
             } : null,
         };
     });
@@ -980,6 +1058,12 @@ router.get('/:id/applicants', (req, res) => {
     // PHASE 28: matchScore 내림차순 정렬 + rank 부여
     const result = rankApplicants(raw);
 
+    // TRACE: null worker 건수 추적 — worker 없는 지원서는 렌더 스킵됨
+    const nullWorkerCount = result.filter(a => !a.worker).length;
+    if (nullWorkerCount > 0) {
+        console.warn(`[BROKEN_LINK][APPLICANTS] jobId=${job.id} nullWorkers=${nullWorkerCount}/${result.length} — workerIds=${raw.filter(a => !a.worker).map(a => a.applicationId).join(',')}`);
+    }
+    console.log(`[TRACE][APPLICANTS] jobId=${job.id} total=${result.length} nullWorkers=${nullWorkerCount} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
     console.log(`[APPLICANT_VIEWED_RANKED] jobId=${job.id} count=${result.length} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
     return res.json({ ok: true, applicants: result });
 });
@@ -999,10 +1083,24 @@ router.post('/:id/select-worker', (req, res) => {
         return res.status(400).json({ ok: false, error: '이미 작업자를 선택한 요청이에요.' });
     }
 
-    const worker = normalizeWorker(
-        db.prepare('SELECT * FROM workers WHERE id = ?').get(workerId)
-    );
-    if (!worker) return res.status(404).json({ ok: false, error: '작업자를 찾을 수 없어요.' });
+    // BUG_FIX: workerId = user-xxx 대응 (workers 프로필 없이 지원한 경우)
+    let workerRowSel = db.prepare('SELECT * FROM workers WHERE id = ?').get(workerId)
+                    || db.prepare('SELECT * FROM workers WHERE userId = ?').get(workerId);
+    if (!workerRowSel) {
+        const u = db.prepare('SELECT id, name, phone FROM users WHERE id = ?').get(workerId);
+        if (u) workerRowSel = {
+            id: workerId, userId: u.id,
+            name: u.name || '작업자', phone: u.phone,
+            categories: '[]', hasTractor: 0, hasSprayer: 0, hasRotary: 0,
+            completedJobs: 0, rating: 0, noshowCount: 0,
+        };
+    }
+    const worker = normalizeWorker(workerRowSel);
+    console.log(`[TRACE][SELECT_WORKER] jobId=${req.params.id} workerId=${workerId} resolved=${worker ? worker.name : 'NULL'}`);
+    if (!worker) {
+        console.warn(`[BROKEN_LINK][SELECT_WORKER] workerId=${workerId} not found in workers or users`);
+        return res.status(404).json({ ok: false, error: '작업자를 찾을 수 없어요.' });
+    }
 
     // Phase 7: 실제 농민 연락처 조회
     const farmerUser = db.prepare('SELECT phone FROM users WHERE id = ?').get(job.requesterId);
@@ -1064,9 +1162,11 @@ router.post('/:id/connect-call', (req, res) => {
 
     const result = getCallInfo(req.params.id, requestingUserId);
     if (!result.ok) {
+        console.warn(`[BROKEN_LINK][CONNECT_CALL] jobId=${req.params.id} userId=${requestingUserId} error=${result.error}`);
         return res.status(403).json(result);
     }
 
+    console.log(`[TRACE][CONNECT_CALL] jobId=${req.params.id} userId=${requestingUserId} farmerPhone=${result.farmerPhone ? '***'+result.farmerPhone.slice(-4) : 'null'} workerPhone=${result.workerPhone ? '***'+result.workerPhone.slice(-4) : 'null'}`);
     console.log(`[CONNECT_CALL] jobId=${req.params.id} userId=${requestingUserId}`);
     return res.json(result);
 });
@@ -1086,6 +1186,18 @@ router.post('/:id/close', (req, res) => {
 
     db.prepare("UPDATE jobs SET status = 'closed', closedAt = ? WHERE id = ?")
       .run(new Date().toISOString(), job.id);
+
+    // TRUST_SYSTEM: 노쇼 추적 — matched 상태에서 마감 = 작업자 노쇼로 간주
+    if (job.status === 'matched' && job.selectedWorkerId) {
+        try {
+            db.prepare(
+                'UPDATE workers SET noshowCount = COALESCE(noshowCount, 0) + 1 WHERE id = ?'
+            ).run(job.selectedWorkerId);
+            console.log(`[NOSHOW_TRACKED] jobId=${job.id} workerId=${job.selectedWorkerId}`);
+        } catch (e) {
+            console.warn('[NOSHOW_TRACK_FAIL]', e.message);
+        }
+    }
 
     console.log(`[JOB_CLOSED] id=${job.id} prevStatus=${job.status} farmer=${requesterId}`);
     trackEvent('job_closed', { jobId: job.id, userId: requesterId, meta: { prevStatus: job.status } });
@@ -1264,10 +1376,22 @@ router.post('/:id/complete-work', (req, res) => {
 });
 
 // ─── POST /api/jobs/:id/review ────────────────────────────────
-// PHASE 22: 완료된 작업에 후기 작성 (작업자 → 농민 평가)
+// TRUST_SYSTEM: 양방향 리뷰 (농민↔작업자) + 태그 + 블라인드 공개
+// - isPublic=0 으로 저장 → 양측 작성 완료 시 isPublic=1 자동 공개 (보복 방지)
 router.post('/:id/review', (req, res) => {
-    const { workerId, rating, review = '' } = req.body;
-    if (!workerId) return res.status(400).json({ ok: false, error: 'workerId가 필요해요.' });
+    // backward compat: workerId OR reviewerId 둘 다 허용
+    const {
+        workerId,
+        reviewerId:   reviewerIdParam,
+        targetId:     targetIdParam,
+        rating,
+        review:       comment = '',
+        tags:         tagsRaw,
+        reviewerRole: reviewerRoleRaw,  // 'farmer' | 'worker'
+    } = req.body;
+
+    const reviewerId = reviewerIdParam || workerId;
+    if (!reviewerId) return res.status(400).json({ ok: false, error: 'reviewerId가 필요해요.' });
 
     const r = parseInt(rating);
     if (!r || r < 1 || r > 5) {
@@ -1277,37 +1401,109 @@ router.post('/:id/review', (req, res) => {
     const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
 
-    // completed 상태인 application만 허용
-    const app = db.prepare(
-        "SELECT * FROM applications WHERE jobRequestId = ? AND workerId = ? AND status = 'completed'"
-    ).get(job.id, workerId);
-    if (!app) {
-        return res.status(403).json({ ok: false, error: '완료된 작업에만 후기를 남길 수 있어요.' });
+    // 작성 자격 확인: 농민 OR 선택된 작업자
+    const isFarmer = job.requesterId  === reviewerId;
+    const isWorker = job.selectedWorkerId === reviewerId;
+    if (!isFarmer && !isWorker) {
+        // 하위호환: completed application도 허용
+        const app = db.prepare(
+            "SELECT id FROM applications WHERE jobRequestId = ? AND workerId = ?"
+        ).get(job.id, reviewerId);
+        if (!app) return res.status(403).json({ ok: false, error: '이 작업에 참여한 분만 후기를 남길 수 있어요.' });
     }
 
-    // 중복 후기 방지 (UNIQUE(jobId, reviewerId) 제약 + 선제 확인)
+    // targetId: 명시적 or 역할 추론 (농민 → 작업자, 작업자 → 농민)
+    const targetId = targetIdParam
+        || (isFarmer ? job.selectedWorkerId : job.requesterId);
+    if (!targetId) return res.status(400).json({ ok: false, error: '대상을 특정할 수 없어요. targetId를 전달해주세요.' });
+
+    // 중복 방지
     const existing = db.prepare(
         'SELECT id FROM reviews WHERE jobId = ? AND reviewerId = ?'
-    ).get(job.id, workerId);
+    ).get(job.id, reviewerId);
     if (existing) return res.status(409).json({ ok: false, error: '이미 후기를 작성했어요.' });
+
+    // tags 직렬화
+    const tagsStr = Array.isArray(tagsRaw)
+        ? JSON.stringify(tagsRaw)
+        : (tagsRaw ? String(tagsRaw) : null);
+
+    // reviewerRole: 명시 or 역할 추론
+    const reviewerRole = reviewerRoleRaw || (isFarmer ? 'farmer' : 'worker');
 
     const id = newId('rev');
     db.prepare(`
-        INSERT INTO reviews (id, jobId, reviewerId, targetId, rating, comment, createdAt)
-        VALUES (@id, @jobId, @reviewerId, @targetId, @rating, @comment, @createdAt)
-    `).run({
-        id,
-        jobId:      job.id,
-        reviewerId: workerId,
-        targetId:   job.requesterId,
-        rating:     r,
-        comment:    review,
-        createdAt:  new Date().toISOString(),
-    });
+        INSERT INTO reviews (id, jobId, reviewerId, targetId, rating, comment, tags, reviewerRole, isPublic, createdAt)
+        VALUES (@id, @jobId, @reviewerId, @targetId, @rating, @comment, @tags, @reviewerRole, 0, @createdAt)
+    `).run({ id, jobId: job.id, reviewerId, targetId, rating: r, comment, tags: tagsStr, reviewerRole, createdAt: new Date().toISOString() });
 
-    console.log(`[REVIEW_SUBMITTED] jobId=${job.id} workerId=${workerId} rating=${r}`);
-    trackEvent('review_submitted', { jobId: job.id, userId: workerId, meta: { rating: r } });
-    return res.status(201).json({ ok: true });
+    // 누적 평점 갱신: 농민→작업자(workers), 작업자→농민(users)
+    if (reviewerRole === 'farmer') {
+        // targetId = workers.id
+        const w = db.prepare('SELECT id, ratingAvg, ratingCount FROM workers WHERE id = ?').get(targetId);
+        if (w) {
+            const oldAvg   = w.ratingAvg   ?? 0;
+            const oldCount = w.ratingCount ?? 0;
+            const newCount = oldCount + 1;
+            const newAvg   = Math.round(((oldAvg * oldCount) + r) / newCount * 10) / 10;
+            db.prepare('UPDATE workers SET ratingAvg = ?, ratingCount = ? WHERE id = ?')
+              .run(newAvg, newCount, w.id);
+            console.log(`[RATING_UPDATED] workers id=${w.id} newAvg=${newAvg} newCount=${newCount}`);
+        }
+    } else {
+        // targetId = users.id (farmer)
+        const u = db.prepare('SELECT id, rating, reviewCount FROM users WHERE id = ?').get(targetId);
+        if (u) {
+            const oldAvg   = u.rating      ?? 0;
+            const oldCount = u.reviewCount ?? 0;
+            const newCount = oldCount + 1;
+            const newAvg   = Math.round(((oldAvg * oldCount) + r) / newCount * 10) / 10;
+            db.prepare('UPDATE users SET rating = ?, reviewCount = ? WHERE id = ?')
+              .run(newAvg, newCount, u.id);
+            console.log(`[RATING_UPDATED] users id=${u.id} newAvg=${newAvg} newCount=${newCount}`);
+        }
+    }
+
+    // BLIND_REVEAL: 상대방도 작성했으면 양쪽 동시 공개 (보복 방지)
+    const otherReview = db.prepare(
+        'SELECT id FROM reviews WHERE jobId = ? AND reviewerId != ? AND isPublic = 0'
+    ).get(job.id, reviewerId);
+    let revealed = false;
+    if (otherReview) {
+        db.prepare('UPDATE reviews SET isPublic = 1 WHERE jobId = ?').run(job.id);
+        revealed = true;
+        console.log(`[REVIEW_BLIND_REVEAL] jobId=${job.id} — 양측 작성 완료 → 공개`);
+    }
+
+    console.log(`[REVIEW_SUBMITTED] jobId=${job.id} reviewerId=${reviewerId} target=${targetId} rating=${r} role=${reviewerRole} blind=${!revealed}`);
+    trackEvent('review_submitted', { jobId: job.id, userId: reviewerId, meta: { rating: r, reviewerRole } });
+    return res.status(201).json({ ok: true, revealed, waitingForOther: !revealed });
+});
+
+// ─── GET /api/jobs/:id/reviews ────────────────────────────────
+// TRUST_SYSTEM: 공개 리뷰 + 자기가 쓴 리뷰 (블라인드 대기 중 포함)
+router.get('/:id/reviews', (req, res) => {
+    const { userId } = req.query;
+    const reviews = db.prepare(`
+        SELECT r.id, r.reviewerId, r.targetId, r.rating, r.comment, r.tags,
+               r.isPublic, r.createdAt,
+               u.name AS reviewerName
+        FROM   reviews r
+        LEFT JOIN users u ON u.id = r.reviewerId
+        WHERE  r.jobId = ?
+          AND  (r.isPublic = 1 OR r.reviewerId = ?)
+        ORDER BY r.createdAt DESC
+    `).all(req.params.id, userId || '');
+
+    // tags 파싱
+    const parsed = reviews.map(rv => ({
+        ...rv,
+        tags: (() => { try { return rv.tags ? JSON.parse(rv.tags) : []; } catch { return []; } })(),
+        isPublic: !!rv.isPublic,
+        waitingForOther: !rv.isPublic,
+    }));
+
+    return res.json({ ok: true, reviews: parsed, count: parsed.length });
 });
 
 // ─── PHASE RETENTION: POST /api/jobs/:id/rematch ─────────────
@@ -1350,6 +1546,181 @@ router.post('/:id/rematch', (req, res) => {
 
     console.log(`[REMATCH] jobId=${job.id} candidates=${candidates.length}`);
     return res.json({ ok: true, count: candidates.length, candidates: candidates.map(c => ({ workerId: c.workerId, name: c.name })) });
+});
+
+// ─── AUTO_MATCH: POST /api/jobs/:id/urgent ───────────────────
+// 농민이 무료로 isUrgent=1 전환 → 매칭 점수 +100 boost → 더 많은 작업자에게 노출
+// (향후 유료화 훅: isUrgentPaid 플래그로 분리)
+router.post('/:id/urgent', (req, res) => {
+    const { requesterId } = req.body || {};
+    if (!requesterId) return res.status(400).json({ ok: false, error: 'requesterId가 필요해요.' });
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '본인 공고만 긴급 전환 가능해요.' });
+    }
+    if (job.status !== 'open') {
+        return res.status(400).json({ ok: false, error: '모집 중인 공고만 긴급 전환 가능해요.' });
+    }
+    if (job.isUrgent) {
+        return res.json({ ok: true, alreadyUrgent: true });
+    }
+
+    db.prepare('UPDATE jobs SET isUrgent = 1 WHERE id = ?').run(job.id);
+    console.log(`[JOB_URGENT] jobId=${job.id} requesterId=${requesterId}`);
+    trackEvent('job_urgent', { jobId: job.id, userId: requesterId, meta: { category: job.category } });
+
+    // 기존 지원자에게 "긴급 전환됐어요" 알림 재발송 (fire-and-forget)
+    setImmediate(async () => {
+        try {
+            const apps = db.prepare(
+                "SELECT a.workerId, w.phone, w.name FROM applications a LEFT JOIN workers w ON w.id = a.workerId WHERE a.jobRequestId = ? AND a.status = 'applied'"
+            ).all(job.id);
+            const updatedJob = { ...job, isUrgent: 1 };
+            for (const a of apps) {
+                if (a.phone) {
+                    try {
+                        await sendJobAlert(updatedJob, { phone: a.phone, name: a.name });
+                    } catch (_) {}
+                }
+            }
+            if (apps.length > 0) {
+                console.log(`[URGENT_ALERT_SENT] jobId=${job.id} notified=${apps.length}명`);
+            }
+        } catch (e) {
+            console.error('[URGENT_ALERT_ERROR]', e.message);
+        }
+    });
+
+    return res.json({ ok: true, alreadyUrgent: false, notified: true });
+});
+
+// ─── AI_MATCH_V2: POST /api/jobs/:id/set-auto-assign ─────────
+// 농민 opt-in 토글 — autoAssign=1 이어야 checkAndAutoSelect 실행됨
+router.post('/:id/set-auto-assign', (req, res) => {
+    const { requesterId, enable } = req.body || {};
+    if (!requesterId) return res.status(400).json({ ok: false, error: 'requesterId가 필요해요.' });
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '내 공고만 설정 가능해요.' });
+    }
+
+    const flag = enable ? 1 : 0;
+    db.prepare('UPDATE jobs SET autoAssign = ? WHERE id = ?').run(flag, job.id);
+    console.log(`[AUTO_ASSIGN_FLAG] jobId=${job.id} autoAssign=${flag}`);
+    trackEvent('auto_assign_toggle', { jobId: job.id, userId: requesterId, meta: { enable: flag } });
+
+    return res.json({ ok: true, autoAssign: flag });
+});
+
+// ─── AI_MATCH_V2: POST /api/jobs/:id/auto-assign ─────────────
+// 농민이 명시적으로 "AI 자동 배정" 트리거
+// checkAndAutoSelect(자동, 3명+조건)과 달리 1명도 가능, 농민이 직접 실행
+router.post('/:id/auto-assign', (req, res) => {
+    const { requesterId } = req.body || {};
+    if (!requesterId) return res.status(400).json({ ok: false, error: 'requesterId가 필요해요.' });
+
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '내 공고만 자동 배정 가능해요.' });
+    }
+    if (job.status !== 'open') {
+        return res.status(400).json({ ok: false, error: '모집 중인 공고만 자동 배정 가능해요.' });
+    }
+
+    // 지원자 목록 (applied 상태만)
+    const apps = db.prepare(
+        "SELECT * FROM applications WHERE jobRequestId = ? AND status = 'applied' ORDER BY createdAt ASC"
+    ).all(job.id);
+    if (apps.length === 0) {
+        return res.status(400).json({ ok: false, error: '지원자가 없어요. 잠시 후 다시 시도해주세요.' });
+    }
+
+    // V2 점수 계산 (기존 calcApplicantMatchScore + V2 보정)
+    const scored = apps.map(a => {
+        const worker = normalizeWorker(db.prepare('SELECT * FROM workers WHERE id = ?').get(a.workerId));
+        if (!worker) return null;
+        const dist = (job.latitude && job.longitude && worker.latitude && worker.longitude)
+            ? distanceKm(job.latitude, job.longitude, worker.latitude, worker.longitude)
+            : null;
+        const distKmVal    = dist !== null ? Math.round(dist * 10) / 10 : null;
+        const reviewCount  = db.prepare('SELECT COUNT(*) AS cnt FROM reviews WHERE targetId = ?').get(worker.id)?.cnt || 0;
+        const baseScore    = calcApplicantMatchScore(worker, a, job, distKmVal, reviewCount);
+        const v2Bonus      = calcV2Bonus(worker, job);
+        const matchScore   = Math.round(baseScore + v2Bonus);
+        return { app: a, worker, distKm: distKmVal, matchScore };
+    }).filter(Boolean);
+
+    if (scored.length === 0) {
+        return res.status(400).json({ ok: false, error: '유효한 지원자 프로필이 없어요.' });
+    }
+
+    // 내림차순 정렬 → 최고 점수
+    scored.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
+    const top = scored[0];
+
+    // 안전 가드 (soft — ratingAvg 없으면 패스)
+    if (top.worker.ratingAvg !== null && top.worker.ratingAvg < 3.0) {
+        return res.status(400).json({ ok: false, error: '추천 작업자의 평점이 낮아 자동 배정이 보류됐어요. 직접 선택해주세요.' });
+    }
+    if ((top.worker.noshowCount || 0) > 3) {
+        return res.status(400).json({ ok: false, error: '노쇼 이력이 많아 자동 배정이 불가해요. 직접 선택해주세요.' });
+    }
+
+    const workerId   = top.worker.id;
+    const farmerUser = db.prepare('SELECT phone FROM users WHERE id = ?').get(job.requesterId);
+    const farmerPhone = farmerUser?.phone || '010-0000-0000';
+
+    // 원자적 트랜잭션 (autoSelect와 동일 패턴)
+    let didSelect = false;
+    db.transaction(() => {
+        const r = db.prepare(`
+            UPDATE jobs
+            SET status = 'matched', contactRevealed = 1,
+                selectedWorkerId = ?, selectedAt = ?, autoSelected = 1
+            WHERE id = ? AND status = 'open'
+        `).run(workerId, new Date().toISOString(), job.id);
+
+        if (r.changes === 0) return; // 이미 처리됨
+        didSelect = true;
+
+        db.prepare("UPDATE applications SET status = 'selected' WHERE jobRequestId = ? AND workerId = ?")
+          .run(job.id, workerId);
+        db.prepare("UPDATE applications SET status = 'rejected' WHERE jobRequestId = ? AND workerId != ?")
+          .run(job.id, workerId);
+
+        try {
+            db.prepare(`
+                INSERT OR IGNORE INTO contacts (id, jobId, farmerId, workerId, createdAt)
+                VALUES (?,?,?,?,?)
+            `).run(newId('contact'), job.id, job.requesterId, workerId, new Date().toISOString());
+        } catch (_) {}
+    })();
+
+    if (!didSelect) {
+        return res.status(409).json({ ok: false, error: '이미 다른 작업자가 선택됐어요.' });
+    }
+
+    console.log(`[AUTO_ASSIGN] jobId=${job.id} workerId=${workerId} score=${top.matchScore} dist=${top.distKm ?? '?'}km`);
+    trackEvent('auto_assign', { jobId: job.id, userId: requesterId, meta: { workerId, score: top.matchScore } });
+
+    // 카카오 알림 (fire-and-forget)
+    setImmediate(() => { try { sendSelectionNotification(job, top.worker); } catch (_) {} });
+
+    return res.json({
+        ok: true,
+        workerId,
+        matchScore: top.matchScore,
+        contact: {
+            workerName:  top.worker.name,
+            workerPhone: top.worker.phone,
+            farmerPhone,
+        },
+    });
 });
 
 // ─── PHASE SCALE: POST /api/jobs/:id/sponsor ─────────────────

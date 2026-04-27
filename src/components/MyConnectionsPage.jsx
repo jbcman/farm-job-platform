@@ -298,6 +298,9 @@ export default function MyConnectionsPage({ userId, onBack }) {
       {reviewJob && (
         <ReviewModal
           job={reviewJob}
+          reviewerRole={reviewJob.myRole || 'worker'}
+          reviewerId={userId}
+          targetId={reviewJob.targetId}
           showIncentive={reviewIncentive}
           onClose={() => { setReviewJob(null); setReviewIncentive(false); }}
           onSubmit={() => {

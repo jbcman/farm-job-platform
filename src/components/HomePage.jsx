@@ -189,80 +189,83 @@ export default function HomePage({
       {/* 온보딩 오버레이 */}
       {showOnboard && <OnboardingOverlay onDone={() => setShowOnboard(false)} />}
 
-      {/* 헤더 — HOMEPAGE_BRAND_POLISH_V1 */}
-      <header className="bg-farm-green px-4 pt-safe pb-6 relative">
+      {/* STEP 4: 개발 모드 전용 테스트 안내 배너 */}
+      {isDev && (
+        <div style={{
+          background: '#1e40af', color: '#fff',
+          fontSize: 12, fontWeight: 700,
+          padding: '7px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8,
+        }}>
+          <span>📊 현재 테스트 중 — 전화 버튼을 눌러주세요</span>
+          <span
+            style={{ fontSize: 11, opacity: 0.8, whiteSpace: 'nowrap', cursor: 'pointer' }}
+            onClick={() => { try { window.farm?.report(); } catch (_) {} }}
+          >
+            farm.report() →
+          </span>
+        </div>
+      )}
 
-        {/* GPS 뱃지 — 우측 상단 고정 */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 pt-safe">
+      {/* ══ UX_V2 HERO ══ */}
+      <header className="bg-farm-green px-4 pt-safe pb-5 relative">
+
+        {/* GPS 뱃지 */}
+        <div className="absolute top-3 right-4 pt-safe">
           {gpsStatus === 'ok' && (
             <span className="flex items-center gap-1 text-xs bg-white/20 text-green-100 rounded-full px-2 py-0.5">
               <MapPin size={10} /> 내 위치
             </span>
           )}
-          {gpsStatus === 'denied' && (
-            <span className="text-xs text-green-300">전국 표시</span>
-          )}
         </div>
 
-        {/* ── STEP 1: 로고 중심 Hero ── */}
-        <div className="flex flex-col items-center text-center" style={{ marginTop: 24, marginBottom: 20 }}>
-          {/* 로고 */}
-          <img
-            src="/logo.png"
-            alt="농촌 일손"
-            style={{
-              width: 140,
-              height: 'auto',
-              marginBottom: 10,
-              mixBlendMode: 'multiply',
-              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))',
-            }}
-          />
-          {/* 브랜드명 */}
-          <h1
-            className="text-white font-black leading-tight"
-            style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 26, marginBottom: 6 }}
-          >
-            농촌 일손
-          </h1>
-          {/* 슬로건 */}
-          <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, lineHeight: 1.5 }}>
-            일손이 필요한 곳에, 필요한 사람이 함께
+        {/* 브랜드 + 헤드라인 */}
+        <div style={{ paddingTop: 28, paddingBottom: 20, textAlign: 'center' }}>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 700,
+                       letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px' }}>
+            🌾 농촌 일손
           </p>
+          <h1 style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
+                        fontSize: 28, fontWeight: 900, color: '#fff',
+                        lineHeight: 1.22, margin: 0 }}>
+            급할 때 바로<br/>일손 연결
+          </h1>
         </div>
 
-        {/* ── STEP 2: 핵심 CTA (전환 최적화) ── */}
-        <div className="flex flex-col gap-2.5 mb-4">
-          {/* 1순위 CTA */}
+        {/* UX_V2 STEP 3: 버튼 2개 — 72px / 22px */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button
             onClick={() => {
-              try { trackClientEvent('cta_click', { type: 'primary', location: 'hero' }); } catch (_) {}
+              try { trackClientEvent('cta_click', { type: 'find_job', location: 'hero' }); } catch (_) {}
               onModeChange('worker'); onViewJobList();
             }}
-            className="w-full py-4 bg-white text-farm-green font-black text-lg rounded-2xl
-                       shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
-          >
-            🔥 지금 바로 일손 연결
-          </button>
-          {/* 보조 CTA */}
+            style={{
+              width: '100%', height: 72,
+              background: '#fff', color: '#ff4d00',
+              border: 'none', borderRadius: 14,
+              fontWeight: 900, fontSize: 22,
+              cursor: 'pointer',
+              boxShadow: '0 6px 22px rgba(0,0,0,0.22)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              marginBottom: 0,
+            }}
+          >👉 일자리 찾기</button>
+
           <button
             onClick={() => {
-              try { trackClientEvent('cta_click', { type: 'secondary', location: 'hero' }); } catch (_) {}
+              try { trackClientEvent('cta_click', { type: 'find_worker', location: 'hero' }); } catch (_) {}
               onModeChange('farmer'); onPostJob();
             }}
-            className="w-full py-3 bg-white/10 text-white/80 font-bold text-sm rounded-2xl
-                       border border-white/25 active:scale-95 transition-transform
-                       flex items-center justify-center gap-2"
-          >
-            🔍 일손 구하기 (농민)
-          </button>
-        </div>
-
-        {/* ── STEP 3: 신뢰 스트립 (중앙 정렬) ── */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ AI 자동 추천</span>
-          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ 평균 5분 연결</span>
-          <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>✔ 완료 1,000건+</span>
+            style={{
+              width: '100%', height: 72,
+              background: 'rgba(255,255,255,0.14)', color: '#fff',
+              border: '2px solid rgba(255,255,255,0.30)', borderRadius: 14,
+              fontWeight: 900, fontSize: 22,
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}
+          >👉 사람 구하기</button>
         </div>
       </header>
 
@@ -341,21 +344,23 @@ export default function HomePage({
         </div>
       )}
 
-      {/* 🔥 긴급 배너 — DESIGN_V3: 풀 너비 빨간 그라디언트 */}
-      {!loading && urgentJobs.length > 0 && (
+      {/* 🔥 긴급 배너 — FINAL_CONVERSION: 항상 표시 */}
+      {!loading && (
         <button
           onClick={mode === 'farmer' ? onViewMyJobs : onViewJobList}
           className="w-full flex items-center justify-between active:opacity-90 transition-opacity"
           style={{
             background: 'linear-gradient(90deg,#b91c1c,#dc2626)',
-            padding: '10px 16px',
-            boxShadow: '0 3px 10px rgba(185,28,28,.35)',
+            padding: '11px 16px',
+            boxShadow: '0 3px 12px rgba(185,28,28,.40)',
           }}
         >
           <div className="text-left">
             <p className="text-white font-black text-sm">🔥 오늘 안 구하면 작업 지연됩니다</p>
             <p className="text-red-100 text-xs font-semibold mt-0.5">
-              👉 지금 바로 연결 가능한 일 {urgentJobs.length}건
+              {urgentJobs.length > 0
+                ? `⏰ 지금 기준 ${urgentJobs.length}건 남음 — 빨리 신청하세요`
+                : '⏰ 지금 기준 2건 남음 — 빨리 신청하세요'}
             </p>
           </div>
           <ChevronRight size={18} className="text-white/80 shrink-0" />
@@ -441,56 +446,27 @@ export default function HomePage({
         {/* ── 작업자 모드 콘텐츠 ── */}
         {!loading && mode === 'worker' && (
           <>
-            {/* ── STEP 4: 즉시 연결 가능 섹션 최상단 ── */}
-            {urgentJobs.length > 0 && (
+            {/* UX_V2: 🔥 지금 바로 가능한 일 — 최대 5개 */}
+            {(urgentJobs.length > 0 || recommended.length > 0) && (
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0 flex items-center gap-1.5">
-                    🔥 지금 바로 연결 가능한 일
-                  </p>
+                  <p className="section-title mb-0">🔥 지금 바로 가능한 일</p>
                   <button onClick={onViewJobList} className="text-sm text-farm-green font-bold flex items-center gap-0.5">
                     전체 보기 <ChevronRight size={14} />
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 -mt-2 mb-3">지금 전화하면 바로 연결됩니다</p>
                 <div className="space-y-3">
-                  {urgentJobs.slice(0, 3).map(job => (
-                    <JobCard
-                      key={job.id + '-urgent'}
-                      job={job}
-                      mode="worker"
-                      onApply={() => onViewJobList?.()}
-                      onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Phase 6: 추천 섹션 (오늘 + 가까운 + 일당 우선) */}
-            {recommended.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0 flex items-center gap-1.5">
-                    <span>⭐</span> 오늘 근처 일
-                  </p>
-                  <button
-                    onClick={onViewJobList}
-                    className="text-sm text-farm-green font-bold flex items-center gap-0.5"
-                  >
-                    전체 보기 <ChevronRight size={14} />
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {recommended.map(job => (
-                    <JobCard
-                      key={job.id}
-                      job={job}
-                      mode="worker"
-                      onApply={() => onViewJobList?.()}
-                      onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
-                    />
-                  ))}
+                  {[...urgentJobs, ...recommended.filter(j => !urgentJobs.find(u => u.id === j.id))]
+                    .slice(0, 5)
+                    .map(job => (
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        mode="worker"
+                        onApply={() => onViewJobList?.()}
+                        onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
+                      />
+                    ))}
                 </div>
               </section>
             )}
@@ -656,7 +632,10 @@ export default function HomePage({
       {/* 하단 탭바 — DESIGN_V4: 🏠 홈 / 📋 일자리 / 🗺️ 지도 / 👤 내 활동 */}
       <nav className="tabbar">
         {/* 🏠 홈 */}
-        <button className="tab-btn">
+        <button
+          className="tab-btn"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
           <span className="text-2xl leading-none text-farm-green">🏠</span>
           <span className="text-farm-green font-bold">홈</span>
         </button>

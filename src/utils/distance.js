@@ -32,3 +32,6 @@ export function getDistanceKm(lat1, lng1, lat2, lng2) {
   const km = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   return Number.isFinite(km) ? km : null;
 }
+
+// MAP_CORE: getDistance alias (getDistanceKm과 동일, 짧은 이름)
+export const getDistance = getDistanceKm;
