@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Sparkles, Camera, Loader2, CheckCircle, Zap, MapPin, Navigation, Flame, Search } from 'lucide-react';
 import { createJob, smartAssist, getUserId, getUserName, trackClientEvent, sponsorJob, getUrgentPrice, createPayment, confirmPayment } from '../utils/api.js';
+import { logTestEvent, logMapRender, logApiFail, logCheckpoint } from '../utils/testLogger.js'; // REAL_USER_TEST
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -139,6 +140,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       // GEO_QUALITY: 주소 기반 좌표 품질 추적 (normalized/precision 포함)
       try { trackClientEvent('geocode_success', { address: trimmed, lat: data.lat, lng: data.lng, addrLen: trimmed.length, normalized: data.normalized, precision }); } catch (_) {}
       console.log(`[GEO_QUALITY] 주소="${trimmed}" → (${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}) addrLen=${trimmed.length} normalized=${data.normalized} precision=${precision}`);
+      logMapRender(data.lat, data.lng, precision); // REAL_USER_TEST STEP 12
     } catch (e) {
       setGeocodeStatus('error');
       setGeocodePrecision(null);
@@ -383,6 +385,9 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
       // STEP 4: API 응답 로그
       console.log('[JOB_RESPONSE]', result);
+      // REAL_USER_TEST: 농민 공고 생성 완료
+      logTestEvent('farmer_create_job', { jobId: result?.job?.id, category });
+      logCheckpoint('create_job_done', { jobId: result?.job?.id });
 
       if (simpleMode) {
         try { trackClientEvent('quick_job_created', { category }); } catch (_) {}
@@ -438,6 +443,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     } catch (e) {
       // STEP 4: 에러 상세 로그
       console.error('[JOB_ERROR]', e.message, e);
+      logApiFail('/api/jobs', 0, 'create_job'); // REAL_USER_TEST
       setError(e.message);
     } finally {
       setSubmitting(false);

@@ -16,6 +16,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ArrowLeft, Loader2, Phone, Bell } from 'lucide-react';
 import { getMyApplications, completeWork, getUserId } from '../utils/api.js';
+import { logTestEvent, logCallTriggered, logCheckpoint, logVibrate } from '../utils/testLogger.js'; // REAL_USER_TEST
 import ReviewModal from './ReviewModal.jsx';
 
 // ── 상태 배지 ────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ function AppCard({ a, completing, onComplete, onReview }) {
           </div>
           <a
             href={`tel:${a.farmerContact.farmerPhone}`}
+            onClick={() => logCallTriggered(a.job?.id, a.workerId)} // REAL_USER_TEST STEP 13
             className="flex items-center gap-1.5 px-4 py-2.5 bg-farm-green text-white
                        rounded-xl text-sm font-bold active:scale-95 transition-transform"
           >
@@ -197,8 +199,11 @@ export default function MyApplicationsPage({ userId, onBack }) {
           // 새 선택 발생!
           console.log(`[TRACE] SELECT_DETECTED userId=${userId} prevCount=${prevSelectedCountRef.current} newCount=${newCount}`);
           setSelectionBanner(true);
+          // REAL_USER_TEST: 작업자 선택 감지
+          logTestEvent('worker_selected_detected', { userId, prevCount: prevSelectedCountRef.current, newCount });
+          logCheckpoint('selected_detected', { userId });
           // 진동 (모바일)
-          try { navigator.vibrate?.([200, 100, 200]); } catch (_) {}
+          try { navigator.vibrate?.([200, 100, 200]); logVibrate(); } catch (_) {}
           // 8초 후 자동 닫힘
           setTimeout(() => setSelectionBanner(false), 8000);
           // 목록 새로고침
@@ -227,6 +232,9 @@ export default function MyApplicationsPage({ userId, onBack }) {
     try {
       await completeWork(jobId, userId);
       showToast('작업 완료 처리됐어요! 🎉');
+      // REAL_USER_TEST: 작업자 완료
+      logTestEvent('worker_complete', { jobId, appId: a.id });
+      logCheckpoint('worker_complete_done', { jobId });
       setReviewApp({ app: a, job: a.job });
       load();
     } catch (e) {

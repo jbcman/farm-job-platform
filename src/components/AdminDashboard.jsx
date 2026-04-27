@@ -169,6 +169,11 @@ export default function AdminDashboard({ onBack }) {
   const [reportsLoading,   setReportsLoading]    = useState(false);
   const [geoData,          setGeoData]           = useState(null);
   const [geoLoading,       setGeoLoading]        = useState(false);
+  // TEST_TAB
+  const [testLogs,         setTestLogs]          = useState([]);
+  const [testSummary,      setTestSummary]       = useState(null);
+  const [testLoading,      setTestLoading]       = useState(false);
+  const [testPriority,     setTestPriority]      = useState(''); // '' | '1' | '2' | '3'
 
   const load = useCallback(async (key) => {
     const k = key ?? adminKey;
@@ -293,11 +298,26 @@ export default function AdminDashboard({ onBack }) {
     finally { setGeoLoading(false); }
   }, [adminKey]);
 
+  // ── 테스트 탭 ──────────────────────────────────────────────────
+  const loadTest = useCallback(async (priority = '') => {
+    setTestLoading(true);
+    try {
+      const [logsRes, summaryRes] = await Promise.all([
+        adminFetch(`/admin/test-logs?limit=100${priority ? `&priority=${priority}` : ''}`, adminKey),
+        adminFetch('/admin/test-summary', adminKey),
+      ]);
+      setTestLogs(logsRes.logs || []);
+      setTestSummary(summaryRes.summary || null);
+    } catch (e) { console.error('[ADMIN_TAB:test]', e); }
+    finally { setTestLoading(false); }
+  }, [adminKey]);
+
   useEffect(() => {
     if (activeTab === 'users')     { loadUsers(usersSearch); }
     if (activeTab === 'jobs-mgmt') { loadJobsMgmt(jobsMgmtSearch); }
     if (activeTab === 'reports')   { loadReports(); }
     if (activeTab === 'geo')       { loadGeo(); }
+    if (activeTab === 'test')      { loadTest(testPriority); }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (showGate) return <KeyGate onSubmit={handleKeySubmit} />;
@@ -344,6 +364,7 @@ export default function AdminDashboard({ onBack }) {
             { key: 'jobs-mgmt', label: '📋 작업'   },
             { key: 'reports',   label: '🚨 신고'   },
             { key: 'geo',       label: '🗺 지도'   },
+            { key: 'test',      label: '🧪 테스트' },
           ].map(t => (
             <button
               key={t.key}
@@ -407,6 +428,18 @@ export default function AdminDashboard({ onBack }) {
         {/* ══ GEO TAB ══════════════════════════════════════════════ */}
         {activeTab === 'geo' && (
           <GeoTab data={geoData} loading={geoLoading} onRefresh={loadGeo} />
+        )}
+
+        {/* ══ TEST TAB ═════════════════════════════════════════════ */}
+        {activeTab === 'test' && (
+          <TestTab
+            logs={testLogs}
+            summary={testSummary}
+            loading={testLoading}
+            priority={testPriority}
+            onPriorityChange={p => { setTestPriority(p); loadTest(p); }}
+            onRefresh={() => loadTest(testPriority)}
+          />
         )}
 
         {activeTab === 'ops' && (
@@ -1078,6 +1111,157 @@ function GeoTab({ data, loading, onRefresh }) {
           ⚠️ 농지주소 입력율 {farmAddrRate}% — A/B 하드블록 조건 충족 (30% 미만)
         </div>
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TEST TAB — 실사용 테스트 로그 + 버그 우선순위 대시보드
+// STEP 7, 15, 16 (REAL_USER_TEST_AND_BUG_PRIORITY_LOOP)
+// ══════════════════════════════════════════════════════════════════
+const PRIORITY_COLORS = {
+  1: { bg: 'bg-red-900/50',    text: 'text-red-300',    border: 'border-red-700/50',    label: 'P1 긴급' },
+  2: { bg: 'bg-amber-900/50',  text: 'text-amber-300',  border: 'border-amber-700/50',  label: 'P2 중간' },
+  3: { bg: 'bg-gray-800',      text: 'text-gray-400',   border: 'border-gray-700',      label: 'P3 낮음' },
+};
+
+// STEP 17: 전체 E2E 흐름 스텝 정의
+const FLOW_STEPS = [
+  { key: 'farmer_create_job',    label: '공고 생성',  icon: '📝' },
+  { key: 'worker_apply',         label: '지원',       icon: '🙋' },
+  { key: 'farmer_select_worker', label: '작업자 선택', icon: '✅' },
+  { key: 'farmer_call_worker',   label: '전화 연결',  icon: '📞' },
+  { key: 'farmer_complete_job',  label: '작업 완료',  icon: '🏁' },
+];
+
+function TestTab({ logs, summary, loading, priority, onPriorityChange, onRefresh }) {
+  if (loading) {
+    return <div className="flex items-center justify-center py-20 text-gray-500"><RefreshCw size={22} className="animate-spin mr-2" /><span>로딩 중…</span></div>;
+  }
+
+  const s = summary || {};
+
+  return (
+    <div className="space-y-5">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-black text-white text-base">🧪 실사용 테스트 모니터</p>
+          <p className="text-xs text-gray-500 mt-0.5">총 로그 {s.total || 0}건 · 세션 {(s.recentSessions || []).length}개</p>
+        </div>
+        <button onClick={onRefresh} className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 rounded-xl text-xs text-gray-300 hover:bg-gray-700">
+          <RefreshCw size={12} /> 새로고침
+        </button>
+      </div>
+
+      {/* STEP 15: 핵심 요약 */}
+      <div className="grid grid-cols-2 gap-3">
+        <KpiCard
+          label="🔄 플로우 성공률"
+          value={`${s.flowSuccessRate ?? 0}%`}
+          sub={`완료 ${s.completed || 0} / 생성 ${s.started || 0}`}
+          color={s.flowSuccessRate >= 70 ? 'green' : s.flowSuccessRate >= 40 ? 'amber' : 'red'}
+        />
+        <KpiCard label="🔴 P1 긴급 오류" value={s.p1Count || 0} sub="즉시 수정 필요" color={s.p1Count > 0 ? 'red' : 'green'} />
+        <KpiCard label="API 실패"        value={s.apiFail || 0}   sub="ERROR_API_FAIL"   color={s.apiFail > 0 ? 'red' : 'gray'} />
+        <KpiCard label="클릭 실패"       value={s.clickFail || 0} sub="ERROR_CLICK_FAIL" color={s.clickFail > 0 ? 'red' : 'gray'} />
+        <KpiCard label="지도 오류"        value={s.mapErrors || 0} sub="MAP/GEO FAIL"     color={s.mapErrors > 0 ? 'amber' : 'gray'} />
+        <KpiCard label="흐름 끊김"        value={s.flowBroken || 0} sub="FLOW_BROKEN"    color={s.flowBroken > 0 ? 'amber' : 'gray'} />
+      </div>
+
+      {/* STEP 17: E2E 플로우 시각화 */}
+      {(s.recentSessions || []).length > 0 && (
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+            E2E 플로우 현황 (최근 {s.recentSessions.length}개 세션)
+          </p>
+          <div className="flex items-center gap-1 mb-3 flex-wrap">
+            {FLOW_STEPS.map((step, i) => {
+              const doneCount = s.recentSessions.filter(sess => sess[Object.keys(sess).find(k => k.toLowerCase().includes(step.key.split('_')[1]))]).length;
+              const allCount  = s.recentSessions.length;
+              const pct = allCount > 0 ? Math.round(doneCount / allCount * 100) : 0;
+              return (
+                <React.Fragment key={step.key}>
+                  <div className="flex flex-col items-center">
+                    <span className="text-lg">{step.icon}</span>
+                    <span className="text-xs text-gray-400 mt-0.5">{step.label}</span>
+                    <span className={`text-xs font-black ${pct >= 70 ? 'text-green-400' : pct >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{pct}%</span>
+                  </div>
+                  {i < FLOW_STEPS.length - 1 && (
+                    <span className="text-gray-700 text-lg mb-4">→</span>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+          {/* 세션 상세 */}
+          <div className="space-y-1 max-h-36 overflow-y-auto">
+            {s.recentSessions.slice(0, 10).map((sess, i) => (
+              <div key={i} className="flex items-center gap-1 text-xs">
+                <span className="text-gray-600 font-mono shrink-0">{sess.sessionId?.slice(0, 6) || '???'}</span>
+                {['created','applied','selected','called','completed'].map(k => (
+                  <span key={k} className={`px-1 py-0.5 rounded ${sess[k] ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-600'}`}>
+                    {sess[k] ? '✓' : '·'}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 16: 우선순위 필터 + 로그 목록 */}
+      <div className="flex gap-2 flex-wrap">
+        {[{ v: '', l: '전체' }, { v: '1', l: '🔴 P1 긴급' }, { v: '2', l: '🟡 P2 중간' }, { v: '3', l: '⚪ P3 낮음' }].map(opt => (
+          <button
+            key={opt.v}
+            onClick={() => onPriorityChange(opt.v)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              priority === opt.v
+                ? 'bg-farm-green text-white'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >{opt.l}</button>
+        ))}
+      </div>
+
+      {logs.length === 0 && (
+        <div className="text-center py-10 text-gray-500 text-sm">
+          <p className="text-3xl mb-2">🧪</p>
+          <p>아직 테스트 로그 없음</p>
+          <p className="text-xs mt-1">앱을 사용하면 자동으로 수집됩니다</p>
+        </div>
+      )}
+
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
+        {logs.map(log => {
+          const pc = PRIORITY_COLORS[log.priority] || PRIORITY_COLORS[3];
+          return (
+            <div key={log.id} className="px-4 py-3">
+              <div className="flex items-start gap-2 justify-between">
+                <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold border ${pc.bg} ${pc.text} ${pc.border}`}>
+                    {pc.label}
+                  </span>
+                  <span className={`text-sm font-bold ${log.priority === 1 ? 'text-red-300' : log.priority === 2 ? 'text-amber-300' : 'text-gray-200'}`}>
+                    {log.type}
+                  </span>
+                </div>
+                <span className="text-xs text-gray-600 shrink-0">{timeAgo(log.createdAt)}</span>
+              </div>
+              {log.payload && Object.keys(log.payload).length > 0 && (
+                <div className="mt-1 text-xs text-gray-500 font-mono truncate">
+                  {Object.entries(log.payload)
+                    .filter(([k]) => k !== 'userId')
+                    .map(([k, v]) => `${k}=${v}`)
+                    .join(' · ')
+                  }
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

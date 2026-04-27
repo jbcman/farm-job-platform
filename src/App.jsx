@@ -390,8 +390,20 @@ export default function App() {
     );
   }
 
+  // REAL_USER_TEST STEP 10: TEST_MODE 배너 (DEV only)
+  const TEST_MODE_ON = import.meta.env.VITE_TEST_MODE === 'true';
+
   return (
     <div className="max-w-lg mx-auto relative min-h-screen">
+      {/* ── TEST MODE 배너 (DEV only) ───────────────────── */}
+      {TEST_MODE_ON && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center
+                        bg-yellow-400 text-yellow-900 text-xs font-bold py-1 gap-2"
+             style={{ maxWidth: 512, margin: '0 auto' }}>
+          <span>🧪 TEST MODE ON</span>
+          <span className="opacity-60">현재 페이지: {page}</span>
+        </div>
+      )}
       {/* ── 화면 라우팅 ─────────────────────────────────── */}
       {page === 'home' && (
         <HomePage

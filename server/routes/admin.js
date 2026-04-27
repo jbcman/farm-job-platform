@@ -528,4 +528,92 @@ router.get('/reports', auth, (req, res) => {
     }
 });
 
+// ── GET /api/admin/test-logs — 테스트 로그 (REAL_USER_TEST) ──────
+const { classifyBug } = require('../services/bugClassifier');
+
+router.get('/test-logs', auth, (req, res) => {
+    try {
+        // test_logs 테이블이 없으면 빈 배열 반환
+        const tableExists = db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='test_logs'"
+        ).get();
+        if (!tableExists) return res.json({ ok: true, logs: [] });
+
+        const limit  = Math.min(parseInt(req.query.limit) || 100, 500);
+        const priority = req.query.priority ? parseInt(req.query.priority) : null;
+        const rows   = db.prepare(`
+            SELECT id, type, payload, priority, sessionId, createdAt
+            FROM test_logs
+            ${priority ? 'WHERE priority = ?' : ''}
+            ORDER BY id DESC
+            LIMIT ?
+        `).all(...(priority ? [priority, limit] : [limit]));
+
+        const logs = rows.map(r => ({
+            ...r,
+            payload: (() => { try { return JSON.parse(r.payload); } catch (_) { return {}; } })(),
+        }));
+        console.log(`[ADMIN_TEST_LOGS] count=${logs.length} priority=${priority || 'all'}`);
+        return res.json({ ok: true, logs });
+    } catch (e) {
+        console.error('[ADMIN_TEST_LOGS_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// ── GET /api/admin/test-summary — 자동 요약 (STEP 15) ────────────
+router.get('/test-summary', auth, (req, res) => {
+    try {
+        const tableExists = db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='test_logs'"
+        ).get();
+        if (!tableExists) return res.json({ ok: true, summary: {
+            flowSuccessRate: 0, apiFail: 0, clickFail: 0, mapErrors: 0, total: 0,
+        }});
+
+        const total     = db.prepare("SELECT COUNT(*) AS n FROM test_logs").get()?.n || 0;
+        const p1Count   = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE priority = 1").get()?.n || 0;
+        const p2Count   = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE priority = 2").get()?.n || 0;
+        const p3Count   = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE priority = 3").get()?.n || 0;
+        const apiFail   = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE type = 'ERROR_API_FAIL'").get()?.n || 0;
+        const clickFail = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE type = 'ERROR_CLICK_FAIL'").get()?.n || 0;
+        const mapErrors = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE type = 'MAP_FAIL' OR type = 'GEO_FAIL'").get()?.n || 0;
+        const flowBroken= db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE type = 'FLOW_BROKEN'").get()?.n || 0;
+        const callFail  = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE type = 'CALL_FAIL'").get()?.n || 0;
+
+        // 완료 이벤트 기준 성공률
+        const completed = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE type = 'farmer_complete_job' OR type = 'worker_complete'").get()?.n || 0;
+        const started   = db.prepare("SELECT COUNT(*) AS n FROM test_logs WHERE type = 'farmer_create_job'").get()?.n || 0;
+        const flowSuccessRate = started > 0 ? Math.round((completed / started) * 100) : 0;
+
+        // 최근 세션별 플로우 현황
+        const recentSessions = db.prepare(`
+            SELECT sessionId,
+                   MAX(CASE WHEN type='farmer_create_job'    THEN 1 ELSE 0 END) AS created,
+                   MAX(CASE WHEN type='worker_apply'         THEN 1 ELSE 0 END) AS applied,
+                   MAX(CASE WHEN type='farmer_select_worker' THEN 1 ELSE 0 END) AS selected,
+                   MAX(CASE WHEN type='farmer_call_worker'   THEN 1 ELSE 0 END) AS called,
+                   MAX(CASE WHEN type='farmer_complete_job'  THEN 1 ELSE 0 END) AS completed
+            FROM test_logs
+            WHERE sessionId != ''
+            GROUP BY sessionId
+            ORDER BY MAX(id) DESC
+            LIMIT 20
+        `).all();
+
+        return res.json({
+            ok: true,
+            summary: {
+                total, p1Count, p2Count, p3Count,
+                flowSuccessRate, apiFail, clickFail, mapErrors, flowBroken, callFail,
+                started, completed,
+                recentSessions,
+            },
+        });
+    } catch (e) {
+        console.error('[ADMIN_TEST_SUMMARY_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 module.exports = router;

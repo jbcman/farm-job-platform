@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ArrowLeft, Loader2, MapPin, Phone, Navigation } from 'lucide-react';
 import { getJobs, getMyJobs, getMyApplications, applyJob, startJob, completeJob, closeJob, getNearbyJobs, getJobContact, rematchJob, getUserId } from '../utils/api.js';
+import { logTestEvent, logCallTriggered, logClickFail, logCheckpoint } from '../utils/testLogger.js'; // REAL_USER_TEST
 import { filterUrgentOnly } from '../utils/sortJobs.js';
 import { sortJobsByRecommend, RECOMMEND_BADGE_THRESHOLD } from '../utils/recommendJobs.js';
 import { getUserProfile, saveUserInteraction } from '../utils/userProfile.js';
@@ -130,8 +131,14 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
       // 작업자: 전체 목록 + GPS 필터
       const cat = category === '전체' ? undefined : category;
       getJobs({ category: cat, lat: loc?.lat, lon: loc?.lon, radius: loc ? 50 : 500 })
-        .then(d => setJobs(d.jobs || []))
-        .catch(e => setError(e.message))
+        .then(d => {
+          setJobs(d.jobs || []);
+          logTestEvent('worker_view_jobs', { count: (d.jobs || []).length, category: cat || '전체' }); // REAL_USER_TEST STEP 4
+        })
+        .catch(e => {
+          setError(e.message);
+          logClickFail('view_jobs', e.message); // REAL_USER_TEST STEP 5
+        })
         .finally(() => setLoading(false));
     }
   }, [myJobsMode, myApplicationsMode, userId, category]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -281,6 +288,9 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
       await applyJob(job.id, { workerId: userId, message: '' });
       setApplied(prev => new Set([...prev, job.id]));
       showToast(`${job.category} 신청됐어요!`);
+      // REAL_USER_TEST: 작업자 지원 완료
+      logTestEvent('worker_apply', { jobId: job.id, category: job.category });
+      logCheckpoint('apply_done', { jobId: job.id });
       // PHASE 19: 지원 행동으로 추천 프로필 업데이트
       try { saveUserInteraction(job); } catch (_) {}
 
@@ -303,6 +313,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
         } catch (_) {}
       }
     } catch (e) {
+      logClickFail('apply_job', e.message); // REAL_USER_TEST STEP 5
       showToast(e.message);
     }
   }
@@ -323,6 +334,9 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     try {
       await completeJob(job.id, userId);
       showToast('작업이 완료되었어요!');
+      // REAL_USER_TEST: 농민 작업 완료
+      logTestEvent('farmer_complete_job', { jobId: job.id, category: job.category });
+      logCheckpoint('complete_done', { jobId: job.id });
       // PHASE RETENTION: 리뷰 유도용 localStorage 마킹
       try {
         localStorage.setItem('farm-pendingReview', JSON.stringify({

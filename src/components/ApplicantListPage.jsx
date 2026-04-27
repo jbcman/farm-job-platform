@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Zap } from 'lucide-react';
 import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent } from '../utils/api.js';
+import { logTestEvent, logCallTriggered, logCallFail, logCheckpoint, logClickFail } from '../utils/testLogger.js'; // REAL_USER_TEST
 
 // PHASE 28: 추천 배지 — rank 1/2/3 각각 다른 스타일
 const RANK_BADGE = {
@@ -76,6 +77,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
           console.warn(`[BROKEN_LINK][FRONT] ${nullCount}개 지원자의 worker 데이터가 null — 카드 스킵됨`);
         }
         setApplicants(list);
+        // REAL_USER_TEST: 농민 지원자 조회
+        logTestEvent('farmer_view_applicants', { jobId: job.id, count: list.length });
         // 페이지 열 때 이미 선택된 지원자가 있으면 ref 표시 → 폴링 시 false 알림 차단
         hadSelectedRef.current = list.some(a => a.status === 'selected');
       })
@@ -229,13 +232,18 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
         requesterId: userId,
         workerId:    applicant.worker.id,
       });
+      // REAL_USER_TEST: 농민 작업자 선택 완료
+      logTestEvent('farmer_select_worker', { jobId: job.id, workerId: applicant.worker.id });
+      logCheckpoint('select_done', { jobId: job.id });
       onSelectContact?.(data.contact);
       // 선택 완료 즉시 전화 연결 — contact.workerPhone 사용
       const phone = data.contact?.workerPhone;
       if (phone) {
+        logCallTriggered(job.id, applicant.worker.id); // REAL_USER_TEST STEP 13
         window.location.href = `tel:${phone.replace(/[^0-9]/g, '')}`;
       }
     } catch (e) {
+      logClickFail('select_worker', e.message); // REAL_USER_TEST STEP 5
       setError(e.message);
     } finally {
       setSelecting(null);
@@ -272,13 +280,20 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       const data  = await connectCall(job.id, userId);
       const phone = isFarmer ? data.workerPhone : data.farmerPhone;
       const name  = isFarmer ? data.workerName  : data.farmerName;
-      if (!phone) { setError('전화번호를 가져올 수 없어요.'); return; }
+      if (!phone) {
+        logCallFail(job.id, '전화번호 없음'); // REAL_USER_TEST STEP 13
+        setError('전화번호를 가져올 수 없어요.'); return;
+      }
+      // REAL_USER_TEST: 전화 연결
+      if (isFarmer) logTestEvent('farmer_call_worker', { jobId: job.id, workerId: wId });
+      logCallTriggered(job.id, wId);
       window.location.href = `tel:${phone.replace(/[^0-9]/g, '')}`;
       console.log(`[CALL_CONNECT] to=${name} phone=***${phone.slice(-4)}`);
 
       // PHASE 32: 5초 후 "안 받으면?" 힌트 표시 (전화 다이얼 후 브라우저 복귀 대비)
       setTimeout(() => setCallHint(wId), 5000);
     } catch (e) {
+      logClickFail('call_worker', e.message); // REAL_USER_TEST STEP 5
       setError(e.message);
     } finally {
       setCalling(null);

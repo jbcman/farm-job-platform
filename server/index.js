@@ -40,6 +40,7 @@ const adminStreamRoutes       = require('./routes/adminStream');
 const adminSystemRoutes       = require('./routes/adminSystem');
 const phoneRoutes             = require('./routes/phone');
 const abRoutes                = require('./routes/ab');
+const testLogRoutes           = require('./routes/testLog');
 const { seed }                      = require('./seed');
 const { initWS }                    = require('./ws');
 const { recoverDepartureReminders } = require('./services/reminderRecovery');
@@ -156,6 +157,7 @@ app.use('/api/admin/stream',            adminStreamRoutes);
 app.use('/api/admin/system',            adminSystemRoutes);
 app.use('/api/phone',                   phoneRoutes);
 app.use('/api/ab',                      abRoutes);
+app.use('/api/test-log',               testLogRoutes);
 
 // ─── SPA 폴백 ────────────────────────────────────────────────────
 const indexHtml = path.join(distPath, 'index.html');
