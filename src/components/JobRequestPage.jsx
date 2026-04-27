@@ -47,6 +47,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [geocodeStatus, setGeocodeStatus] = useState('idle'); // idle | loading | ok | error
   // GEO_PRECISION: 좌표 정확도 — full(읍·면·리 정확) | partial(시·군 추정, 핀 조정 필요)
   const [geocodePrecision, setGeocodePrecision] = useState(null); // null | 'full' | 'partial'
+  // GEO_PIN_MOVED: partial 경고 후 사용자가 실제로 핀을 이동했는지 추적
+  const [pinMoved, setPinMoved] = useState(false);
   // LOCATION_CONFIRM: 지도에서 위치 확인 여부
   const [confirmedLocation, setConfirmedLocation] = useState(false);
   const miniMapRef = useRef(null);   // div DOM ref
@@ -185,6 +187,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       setGpsLat(lat);
       setGpsLng(lng);
       setConfirmedLocation(false); // 드래그 후 재확인 필수
+      setPinMoved(true);           // GEO_PIN_MOVED: 핀 이동 기록
       marker.bindPopup('📍 새 위치를 확인해주세요').openPopup();
     });
 
@@ -343,6 +346,11 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       ...payload,
       farmImages: payload.farmImages ? `[${payload.farmImages.length}장]` : undefined,
     });
+    // GEO_QUALITY: 최종 제출 시점 정확도 기록
+    if (farmAddress.trim()) {
+      console.log(`[GEO_QUALITY] submit precision=${geocodePrecision} normalized=${geocodePrecision !== null} pinMoved=${pinMoved} addr="${farmAddress.trim()}"`);
+      try { trackClientEvent('geo_quality_submit', { precision: geocodePrecision, pinMoved, addrLen: farmAddress.trim().length }); } catch (_) {}
+    }
 
     setError('');
     setSubmitting(true);
@@ -606,7 +614,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                     <button
                       key={ex}
                       type="button"
-                      onClick={() => { setFarmAddress(ex); setGeocodeStatus('idle'); setGeocodePrecision(null); setConfirmedLocation(false); }}
+                      onClick={() => { setFarmAddress(ex); setGeocodeStatus('idle'); setGeocodePrecision(null); setPinMoved(false); setConfirmedLocation(false); }}
                       className="text-xs px-2 py-1 rounded-full bg-white border border-amber-300
                                  text-amber-700 font-medium active:scale-95 transition-transform"
                     >
@@ -620,7 +628,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   className="input text-sm flex-1"
                   placeholder="시·군·읍·면·리까지 입력 (도로명 주소 ❌)"
                   value={farmAddress}
-                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setGeocodePrecision(null); setConfirmedLocation(false); }}
+                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setGeocodePrecision(null); setPinMoved(false); setConfirmedLocation(false); }}
                   onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
                 />
                 <button
@@ -690,7 +698,21 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   {!confirmedLocation ? (
                     <button
                       type="button"
-                      onClick={() => { setConfirmedLocation(true); try { trackClientEvent('location_confirmed', { lat: gpsLat, lng: gpsLng, precision: geocodePrecision }); } catch (_) {} }}
+                      onClick={() => {
+                        setConfirmedLocation(true);
+                        try {
+                          trackClientEvent('location_confirmed', {
+                            lat:       gpsLat,
+                            lng:       gpsLng,
+                            precision: geocodePrecision,
+                            pinMoved,  // partial 경고 후 핀 이동 여부
+                          });
+                          // GEO_PIN_MOVED: partial인데 핀을 안 움직였으면 경고 로그
+                          if (geocodePrecision === 'partial' && !pinMoved) {
+                            console.warn('[GEO_QUALITY] precision=partial pinMoved=false — 시·군 추정 좌표 그대로 확인됨');
+                          }
+                        } catch (_) {}
+                      }}
                       style={{
                         marginTop: 8, width: '100%',
                         padding: '11px 0',
@@ -722,7 +744,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                       </span>
                       <button
                         type="button"
-                        onClick={() => { setConfirmedLocation(false); setGeocodeStatus('idle'); setGeocodePrecision(null); setFarmAddress(''); setGpsLat(null); setGpsLng(null); }}
+                        onClick={() => { setConfirmedLocation(false); setGeocodeStatus('idle'); setGeocodePrecision(null); setPinMoved(false); setFarmAddress(''); setGpsLat(null); setGpsLng(null); }}
                         style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
                         재입력
