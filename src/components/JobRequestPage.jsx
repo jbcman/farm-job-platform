@@ -45,6 +45,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [farmAddress, setFarmAddress] = useState('');
   // DESIGN_V2: 주소 → 좌표 변환 상태
   const [geocodeStatus, setGeocodeStatus] = useState('idle'); // idle | loading | ok | error
+  // GEO_PRECISION: 좌표 정확도 — full(읍·면·리 정확) | partial(시·군 추정, 핀 조정 필요)
+  const [geocodePrecision, setGeocodePrecision] = useState(null); // null | 'full' | 'partial'
   // LOCATION_CONFIRM: 지도에서 위치 확인 여부
   const [confirmedLocation, setConfirmedLocation] = useState(false);
   const miniMapRef = useRef(null);   // div DOM ref
@@ -125,14 +127,17 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       // 농지 좌표 — gpsLat/gpsLng에 저장하되 userLocation(내 위치)에는 저장 안 함
       setGpsLat(data.lat);
       setGpsLng(data.lng);
-      setGpsStatus('ok');         // LOCATION_FIX: setGeoStatus → setGpsStatus (정의된 함수)
+      setGpsStatus('ok');
       setGeocodeStatus('ok');
-      // ❌ localStorage.setItem('userLocation', ...) 제거 — 농지 위치 ≠ 내 위치
-      // GEO_QUALITY: 주소 기반 좌표 품질 추적
-      try { trackClientEvent('geocode_success', { address: trimmed, lat: data.lat, lng: data.lng, addrLen: trimmed.length }); } catch (_) {}
-      console.log(`[GEO_QUALITY] 주소="${trimmed}" → (${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}) addrLen=${trimmed.length}`);
+      // GEO_PRECISION: 서버 반환 정확도 메타데이터 저장
+      const precision = data.precision ?? 'full';
+      setGeocodePrecision(precision);
+      // GEO_QUALITY: 주소 기반 좌표 품질 추적 (normalized/precision 포함)
+      try { trackClientEvent('geocode_success', { address: trimmed, lat: data.lat, lng: data.lng, addrLen: trimmed.length, normalized: data.normalized, precision }); } catch (_) {}
+      console.log(`[GEO_QUALITY] 주소="${trimmed}" → (${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}) addrLen=${trimmed.length} normalized=${data.normalized} precision=${precision}`);
     } catch (e) {
       setGeocodeStatus('error');
+      setGeocodePrecision(null);
       // 미리 획득한 GPS 좌표도 지워서 잘못된 위치 사용 방지
       setGpsLat(null);
       setGpsLng(null);
@@ -601,7 +606,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                     <button
                       key={ex}
                       type="button"
-                      onClick={() => { setFarmAddress(ex); setGeocodeStatus('idle'); setConfirmedLocation(false); }}
+                      onClick={() => { setFarmAddress(ex); setGeocodeStatus('idle'); setGeocodePrecision(null); setConfirmedLocation(false); }}
                       className="text-xs px-2 py-1 rounded-full bg-white border border-amber-300
                                  text-amber-700 font-medium active:scale-95 transition-transform"
                     >
@@ -615,7 +620,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   className="input text-sm flex-1"
                   placeholder="시·군·읍·면·리까지 입력 (도로명 주소 ❌)"
                   value={farmAddress}
-                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setConfirmedLocation(false); }}
+                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setGeocodePrecision(null); setConfirmedLocation(false); }}
                   onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
                 />
                 <button
@@ -664,11 +669,28 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                     }}
                   />
 
+                  {/* GEO_PRECISION: partial 경고 — 시/군 중심 좌표임을 사용자에게 알림 */}
+                  {geocodePrecision === 'partial' && !confirmedLocation && (
+                    <div style={{
+                      marginTop: 8, padding: '8px 12px',
+                      borderRadius: 10,
+                      background: '#fffbeb',
+                      border: '1px solid #fcd34d',
+                      display: 'flex', alignItems: 'flex-start', gap: 6,
+                    }}>
+                      <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#92400e', margin: 0, lineHeight: 1.5 }}>
+                        읍·면·리 단위를 찾지 못해 <strong>시·군 중심 좌표</strong>로 표시됐어요.
+                        핀을 드래그해서 실제 농지 위치로 옮겨주세요.
+                      </p>
+                    </div>
+                  )}
+
                   {/* 확인 / 재입력 버튼 */}
                   {!confirmedLocation ? (
                     <button
                       type="button"
-                      onClick={() => { setConfirmedLocation(true); try { trackClientEvent('location_confirmed', { lat: gpsLat, lng: gpsLng }); } catch (_) {} }}
+                      onClick={() => { setConfirmedLocation(true); try { trackClientEvent('location_confirmed', { lat: gpsLat, lng: gpsLng, precision: geocodePrecision }); } catch (_) {} }}
                       style={{
                         marginTop: 8, width: '100%',
                         padding: '11px 0',
@@ -692,10 +714,15 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                     }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <CheckCircle size={13} /> 위치 확인 완료
+                        {geocodePrecision === 'partial' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 5px', marginLeft: 2 }}>
+                            시·군 추정
+                          </span>
+                        )}
                       </span>
                       <button
                         type="button"
-                        onClick={() => { setConfirmedLocation(false); setGeocodeStatus('idle'); setFarmAddress(''); setGpsLat(null); setGpsLng(null); }}
+                        onClick={() => { setConfirmedLocation(false); setGeocodeStatus('idle'); setGeocodePrecision(null); setFarmAddress(''); setGpsLat(null); setGpsLng(null); }}
                         style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
                         재입력

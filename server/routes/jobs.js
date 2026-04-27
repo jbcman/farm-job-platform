@@ -276,7 +276,7 @@ router.post('/', async (req, res) => {
             resolvedLat = geo.lat;
             resolvedLng = geo.lng;
             console.log(`[SERVER_COORD_FARMADDR] "${farmAddressRaw.trim()}" → (${resolvedLat}, ${resolvedLng})`);
-            console.log(`[GEO_QUALITY] source=farmAddress addr="${farmAddressRaw.trim()}" lat=${resolvedLat.toFixed(4)} lng=${resolvedLng.toFixed(4)} addrLen=${farmAddressRaw.trim().length}`);
+            console.log(`[GEO_QUALITY] source=farmAddress addr="${farmAddressRaw.trim()}" lat=${resolvedLat.toFixed(4)} lng=${resolvedLng.toFixed(4)} addrLen=${farmAddressRaw.trim().length} normalized=${geo.normalized ?? false} precision=${geo.precision ?? 'full'}`);
         } else {
             // 지오코딩 실패 → 등록 거부 (GPS로 대체하지 않음)
             console.warn(`[SERVER_GEOCODE_FAIL] "${farmAddressRaw.trim()}" → 좌표 획득 실패, 등록 거부`);

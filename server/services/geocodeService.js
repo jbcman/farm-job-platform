@@ -72,17 +72,19 @@ async function geocodeAddress(address) {
 
     const key = address.trim().toLowerCase();
 
-    // ① 캐시 히트
+    // ① 캐시 히트 (precision 메타데이터 포함해서 반환)
     if (_geoCache.has(key)) {
         const cached = _geoCache.get(key);
-        console.log(`[GEOCODE_CACHE] "${key}" → ${cached ? `(${cached.lat}, ${cached.lng})` : 'null'}`);
+        console.log(`[GEOCODE_CACHE] "${key}" → ${cached ? `(${cached.lat}, ${cached.lng}) precision=${cached.precision}` : 'null'}`);
         return cached;
     }
 
     // ② Kakao API (키 있을 때 우선 — 도로명 포함 모든 주소 처리 가능)
     if (KAKAO_KEY) {
-        const result = await _fetchKakao(address.trim());
-        if (result) {
+        const raw = await _fetchKakao(address.trim());
+        if (raw) {
+            // Kakao는 항상 정확한 주소 처리 → full precision
+            const result = { ...raw, normalized: false, precision: 'full' };
             _geoCache.set(key, result);
             return result;
         }
@@ -97,34 +99,47 @@ async function geocodeAddress(address) {
     }
     _nominatimLastCallTs = Date.now();
 
-    let result = await _fetchNominatim(address.trim());
+    const rawResult = await _fetchNominatim(address.trim());
 
-    // ④ Nominatim 실패 → 주소 정규화 후 1회 재시도
-    if (!result) {
-        const normalized = _normalizeAddress(address.trim());
-        if (normalized && normalized !== address.trim()) {
-            const normKey = normalized.toLowerCase();
-            if (_geoCache.has(normKey)) {
-                result = _geoCache.get(normKey);
-                console.log(`[GEOCODE_NORM_CACHE_HIT] "${normalized}"`);
-            } else {
-                // rate limit 준수
-                const elapsed2 = Date.now() - _nominatimLastCallTs;
-                if (elapsed2 < NOMINATIM_RATE_MS) {
-                    await new Promise(r => setTimeout(r, NOMINATIM_RATE_MS - elapsed2));
-                }
-                _nominatimLastCallTs = Date.now();
-                result = await _fetchNominatim(normalized);
-                _geoCache.set(normKey, result);
-                if (result) {
-                    console.log(`[GEOCODE_NORM_OK] "${address}" → 정규화 후 성공 "${normalized}"`);
-                }
-            }
-        }
+    if (rawResult) {
+        // 원본 주소로 성공 → full precision
+        const result = { ...rawResult, normalized: false, precision: 'full' };
+        _geoCache.set(key, result);
+        return result;
     }
 
-    _geoCache.set(key, result); // 원본 주소도 캐싱 (성공/실패 모두)
-    return result;
+    // ④ Nominatim 실패 → 주소 정규화 후 1회 재시도 (precision: partial)
+    const normalizedAddr = _normalizeAddress(address.trim());
+    if (normalizedAddr && normalizedAddr !== address.trim()) {
+        const normKey = normalizedAddr.toLowerCase();
+        if (_geoCache.has(normKey)) {
+            // 정규화 캐시 히트 — partial precision으로 마킹
+            const cached = _geoCache.get(normKey);
+            const result = cached ? { ...cached, normalized: true, precision: 'partial' } : null;
+            _geoCache.set(key, result);
+            console.log(`[GEOCODE_NORM_CACHE_HIT] "${normalizedAddr}" precision=partial`);
+            return result;
+        }
+        // rate limit 준수
+        const elapsed2 = Date.now() - _nominatimLastCallTs;
+        if (elapsed2 < NOMINATIM_RATE_MS) {
+            await new Promise(r => setTimeout(r, NOMINATIM_RATE_MS - elapsed2));
+        }
+        _nominatimLastCallTs = Date.now();
+        const normRaw = await _fetchNominatim(normalizedAddr);
+        if (normRaw) {
+            // 정규화 성공 → partial precision (시/군 중심 좌표)
+            const result = { ...normRaw, normalized: true, precision: 'partial' };
+            _geoCache.set(normKey, result);
+            _geoCache.set(key, result);
+            console.log(`[GEOCODE_NORM_OK] "${address}" → 정규화 성공 "${normalizedAddr}" precision=partial`);
+            return result;
+        }
+        _geoCache.set(normKey, null);
+    }
+
+    _geoCache.set(key, null); // 실패도 캐싱 (재시도 트래픽 차단)
+    return null;
 }
 
 // ─── Kakao Local API ──────────────────────────────────────────
