@@ -423,15 +423,31 @@ export default function AdminDashboard({ onBack }) {
               )}
             </div>
           </div>
-          <button
-            onClick={() => load()}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 rounded-xl text-sm
-                       text-gray-300 hover:bg-gray-700 disabled:opacity-40 transition"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            새로고침
-          </button>
+          <div className="flex items-center gap-2">
+            {/* STEP 6: 강제 초기화 버튼 — localStorage/sessionStorage 전체 삭제 후 홈 이동 */}
+            <button
+              onClick={() => {
+                if (!window.confirm('⚠️ 모든 로컬 상태(로그인 정보 포함)를 초기화하고 홈으로 이동합니다.\n계속할까요?')) return;
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = '/';
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-red-900/60 border border-red-700
+                         rounded-xl text-xs text-red-300 hover:bg-red-800 transition"
+              title="localStorage + sessionStorage 초기화 후 홈 이동"
+            >
+              🔄 초기화
+            </button>
+            <button
+              onClick={() => load()}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 rounded-xl text-sm
+                         text-gray-300 hover:bg-gray-700 disabled:opacity-40 transition"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              새로고침
+            </button>
+          </div>
         </div>
       </header>
 
