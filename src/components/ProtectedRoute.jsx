@@ -10,19 +10,26 @@
  *   - 미로그인 사용자 → / 리다이렉트
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function ProtectedRoute({ children, adminOnly = false, requireAuth = false }) {
   const { user, logout } = useAuth();
 
-  if (adminOnly) {
-    // 로그인한 일반 사용자(farmer/worker)는 /admin 차단
-    // → 자동 로그아웃 후 홈으로 (직접 URL 입력 케이스 대응)
-    if (user && user.role !== 'admin') {
-      console.warn('[ProtectedRoute] admin 권한 없음 → 로그아웃 후 / 리다이렉트', user.role);
+  // /admin 접근 시 farmer/worker 세션 → 렌더 후 로그아웃
+  // (렌더 중 setState 호출 방지: useEffect로 분리)
+  const shouldLogout = adminOnly && user && user.role !== 'admin';
+  useEffect(() => {
+    if (shouldLogout) {
+      console.warn('[ProtectedRoute] admin 권한 없음 → 로그아웃', user?.role);
       logout();
+    }
+  }, [shouldLogout]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (adminOnly) {
+    // 로그인한 일반 사용자(farmer/worker) → 홈 리다이렉트
+    if (user && user.role !== 'admin') {
       return <Navigate to="/" replace />;
     }
     // 미로그인 또는 관리자 → AdminDashboard 자체 게이트로 처리
