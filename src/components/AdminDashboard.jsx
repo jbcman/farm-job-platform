@@ -182,6 +182,9 @@ export default function AdminDashboard({ onBack }) {
   const [testSummary,      setTestSummary]       = useState(null);
   const [testLoading,      setTestLoading]       = useState(false);
   const [testPriority,     setTestPriority]      = useState(''); // '' | '1' | '2' | '3'
+  // E2E_TEST
+  const [e2eRunning,  setE2eRunning]  = useState(false);
+  const [e2eResults,  setE2eResults]  = useState(null); // null | { allOk, totalMs, steps[] }
 
   const load = useCallback(async (key) => {
     const k = key ?? adminKey;
@@ -376,6 +379,20 @@ export default function AdminDashboard({ onBack }) {
     } catch (e) { console.error('[ADMIN_TAB:test]', e); }
     finally { setTestLoading(false); }
   }, [adminKey]);
+
+  // ── E2E 시나리오 테스트 ────────────────────────────────────────
+  const handleRunE2E = async () => {
+    setE2eRunning(true);
+    setE2eResults(null);
+    try {
+      const d = await adminFetch('/admin/run-e2e-test', adminKey, { method: 'POST' });
+      setE2eResults(d);
+    } catch (e) {
+      setE2eResults({ allOk: false, totalMs: 0, steps: [{ step: '❌ 요청 실패', ok: false, error: e.message, ms: 0 }] });
+    } finally {
+      setE2eRunning(false);
+    }
+  };
 
   useEffect(() => {
     if (activeTab === 'users')     { loadUsers(usersSearch); }
@@ -594,14 +611,22 @@ export default function AdminDashboard({ onBack }) {
 
         {/* ══ TEST TAB ═════════════════════════════════════════════ */}
         {activeTab === 'test' && (
-          <TestTab
-            logs={testLogs}
-            summary={testSummary}
-            loading={testLoading}
-            priority={testPriority}
-            onPriorityChange={p => { setTestPriority(p); loadTest(p); }}
-            onRefresh={() => loadTest(testPriority)}
-          />
+          <>
+            {/* ── E2E 1클릭 시나리오 테스트 ─────────────────────── */}
+            <E2ETestSection
+              running={e2eRunning}
+              results={e2eResults}
+              onRun={handleRunE2E}
+            />
+            <TestTab
+              logs={testLogs}
+              summary={testSummary}
+              loading={testLoading}
+              priority={testPriority}
+              onPriorityChange={p => { setTestPriority(p); loadTest(p); }}
+              onRefresh={() => loadTest(testPriority)}
+            />
+          </>
         )}
 
         {activeTab === 'ops' && (
@@ -1296,6 +1321,123 @@ const FLOW_STEPS = [
   { key: 'farmer_call_worker',   label: '전화 연결',  icon: '📞' },
   { key: 'farmer_complete_job',  label: '작업 완료',  icon: '🏁' },
 ];
+
+// ══════════════════════════════════════════════════════════════════
+// E2E_TEST_SECTION — 1클릭 전체 시나리오 테스트
+// open→matched→on_the_way→in_progress→completed 자동 실행 + PASS/FAIL
+// ══════════════════════════════════════════════════════════════════
+function E2ETestSection({ running, results, onRun }) {
+  const r = results;
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 space-y-4">
+      {/* 헤더 + 실행 버튼 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-black text-white text-base flex items-center gap-2">
+            🎬 E2E 시나리오 테스트
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            샘플 데이터 생성 → 전체 상태 흐름 자동 실행 → 정리
+          </p>
+        </div>
+        <button
+          onClick={onRun}
+          disabled={running}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition
+            ${running
+              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              : 'bg-farm-green text-white active:scale-95 hover:opacity-90'
+            }`}
+        >
+          {running
+            ? <><span className="animate-spin inline-block">⏳</span> 실행 중…</>
+            : '▶ 1클릭 테스트'
+          }
+        </button>
+      </div>
+
+      {/* 흐름 다이어그램 (항상 표시) */}
+      <div className="flex items-center gap-1 flex-wrap">
+        {[
+          { label: 'open',        icon: '📋' },
+          { label: 'matched',     icon: '🔗' },
+          { label: 'on_the_way',  icon: '🚗' },
+          { label: 'in_progress', icon: '⚙️' },
+          { label: 'completed',   icon: '✅' },
+        ].map((s, i, arr) => (
+          <React.Fragment key={s.label}>
+            <div className="flex flex-col items-center">
+              <span className="text-base">{s.icon}</span>
+              <span className="text-[10px] text-gray-500 mt-0.5">{s.label}</span>
+            </div>
+            {i < arr.length - 1 && (
+              <span className="text-gray-700 text-sm mb-3">→</span>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* 결과 없을 때 안내 */}
+      {!r && !running && (
+        <p className="text-xs text-gray-600 text-center py-2">
+          ▶ 버튼을 누르면 전체 시나리오를 자동 실행합니다
+        </p>
+      )}
+
+      {/* 로딩 표시 */}
+      {running && (
+        <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+          <RefreshCw size={14} className="animate-spin" />
+          시나리오 실행 중… DB 쓰기/읽기/정리 중
+        </div>
+      )}
+
+      {/* 결과 테이블 */}
+      {r && (
+        <div className="space-y-2">
+          {/* 총 결과 배너 */}
+          <div className={`flex items-center justify-between px-4 py-2.5 rounded-xl font-bold text-sm
+            ${r.allOk
+              ? 'bg-green-900/40 border border-green-700 text-green-300'
+              : 'bg-red-900/40   border border-red-700   text-red-300'
+            }`}
+          >
+            <span>{r.allOk ? '✅ 전체 PASS' : '❌ 일부 FAIL'}</span>
+            <span className="text-xs font-mono opacity-70">{r.totalMs}ms</span>
+          </div>
+
+          {/* 단계별 결과 */}
+          <div className="divide-y divide-gray-800 rounded-xl border border-gray-800 overflow-hidden">
+            {(r.steps || []).map((s, i) => (
+              <div
+                key={i}
+                className={`flex items-center gap-3 px-4 py-2.5 text-sm
+                  ${s.ok ? 'bg-gray-900' : 'bg-red-950/30'}`}
+              >
+                <span className={`shrink-0 text-base ${s.ok ? 'text-green-400' : 'text-red-400'}`}>
+                  {s.ok ? '✅' : '❌'}
+                </span>
+                <span className={`flex-1 font-medium ${s.ok ? 'text-gray-200' : 'text-red-300'}`}>
+                  {s.step}
+                </span>
+                <span className="text-xs text-gray-600 font-mono shrink-0">{s.ms}ms</span>
+              </div>
+            ))}
+          </div>
+
+          {/* FAIL 상세 에러 */}
+          {r.steps?.filter(s => !s.ok).map((s, i) => (
+            <div key={i} className="bg-red-950/40 border border-red-800/60 rounded-xl px-4 py-2.5">
+              <p className="text-xs font-bold text-red-400 mb-0.5">{s.step}</p>
+              <p className="text-xs text-red-300 font-mono">{s.error}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function TestTab({ logs, summary, loading, priority, onPriorityChange, onRefresh }) {
   if (loading) {

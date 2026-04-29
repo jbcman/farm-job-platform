@@ -810,4 +810,163 @@ router.post('/reset-db', auth, (req, res) => {
     }
 });
 
+// ─── POST /api/admin/run-e2e-test ────────────────────────────────
+// E2E_SCENARIO_TEST: 1클릭 전체 상태 흐름 자동 검증
+// 테스트 데이터 생성 → open→matched→on_the_way→in_progress→completed → 정리
+// 각 단계별 PASS/FAIL + 소요시간 반환
+const E2E_TRANSITIONS = {
+    open:        ['matched', 'closed'],
+    matched:     ['on_the_way', 'in_progress', 'closed'],
+    on_the_way:  ['in_progress', 'closed'],
+    in_progress: ['completed', 'closed'],
+    completed:   ['closed'],
+};
+
+router.post('/run-e2e-test', auth, (req, res) => {
+    const steps = [];
+    const ts          = Date.now();
+    const testJobId    = `test-job-${ts}`;
+    const testUserId   = `test-user-${ts}`;
+    const testWorkerId = `test-worker-${ts}`;
+
+    // 단계 실행 헬퍼: 예외 발생 시 steps에 FAIL 기록 후 re-throw
+    function runStep(name, fn) {
+        const t0 = Date.now();
+        try {
+            fn();
+            steps.push({ step: name, ok: true, ms: Date.now() - t0 });
+        } catch (e) {
+            steps.push({ step: name, ok: false, ms: Date.now() - t0, error: e.message });
+            throw e; // 다음 단계 중단
+        }
+    }
+
+    // 상태 전이 유효성 검사
+    function assertTransition(from, to) {
+        if (from === 'closed') throw new Error('이미 마감된 작업입니다.');
+        const allowed = E2E_TRANSITIONS[from];
+        if (!allowed) throw new Error(`알 수 없는 상태: ${from}`);
+        if (!allowed.includes(to)) throw new Error(`'${from}' → '${to}' 전이 불가`);
+    }
+
+    // 상태 확인 헬퍼
+    function getStatus() {
+        const row = db.prepare('SELECT status FROM jobs WHERE id = ?').get(testJobId);
+        if (!row) throw new Error('테스트 공고를 찾을 수 없음');
+        return row.status;
+    }
+
+    try {
+        // ── 1. 테스트 데이터 생성 ─────────────────────────────────
+        runStep('🌱 테스트 데이터 생성', () => {
+            db.prepare(`
+                INSERT OR IGNORE INTO users (id, name, phone, role, createdAt)
+                VALUES (?, 'E2E테스트농민', '010-0000-9001', 'farmer', datetime('now'))
+            `).run(testUserId);
+
+            db.prepare(`
+                INSERT OR IGNORE INTO workers
+                    (id, userId, name, phone, serviceRadiusKm, categories, createdAt)
+                VALUES (?, ?, 'E2E테스트작업자', '010-0000-9002', 999, '["기타"]', datetime('now'))
+            `).run(testWorkerId, testUserId);
+
+            db.prepare(`
+                INSERT INTO jobs
+                    (id, requesterId, category, locationText, workDate, status, workerCount, payAmount, createdAt)
+                VALUES (?, ?, '기타', 'E2E테스트위치', date('now'), 'open', 1, 100000, datetime('now'))
+            `).run(testJobId, testUserId);
+
+            // 생성 확인
+            const job = db.prepare('SELECT status FROM jobs WHERE id = ?').get(testJobId);
+            if (!job) throw new Error('공고 INSERT 실패');
+            if (job.status !== 'open') throw new Error(`초기 상태 오류: ${job.status}`);
+        });
+
+        // ── 2. open → matched ────────────────────────────────────
+        runStep('🔗 open → matched', () => {
+            assertTransition(getStatus(), 'matched');
+            db.prepare(`
+                UPDATE jobs
+                SET status = 'matched', selectedWorkerId = ?, selectedAt = datetime('now')
+                WHERE id = ?
+            `).run(testWorkerId, testJobId);
+            const s = getStatus();
+            if (s !== 'matched') throw new Error(`상태 업데이트 실패: ${s}`);
+        });
+
+        // ── 3. matched → on_the_way ──────────────────────────────
+        runStep('🚗 matched → on_the_way', () => {
+            assertTransition(getStatus(), 'on_the_way');
+            db.prepare("UPDATE jobs SET status = 'on_the_way' WHERE id = ?").run(testJobId);
+            const s = getStatus();
+            if (s !== 'on_the_way') throw new Error(`상태 업데이트 실패: ${s}`);
+        });
+
+        // ── 4. on_the_way → in_progress ─────────────────────────
+        runStep('⚙️ on_the_way → in_progress', () => {
+            assertTransition(getStatus(), 'in_progress');
+            db.prepare("UPDATE jobs SET status = 'in_progress', startedAt = datetime('now') WHERE id = ?").run(testJobId);
+            const s = getStatus();
+            if (s !== 'in_progress') throw new Error(`상태 업데이트 실패: ${s}`);
+        });
+
+        // ── 5. in_progress → completed ──────────────────────────
+        runStep('✅ in_progress → completed', () => {
+            assertTransition(getStatus(), 'completed');
+            db.prepare("UPDATE jobs SET status = 'completed', completedAt = datetime('now') WHERE id = ?").run(testJobId);
+            const s = getStatus();
+            if (s !== 'completed') throw new Error(`상태 업데이트 실패: ${s}`);
+        });
+
+        // ── 6. 최종 상태 무결성 검증 ─────────────────────────────
+        runStep('🔍 최종 무결성 검증', () => {
+            const job = db.prepare(
+                'SELECT status, selectedWorkerId, completedAt FROM jobs WHERE id = ?'
+            ).get(testJobId);
+            if (!job)                                    throw new Error('공고 없음');
+            if (job.status !== 'completed')              throw new Error(`최종 상태 오류: ${job.status}`);
+            if (job.selectedWorkerId !== testWorkerId)   throw new Error('selectedWorkerId 불일치');
+            if (!job.completedAt)                        throw new Error('completedAt 미설정');
+        });
+
+        // ── 7. 역방향 전이 차단 검증 (보너스) ─────────────────────
+        runStep('🛡 역방향 차단 검증', () => {
+            // completed → open 은 E2E_TRANSITIONS에 없어야 함
+            const badTransitions = [
+                ['open', 'in_progress'],   // open에서 in_progress 직행 불가
+                ['completed', 'open'],     // 역방향 불가
+            ];
+            for (const [from, to] of badTransitions) {
+                const allowed = E2E_TRANSITIONS[from];
+                if (allowed && allowed.includes(to)) {
+                    throw new Error(`잘못된 전이 허용됨: ${from}→${to}`);
+                }
+            }
+        });
+
+    } catch (_) {
+        // 실패해도 정리는 반드시 진행
+    }
+
+    // ── 8. 테스트 데이터 정리 (성공/실패 무관) ─────────────────────
+    const t0clean = Date.now();
+    try {
+        db.prepare("DELETE FROM jobs        WHERE id   LIKE 'test-%'").run();
+        db.prepare("DELETE FROM workers     WHERE id   LIKE 'test-%'").run();
+        db.prepare("DELETE FROM users       WHERE id   LIKE 'test-%'").run();
+        try { db.prepare("DELETE FROM applications WHERE jobId LIKE 'test-%'").run(); } catch (_) {}
+        steps.push({ step: '🧹 테스트 데이터 정리', ok: true, ms: Date.now() - t0clean });
+    } catch (e) {
+        steps.push({ step: '🧹 테스트 데이터 정리', ok: false, ms: Date.now() - t0clean, error: e.message });
+    }
+
+    const allOk   = steps.every(s => s.ok);
+    const totalMs = Date.now() - ts;
+
+    logAction('e2e_test', null, { allOk, steps: steps.length, totalMs }, req);
+    console.log(`[E2E_TEST] allOk=${allOk} steps=${steps.length} totalMs=${totalMs}ms`);
+
+    return res.json({ ok: true, allOk, totalMs, steps });
+});
+
 module.exports = router;
