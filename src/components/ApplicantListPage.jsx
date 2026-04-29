@@ -1,8 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Zap } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logCallFail, logCheckpoint, logClickFail } from '../utils/testLogger.js'; // REAL_USER_TEST
 import { connectWS } from '../services/ws.js';
+import { useToast, ToastBanner } from '../hooks/useToast.jsx';
+
+// Leaflet 기본 마커 아이콘 fix (webpack/vite 환경)
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+// 지도 중심 업데이트 컴포넌트
+function MapCenter({ lat, lng }) {
+  const map = useMap();
+  useEffect(() => { map.setView([lat, lng], map.getZoom()); }, [lat, lng, map]);
+  return null;
+}
+
+// 모바일 여부 감지
+const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
 // PHASE 28: 추천 배지 — rank 1/2/3 각각 다른 스타일
 const RANK_BADGE = {
@@ -61,6 +83,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const abandonTimerRef     = useRef(null);      // auto_match_abandon 15초 타이머
   const didCallRef          = useRef(false);     // 배너에서 전화 클릭 여부 (abandon 차단용)
   const [workerMarker, setWorkerMarker] = useState(null); // { lat, lng, ts } — 실시간 작업자 위치
+  const { toast, showToast } = useToast();
 
   // Phase 8: 상태별 읽기 전용 모드
   const isReadOnly = job.status === 'closed' || job.status === 'matched';
@@ -91,14 +114,25 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   // LIVE_LOCATION: WS 구독 — 작업자 위치 실시간 수신 (on_the_way/in_progress)
   useEffect(() => {
     if (!['on_the_way', 'in_progress'].includes(job.status)) return;
-    const handle = connectWS((data) => {
-      if (data.type === 'location_update' && data.jobId === job.id) {
-        setWorkerMarker({ lat: data.lat, lng: data.lng, ts: data.ts });
+    let firstLocation = true;
+    const handle = connectWS(
+      (data) => {
+        if (data.type === 'location_update' && data.jobId === job.id) {
+          setWorkerMarker({ lat: data.lat, lng: data.lng, ts: data.ts });
+          if (firstLocation) {
+            firstLocation = false;
+            showToast('🚗 작업자 실시간 위치 수신 시작!', 3000);
+          }
+        }
+        if (data.type === 'job_update' && data.job?.id === job.id) {
+          // job 상태 갱신 (부모에서 내려온 job prop 업데이트 불가 → 로컬 상태 미러링)
+        }
+      },
+      // WS 상태 콜백
+      (status) => {
+        if (status === 'disconnected') showToast('🔄 연결 끊김 — 재연결 중...', 4000);
       }
-      if (data.type === 'job_update' && data.job?.id === job.id) {
-        // job 상태 갱신 (부모에서 내려온 job prop 업데이트 불가 → 로컬 상태 미러링)
-      }
-    });
+    );
     handle.joinJob(job.id);
     return () => handle.close();
   }, [job.id, job.status]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -374,6 +408,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
 
   return (
     <div className="min-h-screen bg-farm-bg pb-8">
+      {/* TOAST */}
+      <ToastBanner toast={toast} />
       {/* 헤더 */}
       <header className="bg-white px-4 pt-safe pt-4 pb-4 flex items-center gap-3 border-b border-gray-100 sticky top-0 z-30">
         <button onClick={onBack} className="p-1 text-gray-600">
@@ -397,24 +433,53 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
         </div>
       </header>
 
-      {/* LIVE_LOCATION: 작업자 실시간 위치 배너 */}
+      {/* LIVE_LOCATION: 작업자 실시간 위치 — 인라인 지도 */}
       {workerMarker && (
-        <div className="mx-4 mt-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-xl flex items-center gap-2 text-sm text-orange-700">
-          <MapPin size={14} className="shrink-0" />
-          <span>
-            작업자 실시간 위치 수신 중
-            <span className="ml-1 text-xs text-orange-500">
-              ({workerMarker.lat.toFixed(4)}, {workerMarker.lng.toFixed(4)})
-            </span>
-          </span>
-          <a
-            href={`https://maps.google.com/?q=${workerMarker.lat},${workerMarker.lng}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto text-xs bg-orange-100 hover:bg-orange-200 px-2 py-0.5 rounded-lg"
-          >
-            지도 열기
-          </a>
+        <div className="mx-4 mt-2 rounded-xl overflow-hidden border border-orange-200 shadow-sm">
+          {/* 헤더 배너 */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 text-sm text-orange-700">
+            <MapPin size={14} className="shrink-0 animate-pulse" />
+            <span className="font-semibold">🚗 작업자 실시간 이동 중</span>
+            {/* PC 경고: GPS 정확도 낮음 */}
+            {!isMobile && (
+              <span className="ml-auto text-xs text-orange-400">
+                📍 PC 위치는 부정확할 수 있어요
+              </span>
+            )}
+            <a
+              href={`https://maps.google.com/?q=${workerMarker.lat},${workerMarker.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto text-xs bg-orange-100 hover:bg-orange-200 px-2 py-0.5 rounded-lg shrink-0"
+            >
+              큰 지도
+            </a>
+          </div>
+          {/* 인라인 Leaflet 지도 */}
+          <div style={{ height: 200 }}>
+            <MapContainer
+              center={[workerMarker.lat, workerMarker.lng]}
+              zoom={15}
+              style={{ height: '100%', width: '100%' }}
+              zoomControl={false}
+              attributionControl={false}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <MapCenter lat={workerMarker.lat} lng={workerMarker.lng} />
+              <Marker position={[workerMarker.lat, workerMarker.lng]}>
+                <Popup>🚗 작업자 현재 위치</Popup>
+              </Marker>
+            </MapContainer>
+          </div>
+          {/* 좌표 + 시간 */}
+          <div className="px-3 py-1.5 bg-orange-50 text-xs text-orange-400 text-right">
+            {workerMarker.lat.toFixed(5)}, {workerMarker.lng.toFixed(5)}
+            {workerMarker.ts && (
+              <span className="ml-2">
+                · {new Date(workerMarker.ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+          </div>
         </div>
       )}
 

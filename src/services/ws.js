@@ -15,10 +15,11 @@ const WS_MAX_RETRY = 10;
 const WS_RETRY_MS  = 5000;
 
 /**
- * @param {function} onMessage — (data: object) => void
+ * @param {function} onMessage    — (data: object) => void
+ * @param {function} [onStatus]   — ('connected'|'disconnected'|'failed') => void
  * @returns {{ joinJob, leaveJob, close }}
  */
-export function connectWS(onMessage) {
+export function connectWS(onMessage, onStatus) {
   let ws        = null;
   let retries   = 0;
   let closed    = false;
@@ -41,6 +42,7 @@ export function connectWS(onMessage) {
       ws.onopen = () => {
         retries = 0;
         console.log('[WS] 연결됨');
+        onStatus?.('connected');
         // 재연결 시 이전 구독 복원
         _joined.forEach(jobId => _send({ type: 'join', jobId }));
       };
@@ -58,9 +60,11 @@ export function connectWS(onMessage) {
         retries++;
         if (retries <= WS_MAX_RETRY) {
           console.log(`[WS] 재연결 시도 ${retries}/${WS_MAX_RETRY} (${WS_RETRY_MS / 1000}s 후)`);
+          onStatus?.('disconnected');
           setTimeout(connect, WS_RETRY_MS);
         } else {
           console.warn('[WS] 재연결 한도 초과 — 실시간 비활성');
+          onStatus?.('failed');
         }
       };
 

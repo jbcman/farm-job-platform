@@ -19,6 +19,7 @@ import { getMyApplications, completeWork, getUserId } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logCheckpoint, logVibrate } from '../utils/testLogger.js'; // REAL_USER_TEST
 import ReviewModal from './ReviewModal.jsx';
 import { connectWS } from '../services/ws.js';
+import { useToast, ToastBanner } from '../hooks/useToast.jsx';
 
 // ── 상태 배지 — PHASE 5: on_the_way 포함 ────────────────────────────
 function getStatusInfo(appStatus, jobStatus) {
@@ -195,7 +196,6 @@ export default function MyApplicationsPage({ userId, onBack }) {
   const [applications,   setApplications]   = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState('');
-  const [toast,          setToast]          = useState('');
   const [completing,     setCompleting]     = useState(null);
   const [reviewApp,      setReviewApp]      = useState(null);
   // STEP 4: 선택 알림 배너
@@ -204,6 +204,8 @@ export default function MyApplicationsPage({ userId, onBack }) {
   const prevSelectedCountRef = useRef(null); // 이전 selectedApps 카운트
   // LIVE_LOCATION GPS 상태
   const [gpsStatus, setGpsStatus] = useState('idle'); // 'idle'|'sharing'|'error'
+  // TOAST
+  const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -223,14 +225,35 @@ export default function MyApplicationsPage({ userId, onBack }) {
   // REALTIME_ROOM_V2: WS 구독 — job_update 이벤트로 즉시 상태 반영
   useEffect(() => {
     if (!userId) return;
-    const handle = connectWS((data) => {
-      if (data.type === 'job_update' && data.job) {
-        setApplications(prev => prev.map(a => {
-          if (a.job?.id === data.job.id) return { ...a, job: { ...a.job, ...data.job } };
-          return a;
-        }));
+    const handle = connectWS(
+      (data) => {
+        if (data.type === 'job_update' && data.job) {
+          setApplications(prev => prev.map(a => {
+            if (a.job?.id === data.job.id) {
+              // Toast: 상태 변경 알림
+              const prev_status = a.job?.status;
+              const next_status = data.job.status;
+              if (prev_status !== next_status) {
+                const msg = {
+                  matched:     '🎉 농민��� 나를 선택했어요!',
+                  on_the_way:  '🚗 출발 처리됐어요',
+                  in_progress: '✅ 작업 시작!',
+                  completed:   '🏁 작업이 완료됐어요',
+                }[next_status];
+                if (msg) showToast(msg, 3500);
+              }
+              return { ...a, job: { ...a.job, ...data.job } };
+            }
+            return a;
+          }));
+        }
+      },
+      // WS 상태 콜백
+      (status) => {
+        if (status === 'disconnected') showToast('🔄 연결이 끊겼어요. 재연결 중...', 4000);
+        if (status === 'connected' && gpsStatus !== 'idle') showToast('✅ 연결 복���됨', 2000);
       }
-    });
+    );
     return () => handle.close();
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -253,7 +276,16 @@ export default function MyApplicationsPage({ userId, onBack }) {
     let timer = null;
     let failCount = 0;
 
+    // BATTERY_SAVE: on_the_way=5s, in_progress=15s (현장 도착 후 느리게)
+    const activeApp = applications.find(
+      a => a.status === 'selected' &&
+           (a.job?.status === 'on_the_way' || a.job?.status === 'in_progress')
+    );
+    const intervalMs = activeApp?.job?.status === 'in_progress' ? 15000 : 5000;
+
     function sendLocation() {
+      // BATTERY_SAVE: 백그라운드(탭 숨김) 중이면 전송 생략
+      if (document.hidden) return;
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           failCount = 0;
@@ -273,10 +305,17 @@ export default function MyApplicationsPage({ userId, onBack }) {
       );
     }
 
+    // 탭 포커스 복귀 시 즉시 한 번 전송
+    function onVisible() {
+      if (!document.hidden) sendLocation();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+
     sendLocation();
-    timer = setInterval(sendLocation, 5000);
+    timer = setInterval(sendLocation, intervalMs);
     return () => {
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
       setGpsStatus('idle');
     };
   }, [userId, applications]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -314,11 +353,6 @@ export default function MyApplicationsPage({ userId, onBack }) {
     const interval = setInterval(checkSelection, 5000);
     return () => clearInterval(interval);
   }, [userId, load]);
-
-  function showToast(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 2500);
-  }
 
   // PHASE 5: 출발 처리 (on_the_way)
   async function handleDepart(a) {
@@ -387,6 +421,8 @@ export default function MyApplicationsPage({ userId, onBack }) {
 
   return (
     <div className="min-h-screen bg-farm-bg pb-8">
+      {/* TOAST */}
+      <ToastBanner toast={toast} />
 
       {/* ── STEP 4: 선택 알림 배너 ─────────────────────────────── */}
       {selectionBanner && (
@@ -451,14 +487,6 @@ export default function MyApplicationsPage({ userId, onBack }) {
           <span className="ml-auto text-sm text-gray-400">{applications.length}건</span>
         </div>
       </header>
-
-      {/* 토스트 */}
-      {toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white
-                        rounded-full px-5 py-2.5 text-sm font-bold shadow-lg animate-fade-in">
-          {toast}
-        </div>
-      )}
 
       <div className="px-4 py-4">
 
