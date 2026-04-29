@@ -101,7 +101,7 @@ app.get('/api/health', (_req, res) =>
 
 // ─── GET /api/geocode — 주소 → 좌표 변환 (JobRequestPage 농지 주소 입력용) ──
 // farmAddress 입력 후 "위치 찾기" 버튼이 이 엔드포인트를 호출함
-const { geocodeAddress } = require('./services/geocodeService');
+const { geocodeAddress, reverseGeocodeAddress } = require('./services/geocodeService');
 app.get('/api/geocode', async (req, res) => {
     const { address } = req.query;
     if (!address || !address.trim()) {
@@ -122,15 +122,35 @@ app.get('/api/geocode', async (req, res) => {
         }
         console.log(`[GEOCODE_API_OK] "${address}" → (${result.lat}, ${result.lng}) normalized=${result.normalized} precision=${result.precision}`);
         return res.json({
-            ok:         true,
-            lat:        result.lat,
-            lng:        result.lng,
-            normalized: result.normalized ?? false,   // 정규화 여부
-            precision:  result.precision  ?? 'full',  // 'full' | 'partial'
+            ok:           true,
+            lat:          result.lat,
+            lng:          result.lng,
+            normalized:   result.normalized   ?? false,
+            precision:    result.precision    ?? 'full',
+            roadAddress:  result.roadAddress  || null,
+            jibunAddress: result.jibunAddress || null,
         });
     } catch (e) {
         console.error('[GEOCODE_API_ERROR]', e.message);
         return res.status(500).json({ ok: false, error: '위치 검색 중 오류가 발생했어요.' });
+    }
+});
+
+// ─── GET /api/reverse-geocode — 좌표 → 주소 변환 ────────────────
+app.get('/api/reverse-geocode', async (req, res) => {
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ ok: false, error: 'lat, lng 숫자 필요' });
+    }
+    try {
+        const result = await reverseGeocodeAddress(lat, lng);
+        if (!result) return res.json({ ok: true, roadAddress: null, jibunAddress: null });
+        console.log(`[REVERSE_GEOCODE_API] (${lat.toFixed(4)},${lng.toFixed(4)}) → road=${result.roadAddress}`);
+        return res.json({ ok: true, roadAddress: result.roadAddress, jibunAddress: result.jibunAddress });
+    } catch (e) {
+        console.error('[REVERSE_GEOCODE_API_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '주소 변환 중 오류가 발생했어요.' });
     }
 });
 

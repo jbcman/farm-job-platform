@@ -163,8 +163,11 @@ function _fetchKakao(address) {
                     const lat = parseFloat(doc.y);
                     const lng = parseFloat(doc.x);
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return resolve(null);
-                    console.log(`[GEOCODE_KAKAO_OK] "${address}" → (${lat}, ${lng})`);
-                    resolve({ lat, lng });
+                    // 도로명 + 지번 주소 추출
+                    const roadAddress  = doc.road_address?.address_name  || null;
+                    const jibunAddress = doc.address?.address_name        || null;
+                    console.log(`[GEOCODE_KAKAO_OK] "${address}" → (${lat}, ${lng}) road=${roadAddress} jibun=${jibunAddress}`);
+                    resolve({ lat, lng, roadAddress, jibunAddress });
                 } catch (e) {
                     console.error('[GEOCODE_KAKAO_PARSE]', e.message);
                     resolve(null);
@@ -176,6 +179,91 @@ function _fetchKakao(address) {
         req.on('error', e => { console.error('[GEOCODE_KAKAO_REQ]', e.message); resolve(null); });
         req.setTimeout(5000, () => { req.destroy(); console.warn('[GEOCODE_KAKAO_TIMEOUT]', address); resolve(null); });
     });
+}
+
+// ─── Kakao 역지오코딩 (좌표 → 주소) ──────────────────────────
+function _reverseKakao(lat, lng) {
+    return new Promise((resolve) => {
+        const options = {
+            hostname: 'dapi.kakao.com',
+            path:     `/v2/local/geo/coord2address.json?x=${lng}&y=${lat}`,
+            headers:  { Authorization: `KakaoAK ${KAKAO_KEY}` },
+        };
+        const req = https.get(options, (resp) => {
+            let data = '';
+            resp.on('data', c => { data += c; });
+            resp.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    const doc  = json.documents?.[0];
+                    if (!doc) return resolve(null);
+                    resolve({
+                        roadAddress:  doc.road_address?.address_name || null,
+                        jibunAddress: doc.address?.address_name      || null,
+                    });
+                } catch { resolve(null); }
+            });
+            resp.on('error', () => resolve(null));
+        });
+        req.on('error', () => resolve(null));
+        req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+    });
+}
+
+// ─── Nominatim 역지오코딩 (Kakao 없을 때 폴백) ───────────────
+function _reverseNominatim(lat, lng) {
+    return new Promise((resolve) => {
+        const options = {
+            hostname: 'nominatim.openstreetmap.org',
+            path:     `/reverse?lat=${lat}&lon=${lng}&format=json`,
+            headers:  { 'User-Agent': 'FarmHands-Platform/1.0 (jbcman01@gmail.com)' },
+        };
+        const req = https.get(options, (resp) => {
+            let data = '';
+            resp.on('data', c => { data += c; });
+            resp.on('end', () => {
+                try {
+                    const json  = JSON.parse(data);
+                    const parts = json.address || {};
+                    // 한국 행정 구조로 재조합
+                    const label = [
+                        parts.state,
+                        parts.city || parts.county || parts.town,
+                        parts.city_district || parts.suburb,
+                        parts.village || parts.hamlet || parts.road,
+                    ].filter(Boolean).join(' ') || json.display_name || null;
+                    resolve({ roadAddress: label, jibunAddress: label });
+                } catch { resolve(null); }
+            });
+            resp.on('error', () => resolve(null));
+        });
+        req.on('error', () => resolve(null));
+        req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+    });
+}
+
+/**
+ * reverseGeocodeAddress(lat, lng)
+ * 좌표 → 사람이 읽는 주소 (도로명 우선, 지번 폴백)
+ * @returns {Promise<{roadAddress: string|null, jibunAddress: string|null}|null>}
+ */
+async function reverseGeocodeAddress(lat, lng) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    try {
+        if (KAKAO_KEY) {
+            const result = await _reverseKakao(lat, lng);
+            if (result) {
+                console.log(`[REVERSE_GEOCODE_KAKAO] (${lat.toFixed(4)},${lng.toFixed(4)}) → road=${result.roadAddress} jibun=${result.jibunAddress}`);
+                return result;
+            }
+        }
+        const result = await _reverseNominatim(lat, lng);
+        if (result) console.log(`[REVERSE_GEOCODE_NOMINATIM] (${lat.toFixed(4)},${lng.toFixed(4)}) → ${result.roadAddress}`);
+        return result;
+    } catch (e) {
+        console.error('[REVERSE_GEOCODE_ERROR]', e.message);
+        return null;
+    }
 }
 
 // ─── Nominatim (OpenStreetMap) ────────────────────────────────
@@ -216,4 +304,4 @@ function _fetchNominatim(address) {
     });
 }
 
-module.exports = { geocodeAddress };
+module.exports = { geocodeAddress, reverseGeocodeAddress };

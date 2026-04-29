@@ -5,6 +5,60 @@ import { logTestEvent, logMapRender, logApiFail, logCheckpoint } from '../utils/
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+// ── 전체화면 지도 컴포넌트 ────────────────────────────────────────
+// 핀 드래그 + 지도 클릭으로 위치 보정 → "이 위치로 확인" 버튼 닫기
+function FullScreenMap({ lat, lng, onConfirm, onLocationChange }) {
+  const mapRef = useRef(null);
+  useEffect(() => {
+    if (!mapRef.current) return;
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    });
+    const map = L.map(mapRef.current, {
+      zoomControl: true, scrollWheelZoom: true,
+      dragging: true, attributionControl: false,
+    }).setView([lat, lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+    marker.bindPopup('📍 핀을 드래그하거나<br>지도를 클릭해 위치를 정확히 설정하세요').openPopup();
+    marker.on('dragend', () => {
+      const p = marker.getLatLng();
+      onLocationChange(p.lat, p.lng);
+    });
+    map.on('click', (e) => {
+      marker.setLatLng(e.latlng);
+      onLocationChange(e.latlng.lat, e.latlng.lng);
+    });
+    return () => { try { map.remove(); } catch (_) {} };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-white">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shrink-0">
+        <button onClick={onConfirm} className="p-1 text-gray-600 active:scale-95 transition-transform">
+          <ArrowLeft size={20} />
+        </button>
+        <div>
+          <p className="font-bold text-gray-800 text-sm">농지 위치 선택</p>
+          <p className="text-xs text-gray-500">핀 드래그 또는 지도 클릭으로 정확한 위치를 지정하세요</p>
+        </div>
+      </div>
+      <div ref={mapRef} style={{ flex: 1 }} />
+      <div className="px-4 py-3 bg-white border-t border-gray-100 shrink-0">
+        <button
+          onClick={onConfirm}
+          className="w-full py-3.5 bg-farm-green text-white font-black rounded-2xl text-base
+                     active:scale-95 transition-transform shadow-lg shadow-green-200"
+        >
+          ✔ 이 위치로 확인
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const CATEGORIES = [
   { name: '밭갈이',    emoji: '🚜' },
   { name: '로터리',    emoji: '🔄' },
@@ -54,6 +108,10 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [showPinHint, setShowPinHint] = useState(false);
   // LOCATION_CONFIRM: 지도에서 위치 확인 여부
   const [confirmedLocation, setConfirmedLocation] = useState(false);
+  // ADDRESS_LABEL: 좌표 대신 사람이 읽는 주소 (reverse geocode 결과)
+  const [addressLabel, setAddressLabel] = useState('');
+  // FULLSCREEN_MAP: 전체화면 지도 토글
+  const [isMapFull, setIsMapFull] = useState(false);
   const miniMapRef = useRef(null);   // div DOM ref
   const miniMapObj = useRef(null);   // L.Map instance
   const geocodeDebounceRef = useRef(null); // PHASE 2: debounce timer
@@ -114,6 +172,15 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     setImgPreviews(prev => prev.filter((_, i) => i !== idx));
   }
 
+  // REVERSE_GEOCODE: 좌표 → 사람이 읽는 주소 (드래그/클릭 후 호출)
+  const reverseGeocode = useCallback(async (lat, lng) => {
+    try {
+      const r = await fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`);
+      const d = await r.json();
+      if (d.ok) setAddressLabel(d.roadAddress || d.jibunAddress || '');
+    } catch (_) {}
+  }, []);
+
   // LOCATION_FIX: 주소 → 좌표 변환 (서버 /api/geocode 경유)
   // 농지 주소 좌표를 userLocation에 저장하지 않음 (작업자 위치 오염 방지)
   const handleGeocodeAddress = useCallback(async () => {
@@ -136,6 +203,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       setGpsStatus('ok');
       setGeocodeStatus('ok');
       setConfirmedLocation(true); // AUTO_GEOCODE: 버튼 없이 자동 확인
+      // ADDRESS_LABEL: 도로명 우선, 지번 폴백, 없으면 입력 주소 그대로
+      setAddressLabel(data.roadAddress || data.jibunAddress || trimmed);
       // GEO_PRECISION: 서버 반환 정확도 메타데이터 저장
       const precision = data.precision ?? 'full';
       setGeocodePrecision(precision);
@@ -215,8 +284,9 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       const { lat, lng } = marker.getLatLng();
       setGpsLat(lat);
       setGpsLng(lng);
-      setConfirmedLocation(true); // AUTO_GEOCODE: 드래그 후도 자동 확인
-      setPinMoved(true);           // GEO_PIN_MOVED: 핀 이동 기록
+      setConfirmedLocation(true);
+      setPinMoved(true);
+      reverseGeocode(lat, lng); // 드래그 후 새 위치의 주소로 업데이트
       marker.bindPopup('📍 새 위치를 확인해주세요').openPopup();
     });
 
@@ -582,9 +652,11 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
           <div className="mt-2 flex items-center gap-2">
             {gpsStatus === 'ok' && (
               <div className="flex items-center gap-1.5 text-xs font-semibold text-green-700
-                              bg-green-50 border border-green-200 rounded-full px-3 py-1.5 flex-1">
-                <Navigation size={11} className="text-green-600" />
-                <span>위치 확인됨 ({gpsLat?.toFixed(4)}, {gpsLng?.toFixed(4)})</span>
+                              bg-green-50 border border-green-200 rounded-full px-3 py-1.5 flex-1 min-w-0">
+                <Navigation size={11} className="text-green-600 shrink-0" />
+                <span className="truncate">
+                  {addressLabel || '위치 확인됨'}
+                </span>
               </div>
             )}
             {gpsStatus === 'acquiring' && (
@@ -636,6 +708,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   setConfirmedLocation(false);
                   setGpsLat(null);
                   setGpsLng(null);
+                  setAddressLabel('');
                 }}
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -650,30 +723,55 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
               <p className="text-xs text-gray-400 mt-1.5">위치 확인 중...</p>
             )}
             {geocodeStatus === 'ok' && gpsLat != null && (
-              <p className="text-xs text-green-600 font-medium mt-1.5">
-                ✔ 위치 확인됨
-                {geocodePrecision === 'partial' && (
-                  <span className="ml-1.5 text-amber-600">· 핀을 실제 농지로 드래그해주세요</span>
+              <div className="mt-1.5">
+                <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                  <CheckCircle size={11} />
+                  위치 확인됨
+                </p>
+                {addressLabel && (
+                  <p className="text-xs text-gray-700 mt-0.5 font-medium">
+                    📍 {addressLabel}
+                  </p>
                 )}
-              </p>
+                {geocodePrecision === 'partial' && (
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    · 핀을 실제 농지로 드래그해 정확히 조정해주세요
+                  </p>
+                )}
+              </div>
             )}
             {geocodeStatus === 'error' && (
               <p className="text-xs text-red-500 mt-1.5">주소를 다시 입력해주세요 (시·군·읍·면·리 형식)</p>
             )}
 
-            {/* 미니맵 — geocode 성공 시만 표시, 핀 드래그로 조정 가능 */}
+            {/* 미니맵 — geocode 성공 시만 표시 */}
             {geocodeStatus === 'ok' && (
-              <div
-                ref={miniMapRef}
-                style={{
-                  marginTop: 10,
-                  width: '100%',
-                  height: geocodePrecision === 'partial' ? 210 : 180,
-                  borderRadius: 12,
-                  border: '2px solid #d1d5db',
-                  overflow: 'hidden',
-                }}
-              />
+              <div className="relative mt-2.5">
+                <div
+                  ref={miniMapRef}
+                  style={{
+                    width: '100%',
+                    height: geocodePrecision === 'partial' ? 210 : 180,
+                    borderRadius: 12,
+                    border: '2px solid #d1d5db',
+                    overflow: 'hidden',
+                  }}
+                />
+                {/* 전체화면 지도 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => setIsMapFull(true)}
+                  className="absolute bottom-2 right-2
+                             flex items-center gap-1 px-2.5 py-1.5
+                             bg-white/90 backdrop-blur-sm text-farm-green
+                             text-xs font-bold rounded-lg shadow
+                             border border-gray-200
+                             active:scale-95 transition-transform"
+                >
+                  <Search size={10} />
+                  지도 크게 보기
+                </button>
+              </div>
             )}
           </div>
         </section>
@@ -906,6 +1004,22 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
           </p>
         )}
       </div>
+
+      {/* 전체화면 지도 오버레이 */}
+      {isMapFull && gpsLat != null && (
+        <FullScreenMap
+          lat={gpsLat}
+          lng={gpsLng}
+          onConfirm={() => setIsMapFull(false)}
+          onLocationChange={(lat, lng) => {
+            setGpsLat(lat);
+            setGpsLng(lng);
+            setConfirmedLocation(true);
+            setPinMoved(true);
+            reverseGeocode(lat, lng);
+          }}
+        />
+      )}
     </div>
   );
 }
