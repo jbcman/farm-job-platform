@@ -373,8 +373,10 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
               <Trophy size={11} className="text-amber-500" />거리·평점·속도순
             </span>
           )}
-          {job.status === 'closed'  && <span className="text-xs bg-red-50 text-red-600 font-bold px-2 py-1 rounded-full">마감</span>}
-          {job.status === 'matched' && <span className="text-xs bg-blue-50 text-blue-600 font-bold px-2 py-1 rounded-full">연결완료</span>}
+          {job.status === 'closed'      && <span className="text-xs bg-red-50    text-red-600    font-bold px-2 py-1 rounded-full">마감</span>}
+          {job.status === 'matched'     && <span className="text-xs bg-blue-50   text-blue-600   font-bold px-2 py-1 rounded-full">연결완료</span>}
+          {job.status === 'on_the_way'  && <span className="text-xs bg-orange-50 text-orange-600 font-bold px-2 py-1 rounded-full">🚗 이동중</span>}
+          {job.status === 'in_progress' && <span className="text-xs bg-green-50  text-green-700  font-bold px-2 py-1 rounded-full">🔵 진행중</span>}
         </div>
       </header>
 

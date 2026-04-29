@@ -56,6 +56,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [confirmedLocation, setConfirmedLocation] = useState(false);
   const miniMapRef = useRef(null);   // div DOM ref
   const miniMapObj = useRef(null);   // L.Map instance
+  const geocodeDebounceRef = useRef(null); // PHASE 2: debounce timer
   const [submitting,    setSubmitting]    = useState(false);
   // GEO_QUALITY: 소프트 차단 — 경고 횟수 카운터 (0=미경고, ≥1=경고중)
   // A/B: geo_warn_count 실험 — A그룹=1회, B그룹=2회 경고 후 통과
@@ -150,6 +151,21 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       try { trackClientEvent('geocode_fail', { address: trimmed }); } catch (_) {}
     }
   }, [farmAddress]);
+
+  // PHASE 2: farmAddress 변경 → 500ms debounce → 자동 geocode
+  useEffect(() => {
+    const trimmed = farmAddress.trim();
+    if (!trimmed || trimmed.length < 8) {
+      // 짧으면 상태 초기화
+      if (trimmed.length > 0 && trimmed.length < 8) setGeocodeStatus('error');
+      return;
+    }
+    clearTimeout(geocodeDebounceRef.current);
+    geocodeDebounceRef.current = setTimeout(() => {
+      handleGeocodeAddress();
+    }, 500);
+    return () => clearTimeout(geocodeDebounceRef.current);
+  }, [farmAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // LOCATION_CONFIRM: geocode 성공 시 미니맵 렌더링
   useEffect(() => {
@@ -301,8 +317,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       // 농지 주소 입력됐으면 지오코딩 + 지도 확인 필수
       if (geocodeStatus !== 'ok') {
         setError(geocodeStatus === 'error'
-          ? '📍 농지 주소를 찾을 수 없어요. "위치 찾기" 버튼으로 다시 확인해주세요.'
-          : '📍 농지 주소 입력 후 "위치 찾기" 버튼을 눌러주세요.');
+          ? '📍 농지 주소를 찾을 수 없어요. "주소를 다시 확인해주세요. (읍·면·리까지 입력)"'
+          : '📍 농지 주소 입력 후 "주소를 입력하면 자동으로 위치를 찾아요."');
         return;
       }
       if (!confirmedLocation) {
@@ -322,7 +338,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
       // 조건부 하드차단: farmAddrRate < 30% 도달 시 서버가 hardBlock=true 반환
       if (abConfig?.hardBlock) {
-        setError('📍 현재는 농지 주소 없이 등록할 수 없어요. 읍·면·리까지 입력 후 "위치 찾기"를 눌러주세요.');
+        setError('📍 현재는 농지 주소 없이 등록할 수 없어요. 읍·면·리까지 입력하면 자동으로 위치를 찾아요.');
         trackClientEvent('geo_hard_block', { hadGps: true, group: abGroup });
         return;
       }
@@ -345,7 +361,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
     // FIX: 좌표 유효성 최종 방어
     if (farmAddress.trim() && (!resolvedLat || !resolvedLng || isNaN(resolvedLat) || isNaN(resolvedLng))) {
-      setError('📍 위치 좌표가 올바르지 않아요. "위치 찾기"를 다시 눌러주세요.');
+      setError('📍 위치 좌표가 올바르지 않아요. 주소를 다시 입력해주세요.');
       return;
     }
 
@@ -658,27 +674,24 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                   className="input text-sm flex-1"
                   placeholder="시·군·읍·면·리까지 입력 (도로명 주소 ❌)"
                   value={farmAddress}
-                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setGeocodePrecision(null); setPinMoved(false); setConfirmedLocation(false); }}
+                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); setGeocodePrecision(null); setPinMoved(false); setConfirmedLocation(false); setGpsLat(null); setGpsLng(null); }}
                   onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
                 />
-                <button
-                  type="button"
-                  onClick={handleGeocodeAddress}
-                  onTouchStart={() => {}}
-                  disabled={geocodeStatus === 'loading' || !farmAddress.trim()}
-                  className={`shrink-0 flex items-center gap-1.5 px-4 py-2
-                             text-white text-sm font-black rounded-xl
-                             disabled:opacity-50 active:scale-95 transition-all
-                             ${confirmedLocation
-                               ? 'bg-green-500'
-                               : 'bg-amber-500 shadow-md shadow-amber-200'
-                             }`}
-                >
-                  {geocodeStatus === 'loading'
-                    ? <Loader2 size={14} className="animate-spin" />
-                    : <Search size={14} />}
-                  위치 찾기
-                </button>
+                {/* PHASE 2: 위치 찾기 버튼 제거 → 자동 geocode 상태 인디케이터 */}
+                <div className="shrink-0 flex items-center justify-center w-10 h-10">
+                  {geocodeStatus === 'loading' && (
+                    <Loader2 size={18} className="animate-spin text-amber-500" />
+                  )}
+                  {geocodeStatus === 'ok' && (
+                    <CheckCircle size={18} className="text-green-500" />
+                  )}
+                  {geocodeStatus === 'error' && (
+                    <MapPin size={18} className="text-red-400" />
+                  )}
+                  {(geocodeStatus === 'idle' && farmAddress.trim().length >= 8) && (
+                    <Loader2 size={18} className="animate-spin text-gray-300" />
+                  )}
+                </div>
               </div>
               {/* LOCATION_CONFIRM: 미니맵 + 확인 버튼 */}
               {geocodeStatus === 'ok' && (
@@ -839,7 +852,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
               )}
               {geocodeStatus === 'idle' && !confirmedLocation && (
                 <p className="text-xs text-amber-700 font-semibold mt-2">
-                  👆 읍·면·리까지 입력 후 "위치 찾기" → 지도 확인하세요
+                  👆 읍·면·리까지 입력하면 자동으로 지도가 표시돼요
                 </p>
               )}
             </div>

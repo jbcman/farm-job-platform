@@ -209,6 +209,41 @@ router.get('/my/notifications', (req, res) => {
     });
 });
 
+// ─── GET /api/jobs/my/notify-list — PHASE 6: 상세 알림 목록 ──────
+router.get('/my/notify-list', (req, res) => {
+    const { userId, limit = 20 } = req.query;
+    if (!userId) return res.json({ ok: true, items: [] });
+    try {
+        const rows = db.prepare(`
+            SELECT id, type, message, jobId, createdAt, readAt
+            FROM notify_log
+            WHERE userId = ?
+            ORDER BY createdAt DESC
+            LIMIT ?
+        `).all(userId, Number(limit));
+        return res.json({ ok: true, items: rows });
+    } catch (e) {
+        return res.json({ ok: true, items: [] });
+    }
+});
+
+// ─── POST /api/jobs/my/notify-read — 알림 읽음 처리 ──────────────
+router.post('/my/notify-read', (req, res) => {
+    const { userId, notifyId } = req.body;
+    if (!userId) return res.json({ ok: false });
+    try {
+        if (notifyId) {
+            db.prepare("UPDATE notify_log SET readAt = datetime('now') WHERE id = ? AND userId = ?").run(notifyId, userId);
+        } else {
+            // 전체 읽음
+            db.prepare("UPDATE notify_log SET readAt = datetime('now') WHERE userId = ? AND readAt IS NULL").run(userId);
+        }
+        return res.json({ ok: true });
+    } catch (e) {
+        return res.json({ ok: false });
+    }
+});
+
 // ─── POST /api/jobs/smart-assist ─────────────────────────────
 router.post('/smart-assist', (req, res) => {
     const { text, category, locationText, date, areaSize, areaUnit } = req.body;
@@ -1205,6 +1240,51 @@ router.post('/:id/close', (req, res) => {
     return res.json({ ok: true, status: 'closed' });
 });
 
+// ─── POST /api/jobs/:id/on-the-way — PHASE 5: 작업자 출발 상태 ──
+// 작업자가 "출발했어요" 버튼 클릭 → status = on_the_way
+router.post('/:id/on-the-way', (req, res) => {
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    const { workerId } = req.body;
+    if (!workerId) return res.status(400).json({ ok: false, error: 'workerId 필요' });
+
+    // matched 또는 in_progress 상태에서 전환 허용
+    if (!['matched', 'in_progress'].includes(job.status)) {
+        return res.status(400).json({ ok: false, error: `현재 상태(${job.status})에서 출발 처리 불가` });
+    }
+
+    // 선택된 작업자 확인
+    const selApp = db.prepare(
+        "SELECT w.id as wid FROM applications a JOIN workers w ON w.id = a.workerId WHERE a.jobRequestId = ? AND a.status = 'selected'"
+    ).get(job.id);
+    const worker = selApp ? db.prepare('SELECT * FROM workers WHERE id = ?').get(selApp.wid) : null;
+    if (worker) {
+        // workerId가 선택된 작업자의 worker record id 또는 userId 중 하나여야 함
+        const matchedByWid = worker.id === workerId;
+        const matchedByUid = worker.userId === workerId;
+        if (!matchedByWid && !matchedByUid) {
+            return res.status(403).json({ ok: false, error: '선택된 작업자만 출발 처리할 수 있어요.' });
+        }
+    }
+
+    const departureAt = new Date().toISOString();
+    db.prepare("UPDATE jobs SET status = 'on_the_way', startedAt = ? WHERE id = ?").run(departureAt, job.id);
+
+    // 농민에게 알림: 작업자 출발
+    try {
+        const farmerNotify = db.prepare('SELECT * FROM users WHERE id = ?').get(job.requesterId);
+        if (farmerNotify) {
+            db.prepare(
+                "INSERT INTO notify_log (id, userId, type, message, jobId, createdAt) VALUES (?, ?, 'worker_departed', ?, ?, datetime('now'))"
+            ).run(`ntf-${Date.now()}`, job.requesterId, `작업자가 출발했어요! 잠시 후 도착합니다.`, job.id);
+        }
+    } catch (_) {}
+
+    console.log(`[JOB_ON_THE_WAY] id=${job.id} workerId=${workerId} departureAt=${departureAt}`);
+    return res.json({ ok: true, status: 'on_the_way', departureAt });
+});
+
 // ─── POST /api/jobs/:id/start ─────────────────────────────────
 router.post('/:id/start', (req, res) => {
     const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
@@ -1251,6 +1331,41 @@ router.post('/:id/start', (req, res) => {
     }
 
     return res.json({ ok: true, status: 'in_progress', startedAt });
+});
+
+// ─── POST /api/jobs/:id/mark-paid — PHASE 7: 농민 입금 완료 처리 ──
+router.post('/:id/mark-paid', (req, res) => {
+    const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    const { requesterId } = req.body;
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '내 작업만 입금 처리할 수 있어요.' });
+    }
+    if (job.status !== 'done') {
+        return res.status(400).json({ ok: false, error: '완료된 작업만 입금 처리 가능해요.' });
+    }
+    if (job.paymentStatus === 'paid') {
+        return res.json({ ok: true, already: true, paymentStatus: 'paid' });
+    }
+
+    const paidAt = new Date().toISOString();
+    db.prepare("UPDATE jobs SET paymentStatus = 'paid' WHERE id = ?").run(job.id);
+
+    // 작업자에게 입금 알림
+    try {
+        const selApp = db.prepare(
+            "SELECT a.workerId, w.userId FROM applications a JOIN workers w ON w.id = a.workerId WHERE a.jobRequestId = ? AND a.status = 'selected'"
+        ).get(job.id);
+        if (selApp?.userId) {
+            db.prepare(
+                "INSERT INTO notify_log (id, userId, type, message, jobId, createdAt) VALUES (?, ?, 'payment_done', ?, ?, datetime('now'))"
+            ).run(`ntf-${Date.now()}`, selApp.userId, `입금이 완료됐어요! 이제 후기를 남겨보세요 ⭐`, job.id);
+        }
+    } catch (_) {}
+
+    console.log(`[JOB_MARK_PAID] id=${job.id} requesterId=${requesterId} paidAt=${paidAt}`);
+    return res.json({ ok: true, paymentStatus: 'paid', paidAt });
 });
 
 // ─── POST /api/jobs/:id/complete ──────────────────────────────

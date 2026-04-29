@@ -88,7 +88,7 @@ const STATUS_BADGE = {
 export default function JobCard({
   job, mode,
   onApply, onViewApplicants,
-  onStartJob, onCompleteJob, onWriteReview, onCloseJob, onCopyJob,
+  onStartJob, onCompleteJob, onMarkPaid, onWriteReview, onCloseJob, onCopyJob,
   onViewMap,        // UI_INTEGRATION: 위치보기 콜백
   onViewDetail,     // 카드 클릭 시 상세 이동 콜백
   applied = false,
@@ -840,8 +840,23 @@ export default function JobCard({
             </button>
           )}
 
-          {/* 리뷰 작성 버튼 (done 상태, 오너만) */}
-          {job.status === 'done' && isOwner && onWriteReview && (
+          {/* PHASE 7: 입금 완료 버튼 (done 상태, 아직 paid 아닐 때, 오너만) */}
+          {job.status === 'done' && isOwner && job.paymentStatus !== 'paid' && onMarkPaid && (
+            <button
+              onClick={() => onMarkPaid(job)}
+              className="btn-full py-2.5 bg-emerald-500 text-white font-bold rounded-xl
+                         flex items-center justify-center gap-1.5"
+            >
+              💰 입금 완료 처리
+            </button>
+          )}
+          {/* done + paid 완료 안내 */}
+          {job.status === 'done' && job.paymentStatus === 'paid' && isOwner && (
+            <p className="text-xs text-center text-emerald-600 font-semibold py-1">💰 입금 완료 처리됨</p>
+          )}
+
+          {/* 리뷰 작성 버튼 (done + paid 상태, 오너만) */}
+          {job.status === 'done' && job.paymentStatus === 'paid' && isOwner && onWriteReview && (
             <button
               onClick={() => onWriteReview(job)}
               className="btn-full py-2.5 bg-amber-400 text-white font-bold rounded-xl

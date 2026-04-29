@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate as useRouterNavigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext.jsx';
 
 import LoginPage          from './components/LoginPage.jsx';
 import HomePage           from './components/HomePage.jsx';
@@ -67,8 +68,10 @@ export default function MainApp() {
   // React Router navigate (외부 URL 이동용)
   const routerNavigate = useRouterNavigate();
 
-  // 내부 페이지 상태
-  const [user,        setUser]        = useState(null);
+  // PHASE 1: AuthContext — 전역 user 상태 (localStorage 자동 동기화)
+  const { user, login: authLogin, logout: authLogout } = useAuth();
+
+  // 내부 페이지 상태 (user는 AuthContext에서 관리)
   const [page,        setPage]        = useState('home');
   const [userMode,    setUserMode]    = useState('farmer');
   const [selectedJob, setSelectedJob] = useState(null);
@@ -96,28 +99,25 @@ export default function MainApp() {
     localStorage.removeItem('autoEntry');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 앱 시작: localStorage 복원 + 딥링크 감지 + Phase 14 외부 자동 진입
+  // 앱 시작: 딥링크 감지 + Phase 14 외부 자동 진입
+  // user 복원은 AuthContext(useState 초기화)에서 이미 처리됨
   useEffect(() => {
-    const storedId   = localStorage.getItem('farm-userId');
-    const storedName = localStorage.getItem('farm-userName');
-    const storedRole = localStorage.getItem('farm-userRole');
-
+    const storedId = localStorage.getItem('farm-userId');
     const isExternal = detectExternalAccess();
-    console.log('[AUTO_ENTRY_CHECK]', { isExternal, hasStoredUser: !!(storedId && storedName) });
+    console.log('[AUTO_ENTRY_CHECK]', { isExternal, hasStoredUser: !!storedId });
 
-    if (storedId && storedName) {
-      // 기존 로그인 정보 복원 (내부/외부 공통)
-      setUser({ id: storedId, name: storedName, role: storedRole || 'farmer' });
-      setUserMode(storedRole === 'worker' ? 'worker' : 'farmer');
-
-    } else if (isExternal) {
-      // Phase 14: 외부 접속 + 미로그인 → 안정적 userId 생성/재사용
+    // Phase 14: 외부 접속 + 미로그인 → 안정적 userId 생성/재사용
+    if (!storedId && isExternal) {
       const u = getOrCreateUser();
-      setUser(u);
+      authLogin(u);
       setUserMode('worker');
       console.log('[AUTO_LOGIN_EXTERNAL]', { userId: u.id, hostname: window.location.hostname });
       try { trackClientEvent('auto_login_external', { hostname: window.location.hostname, userId: u.id }); } catch (_) {}
     }
+
+    // userMode 복원
+    const storedRole = localStorage.getItem('farm-userRole');
+    if (storedRole) setUserMode(storedRole === 'worker' ? 'worker' : 'farmer');
 
     // 딥링크 감지 (/jobs/:id)
     const jobId = parseJobIdFromUrl();
@@ -230,7 +230,7 @@ export default function MainApp() {
   }
 
   function handleLogin(u) {
-    setUser(u);
+    authLogin(u); // AuthContext에 저장 + localStorage 동기화
     setUserMode(u.role === 'worker' ? 'worker' : 'farmer');
     trackClientEvent('login_success', { role: u.role });
 

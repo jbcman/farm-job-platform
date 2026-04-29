@@ -352,6 +352,23 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     }
   }
 
+  // ── PHASE 7: 농민 → 입금 완료 처리 (done → paid) ──────────────
+  async function handleMarkPaid(job) {
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/mark-paid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: userId }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || '입금 처리 실패');
+      showToast('💰 입금 완료 처리됐어요!');
+      load();
+    } catch (e) {
+      showToast(e.message);
+    }
+  }
+
   // ── 농민: 재매칭 ─────────────────────────────────────────────
   async function handleRematch(job) {
     try {
@@ -815,6 +832,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               onViewApplicants={onViewApplicants}
               onStartJob={handleStart}
               onCompleteJob={handleComplete}
+              onMarkPaid={myJobsMode ? handleMarkPaid : undefined}
               onWriteReview={setReviewJob}
               onCloseJob={myJobsMode ? handleClose : undefined}
               onCopyJob={myJobsMode ? onCopyJob : undefined}

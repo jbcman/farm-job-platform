@@ -19,16 +19,20 @@ import { getMyApplications, completeWork, getUserId } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logCheckpoint, logVibrate } from '../utils/testLogger.js'; // REAL_USER_TEST
 import ReviewModal from './ReviewModal.jsx';
 
-// ── 상태 배지 ────────────────────────────────────────────────────
+// ── 상태 배지 — PHASE 5: on_the_way 포함 ────────────────────────────
 function getStatusInfo(appStatus, jobStatus) {
   if (appStatus === 'completed') {
     return { label: '작업완료', cls: 'bg-blue-50 text-blue-700', icon: '✅' };
   }
   if (appStatus === 'selected') {
+    if (jobStatus === 'on_the_way')
+      return { label: '이동중',     cls: 'bg-orange-100 text-orange-700', icon: '🚗' };
     if (jobStatus === 'in_progress')
-      return { label: '진행중',     cls: 'bg-blue-100 text-blue-800', icon: '🔵' };
+      return { label: '진행중',     cls: 'bg-blue-100 text-blue-800',   icon: '🔵' };
     if (jobStatus === 'done' || jobStatus === 'closed')
-      return { label: '연결완료',   cls: 'bg-blue-50  text-blue-700', icon: '🔗' };
+      return { label: '연결완료',   cls: 'bg-blue-50  text-blue-700',   icon: '🔗' };
+    if (jobStatus === 'paid')
+      return { label: '입금완료',   cls: 'bg-green-100 text-green-700', icon: '💰' };
     return { label: '연락가능',   cls: 'bg-green-50 text-green-700', icon: '📞' };
   }
   if (appStatus === 'rejected') {
@@ -110,8 +114,24 @@ function AppCard({ a, completing, onComplete, onReview }) {
         </div>
       )}
 
-      {/* 작업 완료 버튼 (selected 상태) */}
-      {isSelected && job.status !== 'in_progress' && (
+      {/* PHASE 5: 출발했어요 버튼 — matched 상태에서만 표시 */}
+      {isSelected && job.status === 'matched' && (
+        <button
+          onClick={() => onComplete(a, 'depart')}
+          disabled={!!completing}
+          className="w-full py-2.5 bg-orange-500 text-white font-bold rounded-xl text-sm
+                     flex items-center justify-center gap-2 disabled:opacity-60 mt-1
+                     active:scale-95 transition-transform shadow-sm"
+        >
+          {completing === a.id
+            ? <><Loader2 size={14} className="animate-spin" /> 처리 중...</>
+            : '🚗 출발했어요'
+          }
+        </button>
+      )}
+
+      {/* 작업 완료 버튼 — on_the_way / in_progress 상태 */}
+      {isSelected && ['on_the_way', 'in_progress'].includes(job.status) && (
         <button
           onClick={() => onComplete(a)}
           disabled={!!completing}
@@ -126,10 +146,18 @@ function AppCard({ a, completing, onComplete, onReview }) {
         </button>
       )}
 
-      {/* 후기 섹션 (completed) */}
-      {isCompleted && !hasReview && (
+      {/* PHASE 7: 입금 안내 (completed이고 paid 아닐 때) */}
+      {isCompleted && job.paymentStatus !== 'paid' && (
+        <div className="mt-1 pt-3 border-t border-dashed border-amber-200 bg-amber-50 rounded-xl px-3 py-2">
+          <p className="text-xs font-bold text-amber-700">💰 입금 대기 중</p>
+          <p className="text-xs text-amber-600 mt-0.5">농민분께서 작업 완료 확인 후 입금 처리를 해주셔야 해요</p>
+        </div>
+      )}
+
+      {/* PHASE 8: 후기 섹션 — paid 상태일 때만 허용 */}
+      {isCompleted && !hasReview && job.paymentStatus === 'paid' && (
         <div className="mt-1 pt-3 border-t border-dashed border-gray-200">
-          <p className="text-xs text-gray-400 mb-2">농민분께 후기를 남겨보세요</p>
+          <p className="text-xs text-gray-400 mb-2">입금 완료! 농민분께 후기를 남겨보세요 ⭐</p>
           <button
             onClick={() => onReview(a)}
             className="w-full py-2.5 bg-amber-400 text-white font-bold text-sm
@@ -139,6 +167,10 @@ function AppCard({ a, completing, onComplete, onReview }) {
             ⭐ 후기 남기기
           </button>
         </div>
+      )}
+      {/* 입금 전 후기 불가 안내 */}
+      {isCompleted && !hasReview && job.paymentStatus !== 'paid' && (
+        <p className="text-xs text-gray-400 text-center mt-1">입금 완료 후 후기를 남길 수 있어요</p>
       )}
       {isCompleted && hasReview && (
         <div className="mt-1 pt-3 border-t border-dashed border-gray-200">
@@ -224,7 +256,33 @@ export default function MyApplicationsPage({ userId, onBack }) {
     setTimeout(() => setToast(''), 2500);
   }
 
-  async function handleComplete(a) {
+  // PHASE 5: 출발 처리 (on_the_way)
+  async function handleDepart(a) {
+    if (completing) return;
+    const jobId = a.job?.id;
+    if (!jobId) return;
+    setCompleting(a.id);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/on-the-way`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workerId: userId }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || '출발 처리 실패');
+      showToast('출발 완료! 농민분께 알림이 갔어요 🚗');
+      load();
+    } catch (e) {
+      showToast(`오류: ${e.message}`);
+    } finally {
+      setCompleting(null);
+    }
+  }
+
+  async function handleComplete(a, type) {
+    // PHASE 5: depart 타입이면 출발 처리
+    if (type === 'depart') return handleDepart(a);
+
     if (completing) return;
     const jobId = a.job?.id;
     if (!jobId) return;
