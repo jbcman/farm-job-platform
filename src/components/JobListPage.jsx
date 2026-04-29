@@ -110,7 +110,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const impressedIds = useRef(new Set());
 
   const loc = getStoredLocation();
-  const { location: gpsLoc } = useUserLocation();
+  const { location: gpsLoc, loading: gpsLoading, retry: retryGps } = useUserLocation();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -654,6 +654,68 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
                     }}
                   >{km}km</button>
                 ))}
+              </div>
+            )}
+
+            {/* GPS_NEARBY_BANNER: 내 주변 일자리 표시 중 (nearbyMode 활성 시) */}
+            {nearbyMode && (
+              <div style={{
+                margin: '0 16px 6px',
+                padding: '7px 12px',
+                borderRadius: 10,
+                background: 'rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}>
+                <span style={{ fontSize: 12, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Navigation size={13} style={{ flexShrink: 0 }} />
+                  📍 내 주변 일자리 표시 중
+                </span>
+                <button
+                  onClick={() => setNearbyMode(false)}
+                  style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                >
+                  전체 보기
+                </button>
+              </div>
+            )}
+
+            {/* GPS_RETRY_BTN: GPS 미확보 시 재시도 버튼 */}
+            {!gpsLoc && !gpsLoading && (
+              <div style={{
+                margin: '0 16px 6px',
+                padding: '7px 12px',
+                borderRadius: 10,
+                background: 'rgba(255,255,255,0.10)',
+                border: '1px dashed rgba(255,255,255,0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 600 }}>
+                  위치 정보가 없어요
+                </span>
+                <button
+                  onClick={() => {
+                    retryGps();
+                    showToast('📍 위치 재확인 중...');
+                  }}
+                  style={{
+                    fontSize: 12, fontWeight: 800, color: '#fff',
+                    background: 'rgba(255,255,255,0.2)',
+                    border: '1px solid rgba(255,255,255,0.4)',
+                    borderRadius: 9999,
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                  }}
+                >
+                  <Navigation size={11} /> 📍 내 위치 다시 찾기
+                </button>
               </div>
             )}
 
