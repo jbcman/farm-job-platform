@@ -148,7 +148,7 @@ function _fetchKakao(address) {
         const query   = encodeURIComponent(address);
         const options = {
             hostname: 'dapi.kakao.com',
-            path:     `/v2/local/search/address.json?query=${query}`,
+            path:     `/v2/local/search/address.json?query=${query}&analyze_type=exact`,
             headers:  { Authorization: `KakaoAK ${KAKAO_KEY}` },
         };
 

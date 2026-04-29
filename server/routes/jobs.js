@@ -1164,13 +1164,21 @@ router.post('/:id/select-worker', (req, res) => {
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
 
     const { requesterId, workerId } = req.body;
+
+    // SELECT_WORKER_DIAG: 진단 로그 — 상태/소유자/중복 선택 원인 파악
+    console.log(`[SELECT_WORKER_ATTEMPT] jobId=${req.params.id} status=${job.status} selectedWorkerId=${job.selectedWorkerId ?? 'null'} requesterId=${requesterId} workerId=${workerId}`);
+
     if (job.requesterId !== requesterId) {
+        console.warn(`[SELECT_WORKER_DENY] reason=not_owner jobRequesterId=${job.requesterId} callerRequesterId=${requesterId}`);
         return res.status(403).json({ ok: false, error: '내 요청만 선택할 수 있어요.' });
     }
 
     // 상태 전이 유효성 검사 (open → matched)
     const _selErr = checkTransition(job.status, 'matched');
-    if (_selErr) return res.status(400).json({ ok: false, error: _selErr });
+    if (_selErr) {
+        console.warn(`[SELECT_WORKER_DENY] reason=invalid_transition status=${job.status} error=${_selErr}`);
+        return res.status(400).json({ ok: false, error: _selErr });
+    }
 
     // BUG_FIX: workerId = user-xxx 대응 (workers 프로필 없이 지원한 경우)
     let workerRowSel = db.prepare('SELECT * FROM workers WHERE id = ?').get(workerId)

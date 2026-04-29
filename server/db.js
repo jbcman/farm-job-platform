@@ -6,7 +6,9 @@
 const Database = require('better-sqlite3');
 const path     = require('path');
 
-const DB_PATH = path.join(__dirname, 'farm.db');
+// PERSISTENT_DISK: Render Persistent Disk(/data) 또는 로컬 fallback
+// Render: Settings → Disks → Mount Path: /data  후  DB_PATH=/data/farm.db 환경변수 설정
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'farm.db');
 const db      = new Database(DB_PATH);
 
 // WAL 모드: 동시 읽기 성능 향상

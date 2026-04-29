@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 
 // ── 전체화면 지도 컴포넌트 ────────────────────────────────────────
 // 핀 드래그 + 지도 클릭으로 위치 보정 → "이 위치로 확인" 버튼 닫기
-function FullScreenMap({ lat, lng, onConfirm, onLocationChange }) {
+function FullScreenMap({ lat, lng, onConfirm, onLocationChange, addressLabel: initLabel }) {
   const mapRef = useRef(null);
   useEffect(() => {
     if (!mapRef.current) return;
@@ -20,16 +20,21 @@ function FullScreenMap({ lat, lng, onConfirm, onLocationChange }) {
     const map = L.map(mapRef.current, {
       zoomControl: true, scrollWheelZoom: true,
       dragging: true, attributionControl: false,
-    }).setView([lat, lng], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    }).setView([lat, lng], 18); // GEO_ZOOM: 18 = 번지 단위 표시
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20 }).addTo(map);
     const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
-    marker.bindPopup('📍 핀을 드래그하거나<br>지도를 클릭해 위치를 정확히 설정하세요').openPopup();
+    // 영구 툴팁: 주소 라벨 상시 표시
+    if (initLabel) {
+      marker.bindTooltip(initLabel, { permanent: true, direction: 'top', offset: [0, -10] });
+    }
     marker.on('dragend', () => {
       const p = marker.getLatLng();
+      marker.bindTooltip('📍 주소 확인 중...', { permanent: true, direction: 'top', offset: [0, -10] });
       onLocationChange(p.lat, p.lng);
     });
     map.on('click', (e) => {
       marker.setLatLng(e.latlng);
+      marker.bindTooltip('📍 주소 확인 중...', { permanent: true, direction: 'top', offset: [0, -10] });
       onLocationChange(e.latlng.lat, e.latlng.lng);
     });
     return () => { try { map.remove(); } catch (_) {} };
@@ -257,8 +262,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     });
 
     // GEO_PRECISION: partial → zoom 11 (시·군 전체 보임, "이상함" 즉각 인지)
-    //                full   → zoom 16 (지번 수준, 정확 확인)
-    const zoomLevel = geocodePrecision === 'partial' ? 11 : 16;
+    //                full   → zoom 18 (번지 단위 표시)
+    const zoomLevel = geocodePrecision === 'partial' ? 11 : 18;
 
     const map = L.map(miniMapRef.current, {
       zoomControl:        false,   // 미니맵 = 정적 프리뷰, 컨트롤 불필요
@@ -275,11 +280,13 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
     // 미니맵 마커 — 위치 표시용(비대화형), 드래그는 FullScreenMap에서
     const marker = L.marker([gpsLat, gpsLng], { draggable: false }).addTo(map);
-    // partial: 조정 유도 팝업 / full: 확정 메시지
-    const popupText = geocodePrecision === 'partial'
-      ? '⚠️ 지도를 탭해 실제 농지 위치로 조정하세요'
-      : '📍 지도를 탭해 위치를 미세 조정할 수 있어요';
-    marker.bindPopup(popupText).openPopup();
+    // 영구 툴팁: addressLabel 상시 표시 (없으면 안내 문구)
+    const tooltipText = addressLabel
+      ? addressLabel
+      : geocodePrecision === 'partial'
+        ? '⚠️ 탭해서 정확한 위치로 조정하세요'
+        : '📍 탭해서 위치 미세 조정';
+    marker.bindTooltip(tooltipText, { permanent: true, direction: 'top', offset: [0, -10] });
 
     miniMapObj.current = map;
 
@@ -304,7 +311,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       }
     };
   // eslint-disable-line react-hooks/exhaustive-deps
-  }, [geocodeStatus, gpsLat, gpsLng]); // gpsLat/gpsLng 추가 — FullScreenMap 드래그 후 미니맵 갱신용 (미니맵 자체 dragend 제거로 루프 없음)
+  }, [geocodeStatus, gpsLat, gpsLng, addressLabel]); // addressLabel 추가 — reverseGeocode 완료 후 툴팁 갱신
 
   // alias for geocodeStatus so the rest of the code doesn't break
   // (gpsStatus already exists; we expose geocodeStatus separately)
@@ -1041,6 +1048,7 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
         <FullScreenMap
           lat={gpsLat}
           lng={gpsLng}
+          addressLabel={addressLabel}
           onConfirm={() => setIsMapFull(false)}
           onLocationChange={(lat, lng) => {
             setGpsLat(lat);
