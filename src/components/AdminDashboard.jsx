@@ -1360,19 +1360,21 @@ function E2ETestSection({ running, results, onRun }) {
       {/* 흐름 다이어그램 (항상 표시) */}
       <div className="flex items-center gap-1 flex-wrap">
         {[
-          { label: 'open',        icon: '📋' },
-          { label: 'matched',     icon: '🔗' },
-          { label: 'on_the_way',  icon: '🚗' },
-          { label: 'in_progress', icon: '⚙️' },
-          { label: 'completed',   icon: '✅' },
+          { label: 'open',        icon: '📋', api: null             },
+          { label: 'matched',     icon: '🔗', api: '/select-worker' },
+          { label: 'on_the_way',  icon: '🚗', api: '/on-the-way'    },
+          { label: 'in_progress', icon: '⚙️', api: '/start'         },
+          { label: 'completed',   icon: '✅', api: '/complete'       },
+          { label: 'paid',        icon: '💳', api: '/mark-paid'      },
         ].map((s, i, arr) => (
           <React.Fragment key={s.label}>
             <div className="flex flex-col items-center">
               <span className="text-base">{s.icon}</span>
               <span className="text-[10px] text-gray-500 mt-0.5">{s.label}</span>
+              {s.api && <span className="text-[9px] text-gray-700 font-mono">{s.api}</span>}
             </div>
             {i < arr.length - 1 && (
-              <span className="text-gray-700 text-sm mb-3">→</span>
+              <span className="text-gray-700 text-sm mb-5">→</span>
             )}
           </React.Fragment>
         ))}
