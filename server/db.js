@@ -447,5 +447,25 @@ try { db.exec("ALTER TABLE workers ADD COLUMN skillTags    TEXT    DEFAULT NULL"
 try { db.exec("ALTER TABLE workers ADD COLUMN preferredTime TEXT   DEFAULT NULL"); } catch (_) {}  // '오전'|'오후'|'저녁'
 try { db.exec("ALTER TABLE workers ADD COLUMN activeNow    INTEGER DEFAULT 0");    } catch (_) {}
 
+// NOTIFY_LOG_MIGRATION: 앱 내 알림용 컬럼 추가 (기존 phone/sentAt 기반 → userId/message/createdAt 확장)
+try { db.exec("ALTER TABLE notify_log ADD COLUMN userId   TEXT DEFAULT NULL"); } catch (_) {}
+try { db.exec("ALTER TABLE notify_log ADD COLUMN message  TEXT DEFAULT ''");   } catch (_) {}
+try { db.exec("ALTER TABLE notify_log ADD COLUMN createdAt TEXT DEFAULT NULL"); } catch (_) {}
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_notify_log_user ON notify_log(userId, createdAt DESC)"); } catch (_) {}
+
+// STATUS_AUDIT_LOG: 작업 상태 전이 이력 (분쟁 대비 + 운영 분석)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS status_logs (
+    id         TEXT    PRIMARY KEY,
+    jobId      TEXT    NOT NULL,
+    fromStatus TEXT    NOT NULL,
+    toStatus   TEXT    NOT NULL,
+    byUserId   TEXT    NOT NULL,
+    createdAt  TEXT    NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_status_logs_job
+    ON status_logs(jobId, createdAt DESC);
+`);
+
 console.log(`[DB] SQLite 연결 완료 → ${DB_PATH}`);
 module.exports = db;

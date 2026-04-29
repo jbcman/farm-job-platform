@@ -18,6 +18,7 @@ import { ArrowLeft, Loader2, Phone, Bell } from 'lucide-react';
 import { getMyApplications, completeWork, getUserId } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logCheckpoint, logVibrate } from '../utils/testLogger.js'; // REAL_USER_TEST
 import ReviewModal from './ReviewModal.jsx';
+import { connectWS } from '../services/ws.js';
 
 // ── 상태 배지 — PHASE 5: on_the_way 포함 ────────────────────────────
 function getStatusInfo(appStatus, jobStatus) {
@@ -29,7 +30,7 @@ function getStatusInfo(appStatus, jobStatus) {
       return { label: '이동중',     cls: 'bg-orange-100 text-orange-700', icon: '🚗' };
     if (jobStatus === 'in_progress')
       return { label: '진행중',     cls: 'bg-blue-100 text-blue-800',   icon: '🔵' };
-    if (jobStatus === 'done' || jobStatus === 'closed')
+    if (jobStatus === 'completed' || jobStatus === 'closed')
       return { label: '연결완료',   cls: 'bg-blue-50  text-blue-700',   icon: '🔗' };
     if (jobStatus === 'paid')
       return { label: '입금완료',   cls: 'bg-green-100 text-green-700', icon: '💰' };
@@ -201,6 +202,8 @@ export default function MyApplicationsPage({ userId, onBack }) {
   const [selectionBanner, setSelectionBanner] = useState(false);
   const [newlySelectedJob, setNewlySelectedJob] = useState(null); // { category, farmerName }
   const prevSelectedCountRef = useRef(null); // 이전 selectedApps 카운트
+  // LIVE_LOCATION GPS 상태
+  const [gpsStatus, setGpsStatus] = useState('idle'); // 'idle'|'sharing'|'error'
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -216,6 +219,67 @@ export default function MyApplicationsPage({ userId, onBack }) {
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // REALTIME_ROOM_V2: WS 구독 — job_update 이벤트로 즉시 상태 반영
+  useEffect(() => {
+    if (!userId) return;
+    const handle = connectWS((data) => {
+      if (data.type === 'job_update' && data.job) {
+        setApplications(prev => prev.map(a => {
+          if (a.job?.id === data.job.id) return { ...a, job: { ...a.job, ...data.job } };
+          return a;
+        }));
+      }
+    });
+    return () => handle.close();
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // LIVE_LOCATION: 작업 이동중/진행중 → 5초마다 GPS 서버 전송
+  useEffect(() => {
+    if (!userId) return;
+    const hasActive = applications.some(
+      a => a.status === 'selected' &&
+           (a.job?.status === 'on_the_way' || a.job?.status === 'in_progress')
+    );
+    if (!hasActive) {
+      setGpsStatus('idle');
+      return;
+    }
+    if (!navigator.geolocation) {
+      setGpsStatus('error');
+      return;
+    }
+
+    let timer = null;
+    let failCount = 0;
+
+    function sendLocation() {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          failCount = 0;
+          setGpsStatus('sharing');
+          fetch('/api/workers/location', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+            body:    JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          }).catch(() => {});
+        },
+        (err) => {
+          failCount++;
+          console.warn('[GPS FAIL]', err.code, err.message);
+          if (failCount >= 2) setGpsStatus('error'); // 2회 연속 실패 시 UI 표시
+        },
+        { timeout: 4000, maximumAge: 10000 }
+      );
+    }
+
+    sendLocation();
+    timer = setInterval(sendLocation, 5000);
+    return () => {
+      clearInterval(timer);
+      setGpsStatus('idle');
+    };
+  }, [userId, applications]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── STEP 4: 5초 폴링 — 선택 알림 감지 ───────────────────────
   useEffect(() => {
@@ -352,6 +416,20 @@ export default function MyApplicationsPage({ userId, onBack }) {
               to   { width: 0%; }
             }
           `}</style>
+        </div>
+      )}
+
+      {/* GPS 상태 배너 */}
+      {gpsStatus === 'sharing' && (
+        <div className="mx-4 mt-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-xs text-green-700">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+          📍 위치 공유 중 — 농민이 내 위치를 볼 수 있어요
+        </div>
+      )}
+      {gpsStatus === 'error' && (
+        <div className="mx-4 mt-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-700">
+          <span className="shrink-0">⚠️</span>
+          위치 공유 중지됨 — 설정에서 위치 권한을 허용해주세요
         </div>
       )}
 

@@ -962,13 +962,14 @@ function UsersTab({ users, loading, search, onSearch, onBlock, onRefresh }) {
 // ══════════════════════════════════════════════════════════════════
 // JOBS-MGMT TAB — 작업 목록 + 상태/위치 수정
 // ══════════════════════════════════════════════════════════════════
-const JOB_STATUSES   = ['open','matched','in_progress','done','closed'];
-const STATUS_LABELS  = { open:'모집중', matched:'연결완료', in_progress:'진행중', done:'완료', closed:'마감' };
+const JOB_STATUSES   = ['open','matched','on_the_way','in_progress','completed','closed'];
+const STATUS_LABELS  = { open:'모집중', matched:'연결완료', on_the_way:'이동중', in_progress:'진행중', completed:'완료', closed:'마감' };
 const STATUS_COLORS  = {
-  open:        'bg-green-900/40 text-green-300',
-  matched:     'bg-blue-900/40  text-blue-300',
+  open:        'bg-green-900/40  text-green-300',
+  matched:     'bg-blue-900/40   text-blue-300',
+  on_the_way:  'bg-orange-900/40 text-orange-300',
   in_progress: 'bg-purple-900/40 text-purple-300',
-  done:        'bg-amber-900/40  text-amber-300',
+  completed:   'bg-amber-900/40  text-amber-300',
   closed:      'bg-gray-800      text-gray-500',
 };
 

@@ -24,7 +24,8 @@ router.post('/', (req, res) => {
     const job = db.prepare('SELECT status, requesterId, selectedWorkerId FROM jobs WHERE id = ?').get(jobId);
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
     // PHASE 8: done 또는 paid(입금완료) 상태 모두 허용
-    if (!['done'].includes(job.status) && job.paymentStatus !== 'paid') {
+    // STATUS_NORMALIZE: completed(신규) 또는 done(레거시) — paymentStatus=paid면 추가 허용
+    if (!['completed', 'done'].includes(job.status) && job.paymentStatus !== 'paid') {
         return res.status(400).json({ ok: false, error: '완료된 작업에만 후기를 남길 수 있어요.' });
     }
 

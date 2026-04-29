@@ -145,13 +145,19 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
 
   useEffect(() => { load(); }, [load]);
 
-  // PHASE_COMPLETE_SETTLEMENT_WS_V1: 실시간 WS 구독
+  // REALTIME_ROOM_V2: WS 구독 + 룸 join (내 작업 목록 자동 구독)
   useEffect(() => {
     const handle = connectWS((data) => {
+      // SSOT: job_update — 서버에서 내려온 완전한 job 객체로 덮어쓰기
+      if (data.type === 'job_update' && data.job) {
+        setJobs(prev => prev.map(j => j.id === data.job.id ? { ...j, ...data.job } : j));
+        return;
+      }
+      // 레거시 이벤트 하위호환
       if (data.type === 'job_completed') {
         setJobs(prev => prev.map(j =>
           j.id === data.jobId
-            ? { ...j, status: 'done', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }
+            ? { ...j, status: 'completed', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }
             : j
         ));
       }
@@ -168,6 +174,24 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     });
     return () => handle.close();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // REALTIME_ROOM_V2: 내 작업 목록 변경 시 룸 구독 갱신
+  const wsHandleRef = React.useRef(null);
+  useEffect(() => {
+    if (!myJobsMode || !userId) return;
+    // jobs 목록에서 내 jobId 추출 후 룸 구독
+    const handle = connectWS(() => {}); // 구독용 별도 연결 (jobId join 전용)
+    wsHandleRef.current = handle;
+    jobs.forEach(j => handle.joinJob(j.id));
+    return () => handle.close();
+  }, [jobs.map(j => j.id).join(','), myJobsMode, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // FALLBACK_POLL: WS 불안정 환경 대비 5초 폴링
+  useEffect(() => {
+    if (!myJobsMode && !myApplicationsMode) return;
+    const t = setInterval(() => { load(); }, 5000);
+    return () => clearInterval(t);
+  }, [myJobsMode, myApplicationsMode, load]);
 
   function showToast(msg) {
     setToast(msg);

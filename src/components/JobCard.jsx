@@ -67,8 +67,9 @@ const JOB_ICONS = CATEGORY_EMOJI;
 
 const STATUS_BADGE = {
   matched:     { label: '연결완료',  cls: 'badge-matched',                       icon: CheckCircle },
+  on_the_way:  { label: '이동중',    cls: 'bg-orange-100 text-orange-700 badge',  icon: Flag        },
   in_progress: { label: '진행중',    cls: 'bg-blue-100 text-blue-700 badge',      icon: Play        },
-  done:        { label: '완료',      cls: 'bg-gray-100 text-gray-600 badge',      icon: Flag        },
+  completed:   { label: '완료',      cls: 'bg-gray-100 text-gray-600 badge',      icon: Flag        },
   closed:      { label: '마감',      cls: 'bg-red-50   text-red-600   badge',     icon: XCircle     },
 };
 
@@ -106,7 +107,7 @@ export default function JobCard({
   const roleBadge = (() => {
     if (isOwner) {
       if (job.status === 'in_progress') return { label: '🔵 진행중',    cls: 'bg-blue-100 text-blue-700' };
-      if (job.status === 'done')        return { label: '⭐ 완료',      cls: 'bg-gray-100 text-gray-600' };
+      if (job.status === 'completed') return { label: '⭐ 완료', cls: 'bg-gray-100 text-gray-600' };
       return { label: '🧑‍🌾 내가 올린 일', cls: 'bg-farm-light text-farm-green border border-farm-green' };
     }
     if (userId && job.selectedWorkerId === userId)
@@ -780,7 +781,7 @@ export default function JobCard({
           </button>
 
           {/* 지원자 수 + 지원자 보기 (마감 포함 항상 표시) */}
-          {job.status !== 'in_progress' && job.status !== 'done' && (
+          {job.status !== 'in_progress' && job.status !== 'completed' && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">
                 지원자 <strong className="text-farm-green">{job.applicationCount || 0}명</strong>
@@ -840,8 +841,8 @@ export default function JobCard({
             </button>
           )}
 
-          {/* PHASE 7: 입금 완료 버튼 (done 상태, 아직 paid 아닐 때, 오너만) */}
-          {job.status === 'done' && isOwner && job.paymentStatus !== 'paid' && onMarkPaid && (
+          {/* PHASE 7: 입금 완료 버튼 (completed 상태, 아직 paid 아닐 때, 오너만) */}
+          {job.status === 'completed' && isOwner && job.paymentStatus !== 'paid' && onMarkPaid && (
             <button
               onClick={() => onMarkPaid(job)}
               className="btn-full py-2.5 bg-emerald-500 text-white font-bold rounded-xl
@@ -850,13 +851,13 @@ export default function JobCard({
               💰 입금 완료 처리
             </button>
           )}
-          {/* done + paid 완료 안내 */}
-          {job.status === 'done' && job.paymentStatus === 'paid' && isOwner && (
+          {/* completed + paid 완료 안내 */}
+          {job.status === 'completed' && job.paymentStatus === 'paid' && isOwner && (
             <p className="text-xs text-center text-emerald-600 font-semibold py-1">💰 입금 완료 처리됨</p>
           )}
 
-          {/* 리뷰 작성 버튼 (done + paid 상태, 오너만) */}
-          {job.status === 'done' && job.paymentStatus === 'paid' && isOwner && onWriteReview && (
+          {/* 리뷰 작성 버튼 (completed + paid 상태, 오너만) */}
+          {job.status === 'completed' && job.paymentStatus === 'paid' && isOwner && onWriteReview && (
             <button
               onClick={() => onWriteReview(job)}
               className="btn-full py-2.5 bg-amber-400 text-white font-bold rounded-xl

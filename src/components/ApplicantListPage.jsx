@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Zap } from 'lucide-react';
 import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logCallFail, logCheckpoint, logClickFail } from '../utils/testLogger.js'; // REAL_USER_TEST
+import { connectWS } from '../services/ws.js';
 
 // PHASE 28: 추천 배지 — rank 1/2/3 각각 다른 스타일
 const RANK_BADGE = {
@@ -59,6 +60,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const impressedRef        = useRef(new Set()); // 카드별 impression 1회 보장
   const abandonTimerRef     = useRef(null);      // auto_match_abandon 15초 타이머
   const didCallRef          = useRef(false);     // 배너에서 전화 클릭 여부 (abandon 차단용)
+  const [workerMarker, setWorkerMarker] = useState(null); // { lat, lng, ts } — 실시간 작업자 위치
 
   // Phase 8: 상태별 읽기 전용 모드
   const isReadOnly = job.status === 'closed' || job.status === 'matched';
@@ -85,6 +87,21 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [job.id, userId]);
+
+  // LIVE_LOCATION: WS 구독 — 작업자 위치 실시간 수신 (on_the_way/in_progress)
+  useEffect(() => {
+    if (!['on_the_way', 'in_progress'].includes(job.status)) return;
+    const handle = connectWS((data) => {
+      if (data.type === 'location_update' && data.jobId === job.id) {
+        setWorkerMarker({ lat: data.lat, lng: data.lng, ts: data.ts });
+      }
+      if (data.type === 'job_update' && data.job?.id === job.id) {
+        // job 상태 갱신 (부모에서 내려온 job prop 업데이트 불가 → 로컬 상태 미러링)
+      }
+    });
+    handle.joinJob(job.id);
+    return () => handle.close();
+  }, [job.id, job.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // KPI_EVENTS: view_applicants — job 단위 + 세션 단위 1회 보장
   // StrictMode 이중 실행 / 뒤로가기 재진입 / 새로고침 모두 차단
@@ -379,6 +396,27 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
           {job.status === 'in_progress' && <span className="text-xs bg-green-50  text-green-700  font-bold px-2 py-1 rounded-full">🔵 진행중</span>}
         </div>
       </header>
+
+      {/* LIVE_LOCATION: 작업자 실시간 위치 배너 */}
+      {workerMarker && (
+        <div className="mx-4 mt-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-xl flex items-center gap-2 text-sm text-orange-700">
+          <MapPin size={14} className="shrink-0" />
+          <span>
+            작업자 실시간 위치 수신 중
+            <span className="ml-1 text-xs text-orange-500">
+              ({workerMarker.lat.toFixed(4)}, {workerMarker.lng.toFixed(4)})
+            </span>
+          </span>
+          <a
+            href={`https://maps.google.com/?q=${workerMarker.lat},${workerMarker.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto text-xs bg-orange-100 hover:bg-orange-200 px-2 py-0.5 rounded-lg"
+          >
+            지도 열기
+          </a>
+        </div>
+      )}
 
       {/* PHASE 29: AI 자동 연결 배지 (초기 로드 시 이미 매칭된 경우) */}
       {job.autoSelected && !autoMatched && (

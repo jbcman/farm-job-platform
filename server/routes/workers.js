@@ -5,6 +5,19 @@ const { rankWorkers, distLabel } = require('../services/matchingEngine');
 
 const router = express.Router();
 
+// LIVE_LOCATION_THROTTLE: jobId당 최소 3초 간격 (WS flood 방지)
+const _locEmitTs = new Map(); // Map<jobId, lastEmitMs>
+
+function canEmit(jobId) {
+    const now  = Date.now();
+    const last = _locEmitTs.get(jobId) || 0;
+    if (now - last >= 3000) {
+        _locEmitTs.set(jobId, now);
+        return true;
+    }
+    return false;
+}
+
 function normalizeWorker(row) {
     if (!row) return null;
     return {
@@ -73,6 +86,39 @@ router.post('/location', (req, res) => {
         // workers 프로필 없는 사용자 — 무시 (farmer 등)
         return res.json({ ok: true, updated: false });
     }
+
+    // LIVE_LOCATION: 선택된 작업자만 WS emit (보안 검증 + throttle)
+    try {
+        const workerRow = db.prepare('SELECT id FROM workers WHERE userId = ?').get(userId);
+        if (workerRow) {
+            // ① 해당 작업자가 selectedWorkerId 로 지정된 active job만 허용
+            const activeJob = db.prepare(
+                "SELECT id, selectedWorkerId FROM jobs WHERE selectedWorkerId = ? AND status IN ('on_the_way','in_progress')"
+            ).get(workerRow.id);
+
+            if (!activeJob) {
+                // 배정된 active job 없음 — DB 저장은 유지(매칭 점수용), WS emit만 스킵
+                return res.json({ ok: true, updated: true, emit: false });
+            }
+
+            // ② 명시적 작업자 검증 (이중 보호)
+            if (activeJob.selectedWorkerId !== workerRow.id) {
+                return res.status(403).json({ ok: false, error: '배정된 작업자만 위치를 전송할 수 있어요.' });
+            }
+
+            // ③ Throttle: jobId당 3초 간격 이내 요청 무시
+            if (canEmit(activeJob.id) && typeof global.emitToJob === 'function') {
+                global.emitToJob(activeJob.id, {
+                    type:     'location_update',
+                    jobId:    activeJob.id,
+                    workerId: userId,
+                    lat:      latNum,
+                    lng:      lngNum,
+                    ts:       new Date().toISOString(),
+                });
+            }
+        }
+    } catch (_) {}
 
     console.log(`[WORKER_LOC_UPDATE] userId=${userId} (${latNum}, ${lngNum})`);
     return res.json({ ok: true, updated: true });

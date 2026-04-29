@@ -7,6 +7,9 @@ const {
     sendSelectionNotification,
     sendJobStartedNotification,
     sendJobCompletedNotification,
+    sendWorkerDepartedNotification,
+    sendJobCompletedToFarmerNotification,
+    sendPaymentDoneNotification,
 } = require('../services/notificationService');
 const { trackEvent }              = require('../services/analyticsService');
 const { findMatchingWorkers }     = require('../services/matchingService');
@@ -26,6 +29,7 @@ const { sortJobs: aiSortJobs }        = require('../services/recommendService');
 const { findNearestWorkers }          = require('../services/matchService');
 const { createPayment, confirmPayment, refundPayment } = require('../services/paymentService');
 // autoMatchService 통합 완료 — matchingService로 일원화됨
+const { notifyOnStatus } = require('../utils/notify');
 
 const router = express.Router();
 
@@ -50,6 +54,8 @@ function normalizeJob(row) {
     if (!row) return null;
     return {
         ...row,
+        // STATUS_NORMALIZE: DB의 레거시 'done' → 'completed' 자동 변환 (호환 처리)
+        status:       row.status === 'done' ? 'completed' : row.status,
         isUrgent:     !!row.isUrgent,
         autoSelected: !!row.autoSelected,
         isUrgentPaid: !!row.isUrgentPaid,
@@ -70,6 +76,55 @@ function normalizeWorker(row) {
         hasSprayer: !!row.hasSprayer,
         hasRotary:  !!row.hasRotary,
     };
+}
+
+// ─── 상태 머신 ───────────────────────────────────────────────
+/**
+ * 허용된 status 전이 맵
+ * close 는 any → closed 허용이므로 별도 처리
+ */
+const VALID_TRANSITIONS = {
+    open:        ['matched', 'closed'],
+    matched:     ['on_the_way', 'in_progress', 'closed'],
+    on_the_way:  ['in_progress', 'closed'],
+    in_progress: ['completed', 'closed'],
+    completed:   ['closed'],
+};
+
+/**
+ * 전이 유효성 검사. 실패 시 에러 메시지 반환, 성공 시 null
+ * @param {string} from
+ * @param {string} to
+ * @returns {string|null}
+ */
+function checkTransition(from, to) {
+    // closed 는 단방향 종료 상태
+    if (from === 'closed') return `이미 마감된 작업이에요.`;
+    const allowed = VALID_TRANSITIONS[from];
+    if (!allowed) return `알 수 없는 상태입니다: ${from}`;
+    if (!allowed.includes(to)) {
+        return `'${from}' 상태에서 '${to}'(으)로 변경할 수 없어요.`;
+    }
+    return null;
+}
+
+/**
+ * 상태 전이를 status_logs 에 기록 (fire-and-forget, 실패 무시)
+ * @param {string} jobId
+ * @param {string} from
+ * @param {string} to
+ * @param {string} byUserId
+ */
+function logTransition(jobId, from, to, byUserId) {
+    try {
+        db.prepare(
+            'INSERT INTO status_logs (id, jobId, fromStatus, toStatus, byUserId, createdAt) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(
+            `sl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            jobId, from, to, byUserId || 'system',
+            new Date().toISOString()
+        );
+    } catch (_) {}
 }
 
 /** 작업별 지원자 수 (DB 조회) */
@@ -1113,10 +1168,9 @@ router.post('/:id/select-worker', (req, res) => {
         return res.status(403).json({ ok: false, error: '내 요청만 선택할 수 있어요.' });
     }
 
-    // Phase 7: 스팸 방지 — 이미 선택이 완료된 작업이면 차단
-    if (job.status === 'matched') {
-        return res.status(400).json({ ok: false, error: '이미 작업자를 선택한 요청이에요.' });
-    }
+    // 상태 전이 유효성 검사 (open → matched)
+    const _selErr = checkTransition(job.status, 'matched');
+    if (_selErr) return res.status(400).json({ ok: false, error: _selErr });
 
     // BUG_FIX: workerId = user-xxx 대응 (workers 프로필 없이 지원한 경우)
     let workerRowSel = db.prepare('SELECT * FROM workers WHERE id = ?').get(workerId)
@@ -1165,6 +1219,10 @@ router.post('/:id/select-worker', (req, res) => {
         } catch (_) { /* UNIQUE 충돌 시 무시 */ }
     })();
 
+    logTransition(job.id, job.status, 'matched', requesterId);
+    const _matchedJob = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id));
+    if (typeof global.emitToJob === 'function') global.emitToJob(job.id, { type: 'job_update', job: _matchedJob });
+    notifyOnStatus(_matchedJob || job, job.status, 'matched');
     console.log(`[CONTACT_STORED] jobId=${job.id} farmerId=${job.requesterId} workerId=${workerId}`);
 
     // 알림 훅 (콘솔 로그 → 카카오 알림톡으로 확장 가능)
@@ -1219,8 +1277,13 @@ router.post('/:id/close', (req, res) => {
         return res.status(400).json({ ok: false, error: '이미 마감된 작업이에요.' });
     }
 
+    const _prevStatus = job.status;
     db.prepare("UPDATE jobs SET status = 'closed', closedAt = ? WHERE id = ?")
       .run(new Date().toISOString(), job.id);
+    logTransition(job.id, _prevStatus, 'closed', requesterId);
+    const _closedJob = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id));
+    if (typeof global.emitToJob === 'function') global.emitToJob(job.id, { type: 'job_update', job: _closedJob });
+    notifyOnStatus(_closedJob || job, _prevStatus, 'closed');
 
     // TRUST_SYSTEM: 노쇼 추적 — matched 상태에서 마감 = 작업자 노쇼로 간주
     if (job.status === 'matched' && job.selectedWorkerId) {
@@ -1249,10 +1312,9 @@ router.post('/:id/on-the-way', (req, res) => {
     const { workerId } = req.body;
     if (!workerId) return res.status(400).json({ ok: false, error: 'workerId 필요' });
 
-    // matched 또는 in_progress 상태에서 전환 허용
-    if (!['matched', 'in_progress'].includes(job.status)) {
-        return res.status(400).json({ ok: false, error: `현재 상태(${job.status})에서 출발 처리 불가` });
-    }
+    // 상태 전이 유효성 검사 (matched → on_the_way)
+    const _otwErr = checkTransition(job.status, 'on_the_way');
+    if (_otwErr) return res.status(400).json({ ok: false, error: _otwErr });
 
     // 선택된 작업자 확인
     const selApp = db.prepare(
@@ -1281,6 +1343,17 @@ router.post('/:id/on-the-way', (req, res) => {
         }
     } catch (_) {}
 
+    logTransition(job.id, job.status, 'on_the_way', workerId);
+    const _otwJob = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id));
+    if (typeof global.emitToJob === 'function') global.emitToJob(job.id, { type: 'job_update', job: _otwJob });
+    notifyOnStatus(_otwJob || job, job.status, 'on_the_way');
+    // 카카오: 농민에게 "작업자 출발" 알림
+    setImmediate(async () => {
+        try {
+            const farmer = db.prepare('SELECT * FROM users WHERE id = ?').get(job.requesterId);
+            if (farmer) sendWorkerDepartedNotification(job, farmer);
+        } catch (_) {}
+    });
     console.log(`[JOB_ON_THE_WAY] id=${job.id} workerId=${workerId} departureAt=${departureAt}`);
     return res.json({ ok: true, status: 'on_the_way', departureAt });
 });
@@ -1294,12 +1367,17 @@ router.post('/:id/start', (req, res) => {
     if (job.requesterId !== requesterId) {
         return res.status(403).json({ ok: false, error: '내 작업만 시작할 수 있어요.' });
     }
-    if (job.status !== 'matched') {
-        return res.status(400).json({ ok: false, error: `현재 상태(${job.status})에서는 시작할 수 없어요.` });
-    }
+    // 상태 전이 유효성 검사 (matched|on_the_way → in_progress)
+    const _startErr = checkTransition(job.status, 'in_progress');
+    if (_startErr) return res.status(400).json({ ok: false, error: _startErr });
 
     const startedAt = new Date().toISOString();
+    const _prevForStart = job.status;
     db.prepare("UPDATE jobs SET status = 'in_progress', startedAt = ? WHERE id = ?").run(startedAt, job.id);
+    logTransition(job.id, _prevForStart, 'in_progress', req.body.requesterId || 'farmer');
+    const _startedJob = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id));
+    if (typeof global.emitToJob === 'function') global.emitToJob(job.id, { type: 'job_update', job: _startedJob });
+    notifyOnStatus(_startedJob || job, _prevForStart, 'in_progress');
 
     // 선택된 작업자 조회 → 알림
     const selApp = db.prepare(
@@ -1342,7 +1420,7 @@ router.post('/:id/mark-paid', (req, res) => {
     if (job.requesterId !== requesterId) {
         return res.status(403).json({ ok: false, error: '내 작업만 입금 처리할 수 있어요.' });
     }
-    if (job.status !== 'done') {
+    if (job.status !== 'completed') {
         return res.status(400).json({ ok: false, error: '완료된 작업만 입금 처리 가능해요.' });
     }
     if (job.paymentStatus === 'paid') {
@@ -1364,6 +1442,22 @@ router.post('/:id/mark-paid', (req, res) => {
         }
     } catch (_) {}
 
+    logTransition(job.id, 'completed', 'paid(payment)', requesterId);
+    const _paidJob = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id));
+    if (typeof global.emitToJob === 'function') global.emitToJob(job.id, { type: 'job_update', job: _paidJob });
+    notifyOnStatus(_paidJob || { ...job, paymentStatus: 'paid' }, 'completed', 'paid');
+    // 카카오 알림: 선택된 작업자에게 입금 완료 알림
+    setImmediate(async () => {
+        try {
+            const selApp2 = db.prepare(
+                "SELECT a.workerId FROM applications a WHERE a.jobRequestId = ? AND a.status = 'selected'"
+            ).get(job.id);
+            if (selApp2?.workerId) {
+                const w = db.prepare('SELECT * FROM workers WHERE id = ?').get(selApp2.workerId);
+                if (w) sendPaymentDoneNotification(job, w);
+            }
+        } catch (_) {}
+    });
     console.log(`[JOB_MARK_PAID] id=${job.id} requesterId=${requesterId} paidAt=${paidAt}`);
     return res.json({ ok: true, paymentStatus: 'paid', paidAt });
 });
@@ -1377,9 +1471,9 @@ router.post('/:id/complete', (req, res) => {
     if (job.requesterId !== requesterId) {
         return res.status(403).json({ ok: false, error: '내 작업만 완료할 수 있어요.' });
     }
-    if (job.status !== 'in_progress') {
-        return res.status(400).json({ ok: false, error: `현재 상태(${job.status})에서는 완료할 수 없어요.` });
-    }
+    // 상태 전이 유효성 검사 (in_progress → completed)
+    const _compErr = checkTransition(job.status, 'completed');
+    if (_compErr) return res.status(400).json({ ok: false, error: _compErr });
 
     // PHASE 30: 작업 시작 기록 없으면 완전 차단 — 시작 버튼 누르지 않은 경우
     if (!job.startedAt) {
@@ -1411,12 +1505,23 @@ router.post('/:id/complete', (req, res) => {
 
     db.prepare(`
         UPDATE jobs
-        SET status      = 'done',
+        SET status      = 'completed',
             completedAt = ?,
             paid        = 1,
             payAmount   = COALESCE(payAmount, ?)
         WHERE id = ?
     `).run(completedAt, payNum, job.id);
+    logTransition(job.id, 'in_progress', 'completed', req.body.requesterId || 'farmer');
+    const _completedJob = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id));
+    if (typeof global.emitToJob === 'function') global.emitToJob(job.id, { type: 'job_update', job: _completedJob });
+    notifyOnStatus(_completedJob || job, 'in_progress', 'completed');
+    // 카카오: 농민에게 "작업 완료 + 입금 요청" 알림
+    setImmediate(async () => {
+        try {
+            const farmer = db.prepare('SELECT * FROM users WHERE id = ?').get(job.requesterId);
+            if (farmer) sendJobCompletedToFarmerNotification(job, farmer);
+        } catch (_) {}
+    });
 
     // PHASE_ADMIN_DASHBOARD_AI_V2: 작업자 완료 통계 갱신
     if (job.selectedWorkerId) {
@@ -1461,7 +1566,7 @@ router.post('/:id/complete', (req, res) => {
         global.broadcast({ type: 'job_completed', jobId: job.id, payAmount: payNum, completedAt });
     }
 
-    return res.json({ ok: true, status: 'done', paid: true, payAmount: payNum, completedAt });
+    return res.json({ ok: true, status: 'completed', paid: true, payAmount: payNum, completedAt });
 });
 
 // ─── POST /api/jobs/:id/complete-work ────────────────────────
@@ -1630,7 +1735,7 @@ router.post('/:id/rematch', (req, res) => {
     const job = normalizeJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
     if (job.requesterId !== requesterId) return res.status(403).json({ ok: false, error: '권한이 없어요.' });
-    if (!['done', 'closed'].includes(job.status)) {
+    if (!['completed', 'closed'].includes(job.status)) {
         return res.status(400).json({ ok: false, error: '완료 또는 마감된 작업에만 재매칭을 요청할 수 있어요.' });
     }
 
@@ -1815,6 +1920,7 @@ router.post('/:id/auto-assign', (req, res) => {
             `).run(newId('contact'), job.id, job.requesterId, workerId, new Date().toISOString());
         } catch (_) {}
     })();
+    if (didSelect) logTransition(job.id, 'open', 'matched', req.body.requesterId || 'auto');
 
     if (!didSelect) {
         return res.status(409).json({ ok: false, error: '이미 다른 작업자가 선택됐어요.' });
@@ -1983,7 +2089,7 @@ router.post('/:id/refund', (req, res) => {
         return res.status(400).json({ ok: false, error: `현재 상태(${job.paymentStatus})는 환불 불가해요.` });
     }
     // 이미 완료된 작업은 환불 불가
-    if (job.status === 'done') {
+    if (job.status === 'completed') {
         return res.status(400).json({ ok: false, error: '완료된 작업은 환불할 수 없어요.' });
     }
 

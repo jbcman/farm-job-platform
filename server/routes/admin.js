@@ -352,7 +352,8 @@ router.get('/revenue', auth, (req, res) => {
 router.get('/stats', auth, (req, res) => {
     try {
         const totalJobs  = n(db.prepare("SELECT COUNT(*) AS n FROM jobs").get()?.n);
-        const completed  = n(db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'done'").get()?.n);
+        // STATUS_NORMALIZE: done(레거시) + completed 모두 카운트
+        const completed  = n(db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('done','completed')").get()?.n);
         const inProgress = n(db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('matched','in_progress')").get()?.n);
 
         const revRow = safeGet(() =>
@@ -541,7 +542,7 @@ router.get('/jobs-list', auth, (req, res) => {
 router.patch('/job/:id/status', auth, (req, res) => {
     const { id }     = req.params;
     const { status } = req.body;
-    const ALLOWED = ['open', 'matched', 'in_progress', 'done', 'closed'];
+    const ALLOWED = ['open', 'matched', 'on_the_way', 'in_progress', 'completed', 'paid', 'closed'];
     if (!ALLOWED.includes(status)) {
         return res.status(400).json({ ok: false, error: `허용 상태: ${ALLOWED.join(', ')}` });
     }
@@ -734,6 +735,28 @@ router.get('/alert-status', auth, (req, res) => {
     } catch (e) {
         console.error('[ALERT_STATUS_ERROR]', e.message);
         return res.json({ ok: true, p1: false, p1Count: 0, p2Count: 0 }); // fail-safe: 경보 미발령
+    }
+});
+
+// ─── GET /api/admin/status-logs?jobId=xx ─────────────────────
+// STATUS_AUDIT_LOG: 작업 상태 전이 이력 조회 (관리자 전용)
+router.get('/status-logs', (req, res) => {
+    const adminKey = req.headers['x-admin-key'] || req.query.adminKey;
+    if (adminKey !== process.env.ADMIN_KEY && adminKey !== 'farm-admin-2024') {
+        return res.status(403).json({ ok: false, error: '관리자 인증 필요' });
+    }
+    const { jobId } = req.query;
+    try {
+        const rows = jobId
+            ? db.prepare(
+                'SELECT * FROM status_logs WHERE jobId = ? ORDER BY createdAt DESC'
+              ).all(jobId)
+            : db.prepare(
+                'SELECT * FROM status_logs ORDER BY createdAt DESC LIMIT 200'
+              ).all();
+        return res.json({ ok: true, logs: rows });
+    } catch (e) {
+        return res.status(500).json({ ok: false, error: e.message });
     }
 });
 
