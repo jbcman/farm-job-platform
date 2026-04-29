@@ -9,7 +9,7 @@
 const db = require('./db');
 
 function dateStr(offsetDays = 0) {
-    const d = new Date('2026-04-15');
+    const d = new Date();           // 오늘 기준 (실행 시점)
     d.setDate(d.getDate() + offsetDays);
     return d.toISOString().slice(0, 10);
 }
