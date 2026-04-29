@@ -261,10 +261,11 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     const zoomLevel = geocodePrecision === 'partial' ? 11 : 16;
 
     const map = L.map(miniMapRef.current, {
-      zoomControl:       true,
-      scrollWheelZoom:   false,
-      dragging:          true,
-      doubleClickZoom:   false,
+      zoomControl:        false,   // 미니맵 = 정적 프리뷰, 컨트롤 불필요
+      scrollWheelZoom:    false,
+      dragging:           false,   // 드래그는 전체화면에서만
+      touchZoom:          false,
+      doubleClickZoom:    false,
       attributionControl: false,
     }).setView([gpsLat, gpsLng], zoomLevel);
 
@@ -272,23 +273,13 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       maxZoom: 19,
     }).addTo(map);
 
-    // MAP_PIN_DRAG: 드래그 가능 마커 — 이동 시 좌표 업데이트 + 재확인 요구
-    const marker = L.marker([gpsLat, gpsLng], { draggable: true }).addTo(map);
-    // partial: 핀 이동 강하게 유도 / full: 기본 안내
+    // 미니맵 마커 — 위치 표시용(비대화형), 드래그는 FullScreenMap에서
+    const marker = L.marker([gpsLat, gpsLng], { draggable: false }).addTo(map);
+    // partial: 조정 유도 팝업 / full: 확정 메시지
     const popupText = geocodePrecision === 'partial'
-      ? '⚠️ 시·군 중심입니다. 실제 농지로 핀을 옮겨주세요'
-      : '📍 핀을 움직여 위치를 조정하세요';
+      ? '⚠️ 지도를 탭해 실제 농지 위치로 조정하세요'
+      : '📍 지도를 탭해 위치를 미세 조정할 수 있어요';
     marker.bindPopup(popupText).openPopup();
-
-    marker.on('dragend', () => {
-      const { lat, lng } = marker.getLatLng();
-      setGpsLat(lat);
-      setGpsLng(lng);
-      setConfirmedLocation(true);
-      setPinMoved(true);
-      reverseGeocode(lat, lng); // 드래그 후 새 위치의 주소로 업데이트
-      marker.bindPopup('📍 새 위치를 확인해주세요').openPopup();
-    });
 
     miniMapObj.current = map;
 
@@ -312,7 +303,8 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
         miniMapObj.current = null;
       }
     };
-  }, [geocodeStatus]); // gpsLat/gpsLng 제외 — dragend에서 직접 업데이트하므로 루프 방지
+  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geocodeStatus, gpsLat, gpsLng]); // gpsLat/gpsLng 추가 — FullScreenMap 드래그 후 미니맵 갱신용 (미니맵 자체 dragend 제거로 루프 없음)
 
   // alias for geocodeStatus so the rest of the code doesn't break
   // (gpsStatus already exists; we expose geocodeStatus separately)
@@ -724,19 +716,46 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
             )}
             {geocodeStatus === 'ok' && gpsLat != null && (
               <div className="mt-1.5">
-                <p className="text-xs text-green-600 font-medium flex items-center gap-1">
-                  <CheckCircle size={11} />
-                  위치 확인됨
-                </p>
-                {addressLabel && (
-                  <p className="text-xs text-gray-700 mt-0.5 font-medium">
-                    📍 {addressLabel}
-                  </p>
-                )}
-                {geocodePrecision === 'partial' && (
-                  <p className="text-xs text-amber-600 mt-0.5">
-                    · 핀을 실제 농지로 드래그해 정확히 조정해주세요
-                  </p>
+                {pinMoved ? (
+                  /* ── 핀 이동 후: "최종 위치 확정됨" 강조 박스 ── */
+                  <div style={{
+                    background: '#f0fdf4',
+                    border: '1.5px solid #86efac',
+                    borderRadius: 10,
+                    padding: '8px 12px',
+                  }}>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: '#15803d', display: 'flex', alignItems: 'center', gap: 5, marginBottom: addressLabel ? 4 : 0 }}>
+                      <CheckCircle size={13} />
+                      ✔ 위치 확정됨
+                    </p>
+                    {addressLabel && (
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+                        📍 최종 위치: {addressLabel}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  /* ── 자동 지오코드: "위치 확인됨" + 조정 유도 ── */
+                  <>
+                    <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                      <CheckCircle size={11} />
+                      위치 확인됨
+                    </p>
+                    {addressLabel && (
+                      <p className="text-xs text-gray-700 mt-0.5 font-medium">
+                        📍 {addressLabel}
+                      </p>
+                    )}
+                    {geocodePrecision === 'partial' ? (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        · 지도를 탭해 실제 농지 위치로 정확히 조정해주세요
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        · 지도를 탭해 위치를 미세 조정할 수 있어요
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -744,33 +763,45 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
               <p className="text-xs text-red-500 mt-1.5">주소를 다시 입력해주세요 (시·군·읍·면·리 형식)</p>
             )}
 
-            {/* 미니맵 — geocode 성공 시만 표시 */}
+            {/* 미니맵 — geocode 성공 시만 표시 (탭 = 전체화면 확대) */}
             {geocodeStatus === 'ok' && (
-              <div className="relative mt-2.5">
+              <div
+                className="relative mt-2.5 active:opacity-80 transition-opacity"
+                onClick={() => setIsMapFull(true)}
+                style={{ cursor: 'pointer' }}
+              >
+                {/* 지도 타일 (pointerEvents:none → 터치가 부모 onClick으로 전달) */}
                 <div
                   ref={miniMapRef}
                   style={{
                     width: '100%',
                     height: geocodePrecision === 'partial' ? 210 : 180,
                     borderRadius: 12,
-                    border: '2px solid #d1d5db',
+                    border: pinMoved ? '2.5px solid #22c55e' : '2px solid #d1d5db',
                     overflow: 'hidden',
+                    pointerEvents: 'none',  // 정적 프리뷰, 상호작용 차단
                   }}
                 />
-                {/* 전체화면 지도 버튼 */}
-                <button
-                  type="button"
-                  onClick={() => setIsMapFull(true)}
-                  className="absolute bottom-2 right-2
-                             flex items-center gap-1 px-2.5 py-1.5
-                             bg-white/90 backdrop-blur-sm text-farm-green
-                             text-xs font-bold rounded-lg shadow
-                             border border-gray-200
-                             active:scale-95 transition-transform"
-                >
-                  <Search size={10} />
-                  지도 크게 보기
-                </button>
+                {/* "탭하여 위치 조정" 힌트 오버레이 */}
+                <div style={{
+                  position: 'absolute', bottom: 10, left: 0, right: 0,
+                  display: 'flex', justifyContent: 'center',
+                  pointerEvents: 'none',
+                }}>
+                  <span style={{
+                    background: pinMoved ? 'rgba(21,128,61,0.80)' : 'rgba(0,0,0,0.52)',
+                    color: '#fff',
+                    borderRadius: 9999,
+                    padding: '4px 14px',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    letterSpacing: 0.2,
+                  }}>
+                    <Search size={10} />
+                    {pinMoved ? '✔ 위치 확정됨 — 탭하여 재조정' : '📍 탭하여 위치 조정'}
+                  </span>
+                </div>
               </div>
             )}
           </div>
