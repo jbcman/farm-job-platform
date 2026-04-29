@@ -15,12 +15,14 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function ProtectedRoute({ children, adminOnly = false, requireAuth = false }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   if (adminOnly) {
     // 로그인한 일반 사용자(farmer/worker)는 /admin 차단
+    // → 자동 로그아웃 후 홈으로 (직접 URL 입력 케이스 대응)
     if (user && user.role !== 'admin') {
-      console.warn('[ProtectedRoute] admin 권한 없음 → / 리다이렉트', user.role);
+      console.warn('[ProtectedRoute] admin 권한 없음 → 로그아웃 후 / 리다이렉트', user.role);
+      logout();
       return <Navigate to="/" replace />;
     }
     // 미로그인 또는 관리자 → AdminDashboard 자체 게이트로 처리
