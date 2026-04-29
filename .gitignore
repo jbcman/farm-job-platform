@@ -6,3 +6,10 @@ server/node_modules/
 BACKUP_*
 server_BACKUP_*
 src_BACKUP_*
+
+# 빌드 결과물 — Render가 자체 빌드하므로 추적 불필요
+dist/
+
+# DB 백업 파일
+server/*.bak*
+server/backup_*.db
