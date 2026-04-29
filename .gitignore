@@ -13,6 +13,9 @@ dist/
 # DB 백업 파일
 server/*.bak*
 server/backup_*.db
+# SQLite WAL/SHM 임시 파일
+server/farm.db-shm
+server/farm.db-wal
 
 # IDE / 에디터 임시 파일
 *.bak
