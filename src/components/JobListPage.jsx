@@ -93,6 +93,11 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const [nearbyMode,    setNearbyMode]    = useState(false);
   const [nearbyJobs,    setNearbyJobs]    = useState([]);
   const [nearbyLoading, setNearbyLoading] = useState(false);
+  // LOC_CHANGE: 위치 변경 (manual 모드)
+  const [showLocChange,    setShowLocChange]    = useState(false);
+  const [locChangeInput,   setLocChangeInput]   = useState('');
+  const [locChangeLoading, setLocChangeLoading] = useState(false);
+  const [manualLocLabel,   setManualLocLabel]   = useState(''); // 수동 위치 표시명
   // FILTER_V1: 다중 카테고리 선택 + 모달
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [showFilterModal,    setShowFilterModal]    = useState(false);
@@ -259,6 +264,32 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     const useLoc = gpsLoc || (loc ? { lat: loc.lat, lng: loc.lon } : null);
     if (!useLoc || !nearbyMode) return;
     await runNearby(useLoc, km);
+  }
+
+  /** LOC_CHANGE: 수동 위치 입력 → geocode → runNearby */
+  async function handleLocChange() {
+    const trimmed = locChangeInput.trim();
+    if (!trimmed) return;
+    setLocChangeLoading(true);
+    try {
+      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (!data.ok || !data.lat) {
+        showToast('위치를 찾을 수 없어요. 시·군·읍·면까지 입력해주세요.');
+        return;
+      }
+      const label = data.roadAddress || data.jibunAddress || trimmed;
+      // 입력 주소 중 시·군까지만 표시 (너무 길면 잘라냄)
+      const shortLabel = label.split(' ').slice(0, 2).join(' ');
+      setManualLocLabel(shortLabel);
+      await runNearby({ lat: data.lat, lng: data.lng }, radius);
+      setShowLocChange(false);
+      setLocChangeInput('');
+    } catch {
+      showToast('위치 검색에 실패했어요.');
+    } finally {
+      setLocChangeLoading(false);
+    }
   }
 
   // ── FINAL BOOST: 앱 진입 시 최초 1회 자동 실행 (sessionStorage guard) ──
@@ -504,7 +535,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
             {!myJobsMode && !myApplicationsMode && (loc || gpsLoc) && (
               <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 3 }}>
                 {nearbyMode
-                  ? <><Navigation size={10} /> {radius}km 내 결과</>
+                  ? <><Navigation size={10} /> {manualLocLabel ? `${manualLocLabel} ·` : '현재 위치 기준 ·'} {radius}km</>
                   : <><MapPin size={10} /> 내 위치 기준</>
                 }
               </p>
@@ -657,29 +688,91 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               </div>
             )}
 
-            {/* GPS_NEARBY_BANNER: 내 주변 일자리 표시 중 (nearbyMode 활성 시) */}
+            {/* GPS_NEARBY_BANNER: 현재 위치 기준 일자리 표시 중 (nearbyMode 활성 시) */}
             {nearbyMode && (
-              <div style={{
-                margin: '0 16px 6px',
-                padding: '7px 12px',
-                borderRadius: 10,
-                background: 'rgba(255,255,255,0.15)',
-                border: '1px solid rgba(255,255,255,0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-              }}>
-                <span style={{ fontSize: 12, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <Navigation size={13} style={{ flexShrink: 0 }} />
-                  📍 내 주변 일자리 표시 중
-                </span>
-                <button
-                  onClick={() => setNearbyMode(false)}
-                  style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
-                >
-                  전체 보기
-                </button>
+              <div style={{ margin: '0 16px 6px' }}>
+                {/* 상단: 상태 텍스트 + 버튼 2개 */}
+                <div style={{
+                  padding: '7px 12px',
+                  borderRadius: showLocChange ? '10px 10px 0 0' : 10,
+                  background: 'rgba(255,255,255,0.15)',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  borderBottom: showLocChange ? '1px solid rgba(255,255,255,0.1)' : undefined,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <span style={{ fontSize: 12, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1 }}>
+                    <Navigation size={13} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {manualLocLabel
+                        ? `📍 ${manualLocLabel} 기준 · 가까운 순`
+                        : '📍 현재 위치 기준 · 가까운 순'}
+                    </span>
+                  </span>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      onClick={() => setShowLocChange(v => !v)}
+                      style={{ fontSize: 11, fontWeight: 700, color: showLocChange ? '#fff' : 'rgba(255,255,255,0.8)', background: showLocChange ? 'rgba(255,255,255,0.25)' : 'none', border: showLocChange ? '1px solid rgba(255,255,255,0.4)' : 'none', borderRadius: 6, padding: showLocChange ? '2px 7px' : 0, cursor: 'pointer' }}
+                    >
+                      📍 위치 변경
+                    </button>
+                    <button
+                      onClick={() => { setNearbyMode(false); setManualLocLabel(''); setShowLocChange(false); }}
+                      style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      전체 보기
+                    </button>
+                  </div>
+                </div>
+                {/* 위치 변경 입력창 (showLocChange 시 슬라이드 인) */}
+                {showLocChange && (
+                  <div style={{
+                    padding: '8px 10px',
+                    borderRadius: '0 0 10px 10px',
+                    background: 'rgba(255,255,255,0.10)',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    borderTop: 'none',
+                    display: 'flex',
+                    gap: 6,
+                  }}>
+                    <input
+                      value={locChangeInput}
+                      onChange={e => setLocChangeInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleLocChange()}
+                      placeholder="예: 충남 홍성군"
+                      style={{
+                        flex: 1,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.35)',
+                        background: 'rgba(255,255,255,0.18)',
+                        color: '#fff',
+                        padding: '7px 10px',
+                        fontSize: 13,
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      onClick={handleLocChange}
+                      disabled={locChangeLoading || !locChangeInput.trim()}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: 8,
+                        background: locChangeInput.trim() ? '#fff' : 'rgba(255,255,255,0.3)',
+                        color: locChangeInput.trim() ? '#2d8a4e' : 'rgba(255,255,255,0.5)',
+                        fontWeight: 800,
+                        fontSize: 12,
+                        border: 'none',
+                        cursor: locChangeInput.trim() ? 'pointer' : 'default',
+                        flexShrink: 0,
+                        display: 'flex', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      {locChangeLoading ? <Loader2 size={12} className="animate-spin" /> : '검색'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
