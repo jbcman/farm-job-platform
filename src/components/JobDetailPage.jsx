@@ -522,7 +522,7 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
                 });
                 const data = await res.json();
                 if (data.ok) {
-                  setJob(prev => ({ ...prev, status: 'done', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }));
+                  setJob(prev => ({ ...prev, status: 'completed', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }));
                   alert(`✅ 완료 처리됐어요!\n${data.payAmount ? `💰 정산: ${data.payAmount.toLocaleString()}원` : ''}`);
                 } else {
                   alert('⚠️ ' + (data.error || '완료 처리 실패'));
@@ -564,7 +564,7 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
       )}
 
       {/* 완료 + 정산 완료 배지 */}
-      {job.status === 'done' && job.paid && (
+      {job.status === 'completed' && job.paid && (
         <div className="mx-4 mb-4 bg-green-50 border border-green-200 rounded-2xl px-4 py-3
                         flex items-center gap-3">
           <span className="text-2xl">💰</span>
