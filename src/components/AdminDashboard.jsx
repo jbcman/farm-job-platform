@@ -327,6 +327,32 @@ export default function AdminDashboard({ onBack }) {
     finally { setGeoLoading(false); }
   }, [adminKey]);
 
+  // ── SAFE_RESET: DB 초기화 ──────────────────────────────────────
+  const [resetting, setResetting] = useState(false);
+
+  const handleReset = async () => {
+    const ok1 = window.confirm('⚠️ 전체 테스트 데이터를 삭제합니다.\n(users 제외: jobs/workers/applications 등)\n\n계속하시겠습니까?');
+    if (!ok1) return;
+    const ok2 = window.confirm('🚨 마지막 확인: 되돌릴 수 없습니다.\n삭제 후 데모 데이터가 자동 재시드됩니다.');
+    if (!ok2) return;
+
+    setResetting(true);
+    try {
+      const d = await adminFetch('/admin/reset-db', adminKey, {
+        method: 'POST',
+        body:   { confirm: 'RESET_OK' },
+      });
+      alert(`✅ 초기화 완료\n${d.message || ''}`);
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.reload();
+    } catch (e) {
+      alert(`❌ 초기화 실패: ${e.message}`);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   // ── 감사 로그 탭 ───────────────────────────────────────────────
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
@@ -538,7 +564,32 @@ export default function AdminDashboard({ onBack }) {
 
         {/* ══ AUDIT TAB ════════════════════════════════════════════ */}
         {activeTab === 'audit' && (
-          <AuditTab logs={auditLogs} loading={auditLoading} onRefresh={loadAudit} />
+          <>
+            <AuditTab logs={auditLogs} loading={auditLoading} onRefresh={loadAudit} />
+
+            {/* ── SAFE_RESET: 위험 영역 ─────────────────────────── */}
+            <div className="mx-4 mt-6 mb-2 rounded-2xl border-2 border-red-200 bg-red-50 p-4">
+              <p className="text-sm font-black text-red-700 flex items-center gap-1.5 mb-1">
+                🚨 위험 영역 — DB 초기화
+              </p>
+              <p className="text-xs text-red-500 mb-3">
+                테스트용 전체 데이터 삭제 후 데모 데이터로 재시드합니다.
+                (users 테이블 제외 · 되돌릴 수 없음 · ALLOW_DB_RESET=true 필요)
+              </p>
+              <button
+                onClick={handleReset}
+                disabled={resetting}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl
+                           bg-red-600 text-white text-sm font-bold
+                           disabled:opacity-50 active:scale-95 transition-transform"
+              >
+                {resetting
+                  ? <><span className="animate-spin">⏳</span> 초기화 중...</>
+                  : '🚨 테스트 DB 초기화'
+                }
+              </button>
+            </div>
+          </>
         )}
 
         {/* ══ TEST TAB ═════════════════════════════════════════════ */}

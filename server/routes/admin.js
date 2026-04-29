@@ -760,4 +760,54 @@ router.get('/status-logs', (req, res) => {
     }
 });
 
+// ─── POST /api/admin/reset-db ─────────────────────────────────────
+// SAFE_RESET: 테스트 데이터 전체 삭제 + 재시드
+// 보호 레이어: ① admin auth ② ALLOW_DB_RESET=true ③ body.confirm='RESET_OK'
+router.post('/reset-db', auth, (req, res) => {
+    // ① 환경변수 게이트 — 명시적으로 허용하지 않으면 차단
+    if (process.env.ALLOW_DB_RESET !== 'true') {
+        console.warn('[ADMIN_RESET] ALLOW_DB_RESET 미설정 → 차단');
+        return res.status(403).json({ ok: false, error: 'DB 초기화가 비활성화되어 있어요. ALLOW_DB_RESET=true 필요.' });
+    }
+
+    // ② 명시적 확인 토큰 검증
+    if (req.body?.confirm !== 'RESET_OK') {
+        return res.status(400).json({ ok: false, error: 'confirm 필드에 RESET_OK 필요' });
+    }
+
+    const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
+    console.warn(`[ADMIN_RESET] ⚠️  DB 초기화 시작 — ip=${ip}`);
+
+    try {
+        // ③ 테스트 데이터 삭제 (users 제외 — 실사용자 보호)
+        const RESET_TABLES = [
+            'applications', 'jobs', 'workers',
+            'contacts', 'reviews', 'messages', 'payments', 'sponsored_jobs',
+            'status_logs', 'notify_log', 'reports',
+            'analytics', 'user_behavior', 'rec_logs',
+            'experiment_assignments', 'experiment_events', 'test_logs',
+            'anomaly_snapshots',
+        ];
+        for (const t of RESET_TABLES) {
+            try { db.prepare(`DELETE FROM ${t}`).run(); } catch (_) {}
+        }
+
+        // ④ 시퀀스 초기화
+        try { db.prepare("DELETE FROM sqlite_sequence WHERE name != 'users' AND name != 'system_flags'").run(); } catch (_) {}
+
+        // ⑤ 데모 데이터 재시드
+        const { seed } = require('../seed');
+        seed();
+
+        // ⑥ 감사 로그
+        logAction('db_reset', null, { tables: RESET_TABLES.length, ip }, req);
+        console.warn(`[ADMIN_RESET] ✅ 완료 — ${RESET_TABLES.length}개 테이블 초기화 + 재시드`);
+
+        return res.json({ ok: true, message: `${RESET_TABLES.length}개 테이블 초기화 완료`, tables: RESET_TABLES.length });
+    } catch (e) {
+        console.error('[ADMIN_RESET] ❌ 오류:', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 module.exports = router;
