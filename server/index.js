@@ -63,7 +63,8 @@ const { detect }                    = require('./services/anomalyDetector');
 const { tryRecover }                = require('./services/safeModeRecovery');
 const { tuneWeights }               = require('./services/weightTuner');
 const monitor                       = require('./middleware/monitor');
-const { setJobCounts }              = require('./services/metricsService');
+const { setJobCounts, getSnapshot } = require('./services/metricsService');
+const { checkAlerts }               = require('./services/alertService');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -285,6 +286,13 @@ setInterval(async () => {
         }
     } catch (e) { console.error('[WEIGHT_TUNER_FAIL]', e.message); }
 }, 24 * 60 * 60 * 1000); // 24시간
+
+// ─── 운영자 알람 체크 (10초마다 — 메트릭스 임계값 감지) ──────────
+// errorsLast1m > 5 또는 avgResponseMs > 1000 → 카카오 알림톡 발송
+// 쿨다운: 5분 기본 / 3회 연속 → 30분 자동 억제
+setInterval(async () => {
+    try { await checkAlerts(getSnapshot()); } catch (_) {}
+}, 10_000);
 
 // ─── 서버 시작 (WebSocket 공유) ──────────────────────────────────
 const http   = require('http');

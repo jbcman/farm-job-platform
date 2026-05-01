@@ -654,36 +654,48 @@ router.get('/test-summary', auth, async (req, res) => {
 });
 
 // ── GET /api/admin/alert-status ──────────────────────────────────
+// 운영 메트릭 알람 (errorsLast1m, avgResponseMs) + test_logs P1/P2 통합
 router.get('/alert-status', auth, async (req, res) => {
+    let p1Count = 0, p2Count = 0, lastP1Type = null;
+
+    // ── test_logs P1/P2 집계 (SQLite/PG 공용, 테이블 없으면 스킵) ──
     try {
-        const tableRow = await db.prepare(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'test_logs' LIMIT 1"
-        ).get();
-        if (!tableRow) return res.json({ ok: true, p1: false, p1Count: 0, p2Count: 0, checkedAt: new Date().toISOString() });
+        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        p1Count = (await db.prepare(
+            "SELECT COUNT(*) AS n FROM test_logs WHERE priority = 1 AND createdAt > ?"
+        ).get(cutoff))?.n || 0;
+        p2Count = (await db.prepare(
+            "SELECT COUNT(*) AS n FROM test_logs WHERE priority = 2 AND createdAt > ?"
+        ).get(cutoff))?.n || 0;
+        if (p1Count > 0) {
+            const row = await db.prepare(
+                "SELECT type FROM test_logs WHERE priority = 1 ORDER BY id DESC LIMIT 1"
+            ).get();
+            lastP1Type = row?.type || null;
+        }
+    } catch (_) { /* test_logs 테이블 없음 → 무시 */ }
 
-        const p1Count = (await db.prepare(
-            "SELECT COUNT(*) AS n FROM test_logs WHERE priority = 1 AND createdat::timestamptz > NOW() - INTERVAL '24 hours'"
-        ).get())?.n || 0;
-        const p2Count = (await db.prepare(
-            "SELECT COUNT(*) AS n FROM test_logs WHERE priority = 2 AND createdat::timestamptz > NOW() - INTERVAL '24 hours'"
-        ).get())?.n || 0;
+    // ── 운영 메트릭 알람 상태 (alertService) ─────────────────────
+    let opAlerts = null;
+    try {
+        const { getAlertState } = require('../services/alertService');
+        opAlerts = getAlertState();
 
-        const lastP1Row = p1Count > 0
-            ? await db.prepare("SELECT type FROM test_logs WHERE priority = 1 ORDER BY id DESC LIMIT 1").get()
-            : null;
+        // 운영 P1 (ERROR_SPIKE 활성) 을 p1Count에 합산
+        if (opAlerts.p1Active) p1Count += 1;
+        if (opAlerts.p2Active) p2Count += 1;
+    } catch (_) {}
 
-        return res.json({
-            ok: true,
-            p1: p1Count > 0,
-            p1Count,
-            p2Count,
-            lastP1Type: lastP1Row?.type || null,
-            checkedAt: new Date().toISOString(),
-        });
-    } catch (e) {
-        console.error('[ALERT_STATUS_ERROR]', e.message);
-        return res.json({ ok: true, p1: false, p1Count: 0, p2Count: 0 });
-    }
+    return res.json({
+        ok:         true,
+        p1:         p1Count > 0,
+        p1Count,
+        p2Count,
+        lastP1Type,
+        // 운영 알람 상세 (프론트 확장용)
+        opAlerts,
+        checkedAt:  new Date().toISOString(),
+    });
 });
 
 // ── GET /api/admin/status-logs ───────────────────────────────────
