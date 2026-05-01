@@ -3,7 +3,7 @@ import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Z
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent } from '../utils/api.js';
+import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent, getRecommendWorkers, trackRecommendView, trackRecommendClick } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logCallFail, logCheckpoint, logClickFail } from '../utils/testLogger.js'; // REAL_USER_TEST
 import { connectWS } from '../services/ws.js';
 import { useToast, ToastBanner } from '../hooks/useToast.jsx';
@@ -83,6 +83,9 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const abandonTimerRef     = useRef(null);      // auto_match_abandon 15초 타이머
   const didCallRef          = useRef(false);     // 배너에서 전화 클릭 여부 (abandon 차단용)
   const [workerMarker, setWorkerMarker] = useState(null); // { lat, lng, ts } — 실시간 작업자 위치
+  const [topWorkers,   setTopWorkers]   = useState([]);   // TOP 3 추천 작업자 (반경 20km)
+  const top3PanelRef    = useRef(null);   // viewed 이벤트용 IntersectionObserver 타겟
+  const viewedFiredRef  = useRef(false);  // 중복 fired 방지
   const { toast, showToast } = useToast();
 
   // Phase 8: 상태별 읽기 전용 모드
@@ -110,6 +113,28 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [job.id, userId]);
+
+  // TOP 3 추천 작업자 — 공고 open 상태이고 농민 화면일 때만 로드 (1회)
+  useEffect(() => {
+    if (!isFarmer || job.status !== 'open') return;
+    getRecommendWorkers(job.id)
+      .then(d => setTopWorkers(d.workers || []))
+      .catch(() => {});
+  }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // TOP 3 패널 노출 감지 → viewed 이벤트 (1회)
+  useEffect(() => {
+    if (!top3PanelRef.current || viewedFiredRef.current) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0]?.isIntersecting && !viewedFiredRef.current) {
+        viewedFiredRef.current = true;
+        trackRecommendView(job.id);
+        observer.disconnect();
+      }
+    }, { threshold: 0.5 });
+    observer.observe(top3PanelRef.current);
+    return () => observer.disconnect();
+  }, [topWorkers, job.id]); // topWorkers 로드 후 ref 연결
 
   // LIVE_LOCATION: WS 구독 — 작업자 위치 실시간 수신 (on_the_way/in_progress)
   useEffect(() => {
@@ -262,6 +287,27 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       clearTimeout(abandonTimerRef.current);
     };
   }, [autoMatched, job.id]);
+
+  // TOP3 추천: "바로 선택" — 지원 전 작업자 직접 선택 + 즉시 전화
+  async function handleDirectSelectWorker(w) {
+    markFirstAction();
+    trackClientEvent('recommend_select_click', { jobId: job.id, workerId: w.id, source: 'top3' });
+    trackRecommendClick(job.id, w.id); // clicked=true (퍼널 분석용)
+    setSelecting(w.id);
+    try {
+      const data = await selectWorker(job.id, { requesterId: userId, workerId: w.id });
+      logTestEvent('farmer_select_worker', { jobId: job.id, workerId: w.id, source: 'recommend' });
+      logCheckpoint('select_done', { jobId: job.id });
+      onSelectContact?.(data.contact);
+      const phone = data.contact?.workerPhone;
+      if (phone) window.location.href = `tel:${phone.replace(/[^0-9]/g, '')}`;
+    } catch (e) {
+      logClickFail('recommend_select', e.message);
+      setError(e.message);
+    } finally {
+      setSelecting(null);
+    }
+  }
 
   // FAST_SELECT: 선택 API → 즉시 전화 다이얼 (한 번 탭으로 끝)
   async function handleSelectAndCall(applicant) {
@@ -730,6 +776,94 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
           )}
         </div>
       )}
+
+      {/* ── TOP 3 추천 작업자 패널 ─────────────────────────────────
+           조건: 농민 화면 + open 상태 + 이미 지원한 작업자 제외 후 1명 이상
+           목적: 지원자가 없거나 적을 때도 "지금 선택 가능한 작업자" 제시   */}
+      {isFarmer && job.status === 'open' && (() => {
+        // 이미 지원한 작업자는 패널에서 제외 (아래 목록과 중복 방지)
+        const appliedIds = new Set(applicants.map(a => a.worker?.id).filter(Boolean));
+        const unique = topWorkers.filter(w => !appliedIds.has(w.id));
+        if (unique.length === 0) return null;
+        return (
+          <div ref={top3PanelRef} className="mx-4 mt-3 bg-green-50 border border-green-200 rounded-2xl p-3">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-base">⭐</span>
+              <p className="font-bold text-green-800 text-sm">추천 작업자 — 지금 바로 선택 가능</p>
+              <span className="ml-auto text-xs text-green-500">🚗 20km 이내</span>
+            </div>
+            <p className="text-xs text-green-600 mb-3">
+              거리·평점·완료 실적 기준 최적 작업자입니다. 가장 빠르게 연결 가능해요.
+            </p>
+            <div className="space-y-2">
+              {unique.map((w, idx) => (
+                <div key={w.id}
+                  className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5
+                             border border-green-100 shadow-sm"
+                >
+                  <div className="flex-1 min-w-0 mr-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {idx === 0 && (
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                          🥇 1순위
+                        </span>
+                      )}
+                      <span className="font-bold text-gray-800 text-sm">{w.name}</span>
+                      <div className="flex items-center gap-0.5 text-amber-400">
+                        <Star size={12} fill="currentColor" />
+                        <span className="text-xs font-bold text-gray-700">{w.rating}</span>
+                      </div>
+                    </div>
+                    {/* 성공 확률 배지 */}
+                    {w.successProb != null && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={
+                          `font-bold px-2 py-0.5 rounded-full text-xs ` +
+                          (w.successProb >= 75 ? 'bg-green-100 text-green-700'
+                         : w.successProb >= 50 ? 'bg-yellow-100 text-yellow-700'
+                         :                       'bg-gray-100 text-gray-500')
+                        }>
+                          ✅ 성공 확률 {w.successProb}%
+                        </span>
+                        {/* 경고 배지 (비/강풍) */}
+                        {w.explain?.warn?.length > 0 && (
+                          <span className="text-xs text-orange-500 font-medium">
+                            {w.explain.warn[0]}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {/* 추천 이유 태그 */}
+                    {w.explain?.reasons?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {w.explain.reasons.map((r, ri) => (
+                          <span key={ri}
+                            className="text-xs px-1.5 py-0.5 rounded-full
+                                       bg-blue-50 text-blue-600 border border-blue-100">
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDirectSelectWorker(w)}
+                    onTouchStart={() => {}}
+                    disabled={!!selecting}
+                    className="flex-shrink-0 bg-green-600 text-white text-xs font-bold
+                               px-3 py-2 rounded-xl active:scale-95 transition-transform
+                               disabled:opacity-60 whitespace-nowrap"
+                  >
+                    {selecting === w.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : '바로 선택'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="px-4 py-4 space-y-3 animate-fade-in">
         {loading && (

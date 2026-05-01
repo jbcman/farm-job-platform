@@ -66,6 +66,25 @@ export async function selectWorker(jobId, { requesterId, workerId }) {
     return req('POST', `/jobs/${jobId}/select-worker`, { requesterId, workerId });
 }
 
+/** TOP 3 추천 작업자 (거리·평점·경험 기반, 반경 20km) */
+export async function getRecommendWorkers(jobId) {
+    return req('GET', `/jobs/${jobId}/recommend-workers`);
+}
+
+/** 추천 패널 노출 이벤트 (viewed=true) */
+export function trackRecommendView(jobId) {
+    fetch(`/api/jobs/${jobId}/recommend-view`, { method: 'POST' }).catch(() => {});
+}
+
+/** 추천 "바로 선택" 클릭 이벤트 (clicked=true) */
+export function trackRecommendClick(jobId, workerId) {
+    fetch(`/api/jobs/${jobId}/recommend-click`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ workerId }),
+    }).catch(() => {});
+}
+
 /** PHASE 29: 전화 연결 정보 조회 */
 export async function connectCall(jobId, requestingUserId) {
     return req('POST', `/jobs/${jobId}/connect-call`, { requestingUserId });

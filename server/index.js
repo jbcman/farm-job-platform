@@ -48,6 +48,7 @@ const { scheduleBehaviorCleanup }   = require('./services/behaviorCleanup');
 const { runAutoWinner }             = require('./services/autoWinnerService');
 const { detect }                    = require('./services/anomalyDetector');
 const { tryRecover }                = require('./services/safeModeRecovery');
+const { tuneWeights }               = require('./services/weightTuner');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -201,24 +202,36 @@ app.use((err, _req, res, _next) => {
 
 // ─── 시드 데이터 ──────────────────────────────────────────────────
 if (process.env.USE_SEED_DATA !== 'false') {
-    seed();
+    seed().catch(e => console.error('[SEED_FAIL]', e.message));
 }
 
 // ─── PHASE 32: 재시작 후 출발 독촉 타이머 복구 ──────────────────────
 // 서버가 꺼져 있는 동안 in_progress였던 작업들의 10분 타이머를 복구
-setImmediate(recoverDepartureReminders);
+setImmediate(() => recoverDepartureReminders().catch(e => console.error('[REMINDER_RECOVERY_FAIL]', e.message)));
 
 // ─── PERSONALIZATION: 행동 로그 자동 정리 (30일/사용자당 100개 캡) ──
 scheduleBehaviorCleanup();
 
 // ─── AUTO_WINNER: 10분마다 승자 자동 판정 ───────────────────────
-setInterval(() => {
-    try { runAutoWinner(); } catch (e) { console.error('[AUTO_WINNER_FAIL]', e.message); }
+setInterval(async () => {
+    try { await runAutoWinner(); } catch (e) { console.error('[AUTO_WINNER_FAIL]', e.message); }
 }, 10 * 60 * 1000);
 
 // ─── SAFE_MODE: 이상 감지 (10분) + 자동 복구 시도 (1분) ─────────
-setInterval(() => { try { detect();     } catch (_) {} }, 10 * 60 * 1000);
-setInterval(() => { try { tryRecover(); } catch (_) {} },      60 * 1000);
+setInterval(async () => { try { await detect();     } catch (_) {} }, 10 * 60 * 1000);
+setInterval(async () => { try { await tryRecover(); } catch (_) {} },      60 * 1000);
+
+// ─── AI 가중치 자동 튜닝 (24시간마다) ────────────────────────────
+// match_logs Top-1 선택률 기반으로 거리/평점 가중치 자동 조정
+// 최소 20건 미달 시 스킵, 결과는 server/model_weights.json 에 저장
+setInterval(async () => {
+    try {
+        const result = await tuneWeights();
+        if (result.action !== 'no_change' && result.action !== 'insufficient_data') {
+            console.log(`[WEIGHT_TUNER] 자동 튜닝 완료: top1=${result.top1Rate}% action=${result.action}`);
+        }
+    } catch (e) { console.error('[WEIGHT_TUNER_FAIL]', e.message); }
+}, 24 * 60 * 60 * 1000); // 24시간
 
 // ─── 서버 시작 (WebSocket 공유) ──────────────────────────────────
 const http   = require('http');

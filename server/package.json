@@ -6,13 +6,17 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "db:init": "node init_pg.js",
+    "db:migrate": "node migrate_optimize.js",
+    "db:setup": "node init_pg.js && node migrate_optimize.js"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
+    "pg": "^8.13.3",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.18.2",
