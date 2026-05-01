@@ -9,7 +9,11 @@
     "dev": "node index.js",
     "db:init": "node init_pg.js",
     "db:migrate": "node migrate_optimize.js",
-    "db:setup": "node init_pg.js && node migrate_optimize.js"
+    "db:setup": "node init_pg.js && node migrate_optimize.js",
+    "db:export": "node scripts/export_sqlite.js",
+    "db:import": "node scripts/import_pg.js",
+    "db:verify": "node scripts/verify_migration.js",
+    "db:migrate-full": "node init_pg.js && node migrate_optimize.js && node scripts/import_pg.js && node scripts/verify_migration.js"
   },
   "engines": {
     "node": ">=20.0.0"

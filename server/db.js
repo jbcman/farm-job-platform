@@ -356,6 +356,19 @@ function buildPgAdapter(pool) {
         return o;
     };
 
+    // ── 슬로우 쿼리 감지 ─────────────────────────────────────────────
+    const SLOW_QUERY_MS = parseInt(process.env.SLOW_QUERY_MS || '200', 10);
+    async function timedQuery(executor, sql, values) {
+        const t0 = Date.now();
+        const result = await executor.query(sql, values);
+        const ms = Date.now() - t0;
+        if (ms > SLOW_QUERY_MS) {
+            const preview = sql.replace(/\s+/g, ' ').trim().slice(0, 120);
+            console.warn(`[SLOW_QUERY] ${ms}ms: ${preview}`);
+        }
+        return result;
+    }
+
     function prepareArgsPG(rawSql, args) {
         const wasIgnore = RE_INSERT_OR_IGNORE.test(rawSql);
         RE_INSERT_OR_IGNORE.lastIndex = 0;
@@ -382,9 +395,9 @@ function buildPgAdapter(pool) {
         mode: 'POSTGRES',
         prepare(rawSql) {
             return {
-                async get(...a)  { const {sql,values}=prepareArgsPG(rawSql,a); const {rows}=await getExec().query(sql,values); return rows.length ? norm(rows[0]) : null; },
-                async all(...a)  { const {sql,values}=prepareArgsPG(rawSql,a); const {rows}=await getExec().query(sql,values); return rows.map(norm); },
-                async run(...a)  { const {sql,values}=prepareArgsPG(rawSql,a); const r=await getExec().query(sql,values); return {changes:r.rowCount??0, lastInsertRowid:r.rows?.[0]?.id??null}; },
+                async get(...a)  { const {sql,values}=prepareArgsPG(rawSql,a); const {rows}=await timedQuery(getExec(),sql,values); return rows.length ? norm(rows[0]) : null; },
+                async all(...a)  { const {sql,values}=prepareArgsPG(rawSql,a); const {rows}=await timedQuery(getExec(),sql,values); return rows.map(norm); },
+                async run(...a)  { const {sql,values}=prepareArgsPG(rawSql,a); const r=await timedQuery(getExec(),sql,values); return {changes:r.rowCount??0, lastInsertRowid:r.rows?.[0]?.id??null}; },
             };
         },
         transaction(fn) {
@@ -400,7 +413,7 @@ function buildPgAdapter(pool) {
             };
         },
         exec(sql)         { return pool.query(sql.replace(RE_DATETIME_NOW,'CURRENT_TIMESTAMP').replace(RE_AUTOINCREMENT,'BIGSERIAL PRIMARY KEY')); },
-        q(sql, params=[]) { return getExec().query(sql, params); },
+        q(sql, params=[]) { return timedQuery(getExec(), sql, params ?? []); },
     };
 }
 

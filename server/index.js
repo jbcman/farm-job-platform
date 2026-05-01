@@ -5,6 +5,19 @@
  * 바인드: 0.0.0.0 (external access)
  */
 
+// ─── 프로세스 전역 에러 핸들러 (최우선 등록) ─────────────────────
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] uncaughtException:', err.message);
+    console.error(err.stack);
+    // 치명적 오류: 프로세스 종료 (Render가 자동 재시작)
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    console.error('[PROMISE_ERROR] unhandledRejection:', msg);
+    // 비치명적: 로그만 남기고 서비스 유지
+});
+
 // ─── 환경변수 로드 (최우선) ───────────────────────────────────────
 const path = require('path');
 const fs   = require('fs');
@@ -49,6 +62,7 @@ const { runAutoWinner }             = require('./services/autoWinnerService');
 const { detect }                    = require('./services/anomalyDetector');
 const { tryRecover }                = require('./services/safeModeRecovery');
 const { tuneWeights }               = require('./services/weightTuner');
+const monitor                       = require('./middleware/monitor');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -70,13 +84,8 @@ app.use(cors({
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true })); // MAP_CORE: form-encoded body 방어
 
-// ─── 요청 로그 ────────────────────────────────────────────────────
-app.use((req, _res, next) => {
-    if (req.path !== '/api/health') {
-        console.log(`[${new Date().toLocaleTimeString('ko-KR')}] ${req.method} ${req.path}`);
-    }
-    next();
-});
+// ─── 요청 모니터링 (슬로우 API / 5xx 감지) ──────────────────────
+app.use(monitor);
 
 // ─── 업로드 파일 정적 서빙 (VISUAL_JOB_LITE) ─────────────────────
 const uploadsPath = path.join(__dirname, '../uploads');
@@ -90,15 +99,34 @@ if (fs.existsSync(distPath)) {
     console.log(`[STATIC] Serving frontend from ${distPath}`);
 }
 
-// ─── 헬스체크 ─────────────────────────────────────────────────────
-app.get('/api/health', (_req, res) =>
-    res.json({
+// ─── 헬스체크 (DB 상태 포함) ─────────────────────────────────────
+const db = require('./db');
+app.get('/api/health', async (_req, res) => {
+    const t0 = Date.now();
+    let dbStatus = 'unknown';
+    let dbMode   = db.mode;
+    try {
+        if (dbMode === 'POSTGRES') {
+            await db.q('SELECT 1');
+        } else {
+            await db.prepare('SELECT 1').get();
+        }
+        dbStatus = 'up';
+    } catch (e) {
+        dbStatus = 'down';
+        console.error('[HEALTH] DB 응답 없음:', e.message);
+    }
+    const httpStatus = dbStatus === 'down' ? 503 : 200;
+    res.status(httpStatus).json({
         server:    'ok',
+        db:        dbStatus,
+        dbMode:    dbMode,
         timestamp: new Date().toISOString(),
-        port:      PORT,
+        uptimeSec: Math.floor(process.uptime()),
+        responseMs: Date.now() - t0,
         kakao:     process.env.USE_KAKAO === 'true' ? 'real' : 'mock',
-    })
-);
+    });
+});
 
 // ─── GET /api/geocode — 주소 → 좌표 변환 (JobRequestPage 농지 주소 입력용) ──
 // farmAddress 입력 후 "위치 찾기" 버튼이 이 엔드포인트를 호출함
