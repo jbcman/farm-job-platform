@@ -18,6 +18,7 @@
  *   { type: 'ping' }                        — 30s keepalive
  */
 const WebSocket = require('ws');
+const { setConnections, getSnapshot } = require('./services/metricsService');
 
 // ── 룸 관리 ───────────────────────────────────────────────────────
 // Map<jobId, Set<ws>>
@@ -83,6 +84,7 @@ function initWS(httpServer) {
     wss.on('connection', (ws, req) => {
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?';
         console.log(`[WS_CONNECT] ip=${ip} total=${wss.clients.size}`);
+        setConnections(wss.clients.size);
 
         ws.send(JSON.stringify({ type: 'connected', clients: wss.clients.size }));
 
@@ -102,6 +104,7 @@ function initWS(httpServer) {
         ws.on('close', () => {
             _leaveAllRooms(ws);
             console.log(`[WS_DISCONNECT] total=${wss.clients.size}`);
+            setConnections(wss.clients.size);
         });
 
         ws.on('error', (err) => {
@@ -109,7 +112,7 @@ function initWS(httpServer) {
         });
     });
 
-    // ── 30초 Keepalive Ping ─────────────────────────────────��───────
+    // ── 30초 Keepalive Ping ───────────────────────────────────────
     setInterval(() => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
@@ -117,6 +120,20 @@ function initWS(httpServer) {
             }
         });
     }, 30_000);
+
+    // ── 3초 실시간 메트릭스 브로드캐스트 ─────────────────────────
+    // Admin 대시보드가 구독하면 실시간으로 받음
+    // 접속자가 없으면 스킵 (CPU/대역폭 절약)
+    setInterval(() => {
+        if (wss.clients.size === 0) return;
+        try {
+            const snapshot = getSnapshot();
+            const msg = JSON.stringify({ type: 'metrics', data: snapshot });
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) client.send(msg);
+            });
+        } catch (_) {}
+    }, 3_000);
 
     console.log('[WS] WebSocket 서버 초기화 완료 (룸 지원 REALTIME_ROOM_V2)');
     return wss;

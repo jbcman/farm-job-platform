@@ -9,13 +9,13 @@
 process.on('uncaughtException', (err) => {
     console.error('[FATAL] uncaughtException:', err.message);
     console.error(err.stack);
-    // 치명적 오류: 프로세스 종료 (Render가 자동 재시작)
+    try { require('./services/metricsService').recordError(); } catch (_) {}
     process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
     const msg = reason instanceof Error ? reason.message : String(reason);
     console.error('[PROMISE_ERROR] unhandledRejection:', msg);
-    // 비치명적: 로그만 남기고 서비스 유지
+    try { require('./services/metricsService').recordError(); } catch (_) {}
 });
 
 // ─── 환경변수 로드 (최우선) ───────────────────────────────────────
@@ -63,6 +63,7 @@ const { detect }                    = require('./services/anomalyDetector');
 const { tryRecover }                = require('./services/safeModeRecovery');
 const { tuneWeights }               = require('./services/weightTuner');
 const monitor                       = require('./middleware/monitor');
+const { setJobCounts }              = require('./services/metricsService');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -248,6 +249,30 @@ setInterval(async () => {
 // ─── SAFE_MODE: 이상 감지 (10분) + 자동 복구 시도 (1분) ─────────
 setInterval(async () => { try { await detect();     } catch (_) {} }, 10 * 60 * 1000);
 setInterval(async () => { try { await tryRecover(); } catch (_) {} },      60 * 1000);
+
+// ─── JOB 상태 집계 (30초마다 — metricsService 갱신) ──────────────
+// 실시간 대시보드에서 공고 현황 표시에 사용
+;(async function pollJobCounts() {
+    const dbLocal = require('./db');
+    async function _refresh() {
+        try {
+            const rows = await dbLocal.prepare(
+                `SELECT status, COUNT(*) AS cnt FROM jobs GROUP BY status`
+            ).all();
+            const counts = { open: 0, matched: 0, in_progress: 0, completed: 0 };
+            for (const r of rows) {
+                const s = (r.status || '').toLowerCase();
+                if (s === 'open')        counts.open        = Number(r.cnt) || 0;
+                else if (s === 'matched')     counts.matched     = Number(r.cnt) || 0;
+                else if (s === 'in_progress') counts.in_progress = Number(r.cnt) || 0;
+                else if (s === 'completed')   counts.completed   = Number(r.cnt) || 0;
+            }
+            setJobCounts(counts);
+        } catch (_) {}
+    }
+    _refresh(); // 즉시 1회
+    setInterval(_refresh, 30_000); // 30초마다
+})();
 
 // ─── AI 가중치 자동 튜닝 (24시간마다) ────────────────────────────
 // match_logs Top-1 선택률 기반으로 거리/평점 가중치 자동 조정

@@ -4,7 +4,9 @@ import {
   Briefcase, Users, CheckCircle, XCircle, ArrowLeft,
   TrendingUp, Star, Award,
   ShieldOff, Shield, MapPin, Flag, Search, ChevronDown,
+  Wifi, WifiOff, Zap,
 } from 'lucide-react';
+import { connectWS } from '../services/ws';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell,
@@ -122,6 +124,75 @@ function KeyGate({ onSubmit }) {
   );
 }
 
+// ── 실시간 현황 패널 ─────────────────────────────────────────────
+function RealtimePanel({ metrics, status }) {
+  const isLive = status === 'connected' && metrics;
+
+  const tile = (emoji, label, value, colorCls = 'text-white') => (
+    <div className="bg-gray-800 rounded-2xl p-3 flex flex-col gap-1">
+      <p className="text-[11px] text-gray-400 font-semibold">{emoji} {label}</p>
+      <p className={`text-2xl font-black ${colorCls}`}>
+        {value ?? <span className="text-gray-600">—</span>}
+      </p>
+    </div>
+  );
+
+  return (
+    <section className="bg-gray-900 border border-gray-700 rounded-3xl p-4">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+          <Zap size={12} className="text-yellow-400" />
+          실시간 현황
+        </p>
+        <div className="flex items-center gap-1.5">
+          {isLive ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-[11px] text-green-400 font-bold flex items-center gap-1">
+                <Wifi size={11} /> LIVE
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-gray-600" />
+              <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                <WifiOff size={11} />
+                {status === 'failed' ? '연결 실패' : '연결 중...'}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {tile('👥', '접속자', metrics?.activeConnections ?? '—', 'text-blue-300')}
+        {tile('📋', '진행 공고', metrics?.jobsOpen       ?? '—', 'text-green-300')}
+        {tile('🤝', '매칭됨',   metrics?.jobsMatched     ?? '—', 'text-purple-300')}
+        {tile('🚧', '작업중',   metrics?.jobsInProgress  ?? '—', 'text-amber-300')}
+        {tile('⚠️', '에러/분',  metrics ? (
+          <span className={metrics.errorsLast1m > 0 ? 'text-red-400' : 'text-white'}>
+            {metrics.errorsLast1m}
+          </span>
+        ) : '—', '')}
+        {tile('⚡', '응답속도',
+          metrics ? `${metrics.avgResponseMs}ms` : '—',
+          metrics?.avgResponseMs > 500 ? 'text-red-400'
+            : metrics?.avgResponseMs > 200 ? 'text-amber-300'
+            : 'text-green-300'
+        )}
+      </div>
+
+      {metrics && (
+        <div className="mt-2 flex items-center justify-between text-[10px] text-gray-600">
+          <span>요청 {metrics.reqPerMin}회/분 · DB {metrics.dbMode}</span>
+          <span>가동 {Math.floor((metrics.uptimeSec || 0) / 3600)}h {Math.floor(((metrics.uptimeSec || 0) % 3600) / 60)}m</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── 매출 포맷 ────────────────────────────────────────────────────
 function fmtRevenue(n) {
   if (!n || n === 0) return '₩0';
@@ -146,6 +217,9 @@ export default function AdminDashboard({ onBack }) {
   const [adminKey,    setAdminKey]    = useState(() => sessionStorage.getItem('admin-key') || '');
   const [showGate,    setShowGate]    = useState(false);
   const [metrics,     setMetrics]     = useState(null);
+  // ── 실시간 WebSocket 메트릭스 ──────────────────────────────────
+  const [liveMetrics, setLiveMetrics] = useState(null);
+  const [wsStatus,    setWsStatus]    = useState('disconnected');
   const [stats,       setStats]       = useState(null);
   const [topWorkers,  setTopWorkers]  = useState([]);
   const [activity,    setActivity]    = useState([]);
@@ -226,6 +300,19 @@ export default function AdminDashboard({ onBack }) {
   }, [adminKey]);
 
   useEffect(() => { load(adminKey || ''); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── WebSocket 실시간 메트릭스 구독 ───────────────────────────────
+  useEffect(() => {
+    if (showGate) return;
+    const handle = connectWS(
+      (data) => {
+        if (data.type === 'metrics') setLiveMetrics(data.data ?? data);
+      },
+      (status) => setWsStatus(status),
+    );
+    setWsStatus('connected'); // 낙관적 초기화 (onopen 전에도 UI 표시)
+    return () => { handle.close(); setWsStatus('disconnected'); };
+  }, [showGate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── P1 자동 경보: 60초 폴링 ─────────────────────────────────────
   // Admin 탭이 열려 있는 동안 백그라운드에서 P1 감시
@@ -631,6 +718,9 @@ export default function AdminDashboard({ onBack }) {
 
         {activeTab === 'ops' && (
           <>
+        {/* ── 실시간 현황 패널 (WebSocket) ─────────────────────── */}
+        <RealtimePanel metrics={liveMetrics} status={wsStatus} />
+
         {/* ── 수익 대시보드 바로가기 ────────────────────────── */}
         <a
           href="/revenue"
