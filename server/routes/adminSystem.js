@@ -17,10 +17,10 @@ router.use((req, res, next) => {
 });
 
 // 수동 제어
-router.post('/safe-mode', (req, res) => {
+router.post('/safe-mode', async (req, res) => {
     try {
         const { enable } = req.body || {};
-        setFlag('SAFE_MODE', !!enable);
+        await setFlag('SAFE_MODE', !!enable);
         console.log(`[SAFE_MODE] 수동 ${enable ? '활성화' : '해제'}`);
         res.json({ ok: true, safeMode: !!enable });
     } catch (_) {
@@ -29,11 +29,11 @@ router.post('/safe-mode', (req, res) => {
 });
 
 // 현재 상태 조회
-router.get('/status', (_req, res) => {
+router.get('/status', async (_req, res) => {
     try {
-        const safeMode  = getFlag('SAFE_MODE');
-        const flags     = db.prepare('SELECT * FROM system_flags').all();
-        const lastSnap  = db.prepare(
+        const safeMode  = await getFlag('SAFE_MODE');
+        const flags     = await db.prepare('SELECT * FROM system_flags').all();
+        const lastSnap  = await db.prepare(
             'SELECT * FROM anomaly_snapshots ORDER BY ts DESC LIMIT 1'
         ).get();
         res.json({ safeMode, flags, lastAnomaly: lastSnap ?? null });

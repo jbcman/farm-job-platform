@@ -32,12 +32,12 @@ function normalizeWorker(row) {
 }
 
 // ─── GET /api/workers/nearby ──────────────────────────────────
-router.get('/nearby', (req, res) => {
+router.get('/nearby', async (req, res) => {
     const { lat, lon, category } = req.query;
     const userLat = lat ? parseFloat(lat) : null;
     const userLon = lon ? parseFloat(lon) : null;
 
-    const allWorkers = db.prepare('SELECT * FROM workers').all().map(normalizeWorker);
+    const allWorkers = (await db.prepare('SELECT * FROM workers').all()).map(normalizeWorker);
     const ranked = rankWorkers(allWorkers, { lat: userLat, lon: userLon, category })
         .map(w => ({
             id:               w.id,
@@ -61,7 +61,7 @@ router.get('/nearby', (req, res) => {
 
 // ─── POST /api/workers/location — PHASE AUTO_MATCH_ALERT ──────
 // 작업자 앱이 GPS 취득 시 서버에 현재 위치 저장 (실시간 매칭용)
-router.post('/location', (req, res) => {
+router.post('/location', async (req, res) => {
     const userId = req.headers['x-user-id'] || req.body?.userId;
     const { lat, lng } = req.body || {};
 
@@ -76,7 +76,7 @@ router.post('/location', (req, res) => {
     }
 
     // workers 테이블에서 userId로 찾아 현재 위치 갱신 + activeNow=1 (최근 활동 표시)
-    const result = db.prepare(`
+    const result = await db.prepare(`
         UPDATE workers
         SET currentLat = ?, currentLng = ?, locationUpdatedAt = ?, activeNow = 1
         WHERE userId = ?
@@ -89,10 +89,10 @@ router.post('/location', (req, res) => {
 
     // LIVE_LOCATION: 선택된 작업자만 WS emit (보안 검증 + throttle)
     try {
-        const workerRow = db.prepare('SELECT id FROM workers WHERE userId = ?').get(userId);
+        const workerRow = await db.prepare('SELECT id FROM workers WHERE userId = ?').get(userId);
         if (workerRow) {
             // ① 해당 작업자가 selectedWorkerId 로 지정된 active job만 허용
-            const activeJob = db.prepare(
+            const activeJob = await db.prepare(
                 "SELECT id, selectedWorkerId FROM jobs WHERE selectedWorkerId = ? AND status IN ('on_the_way','in_progress')"
             ).get(workerRow.id);
 
@@ -127,14 +127,14 @@ router.post('/location', (req, res) => {
 // ─── POST /api/workers/heartbeat — ACTIVE_NOW_RELIABILITY ────
 // 작업자 앱이 주기적으로 호출 → locationUpdatedAt 갱신 → V2 보너스 유지
 // 좌표 없이도 "지금 활동 중" 신호만 전송 가능
-router.post('/heartbeat', (req, res) => {
+router.post('/heartbeat', async (req, res) => {
     const userId = req.headers['x-user-id'] || req.body?.userId;
     if (!userId) {
         return res.status(400).json({ ok: false, error: 'userId 필요' });
     }
 
     const now = new Date().toISOString();
-    const result = db.prepare(`
+    const result = await db.prepare(`
         UPDATE workers
         SET activeNow = 1, locationUpdatedAt = ?
         WHERE userId = ?

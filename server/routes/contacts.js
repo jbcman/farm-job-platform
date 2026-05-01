@@ -5,12 +5,12 @@ const db      = require('../db');
 const router = express.Router();
 
 // ─── GET /api/contacts/my ─────────────────────────────────────
-router.get('/my', (req, res) => {
+router.get('/my', async (req, res) => {
     const userId = req.headers['x-user-id'] || req.query.userId;
     if (!userId) return res.status(401).json({ ok: false, error: '로그인이 필요해요.' });
 
     // 농민 역할: farmerId = userId
-    const asFarmer = db.prepare(`
+    const asFarmer = await db.prepare(`
         SELECT
             c.id, c.jobId, c.farmerId, c.workerId, c.createdAt,
             j.category, j.locationText, j.date, j.status AS jobStatus,
@@ -26,9 +26,9 @@ router.get('/my', (req, res) => {
     `).all(userId);
 
     // 작업자 역할: worker.userId = userId
-    const worker = db.prepare('SELECT id FROM workers WHERE userId = ?').get(userId);
+    const worker = await db.prepare('SELECT id FROM workers WHERE userId = ?').get(userId);
     const asWorker = worker
-        ? db.prepare(`
+        ? await db.prepare(`
             SELECT
                 c.id, c.jobId, c.farmerId, c.workerId, c.createdAt,
                 j.category, j.locationText, j.date, j.status AS jobStatus,

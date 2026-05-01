@@ -42,12 +42,12 @@ function hashUserId(userId) {
 }
 
 // ─── farmAddrRate 조회 (하드차단 임계값 체크) ─────────────────────────
-function getFarmAddrRate() {
+async function getFarmAddrRate() {
     try {
-        const total    = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE latitude IS NOT NULL").get()?.n || 0;
-        const withFarm = db.prepare(
+        const total    = (await db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE latitude IS NOT NULL").get())?.n || 0;
+        const withFarm = (await db.prepare(
             "SELECT COUNT(*) AS n FROM jobs WHERE farmAddress IS NOT NULL AND farmAddress != ''"
-        ).get()?.n || 0;
+        ).get())?.n || 0;
         if (total < 10) return null; // 데이터 부족 — 판단 보류
         return Math.round(withFarm / total * 1000) / 10;
     } catch (_) { return null; }
@@ -55,7 +55,7 @@ function getFarmAddrRate() {
 
 // ─── GET /api/ab/config?userId=... ────────────────────────────────────
 // 클라이언트가 마운트 시 1회 호출 → variant config 수령
-router.get('/config', (req, res) => {
+router.get('/config', async (req, res) => {
     const { userId } = req.query;
     if (!userId) {
         // userId 없으면 기본값 (A 그룹)
@@ -80,7 +80,7 @@ router.get('/config', (req, res) => {
     const geo_warn_count = EXPERIMENTS.geo_warn_count[hash % 3 === 0 ? 'B' : 'A'];
 
     // 조건부 하드차단: farmAddrRate < 30% AND 데이터 충분할 때
-    const farmAddrRate = getFarmAddrRate();
+    const farmAddrRate = await getFarmAddrRate();
     const hardBlock    = farmAddrRate !== null && farmAddrRate < 30;
 
     const config = { geo_message, geo_warn_color, geo_warn_count, hardBlock, group };
@@ -91,12 +91,12 @@ router.get('/config', (req, res) => {
 
 // ─── POST /api/ab/event — A/B 실험 이벤트 수집 ─────────────────────
 // 프론트에서 geo_soft_block / geo_soft_block_bypass 시 그룹 정보와 함께 기록
-router.post('/event', (req, res) => {
+router.post('/event', async (req, res) => {
     const { userId, event, group, meta } = req.body || {};
     if (!userId || !event) return res.status(400).json({ ok: false, error: 'userId, event 필요' });
 
     try {
-        db.prepare(
+        await db.prepare(
             "INSERT INTO analytics (id, event, userId, jobId, meta, createdAt) VALUES (?, ?, ?, ?, ?, ?)"
         ).run(
             'ab-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),

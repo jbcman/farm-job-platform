@@ -26,7 +26,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // ── POST /api/phone/request ─────────────────────────────────────
-router.post('/request', (req, res) => {
+router.post('/request', async (req, res) => {
   const ip  = req.ip || req.socket?.remoteAddress || 'unknown';
   const now = Date.now();
 
@@ -43,9 +43,9 @@ router.post('/request', (req, res) => {
   // DB에서 phone 조회
   let phone = null;
   try {
-    const job = db.prepare('SELECT requesterId FROM jobs WHERE id = ?').get(String(jobId));
+    const job = await db.prepare('SELECT requesterId FROM jobs WHERE id = ?').get(String(jobId));
     if (job?.requesterId) {
-      const user = db.prepare('SELECT phone FROM users WHERE id = ?').get(job.requesterId);
+      const user = await db.prepare('SELECT phone FROM users WHERE id = ?').get(job.requesterId);
       phone = user?.phone || null;
     }
   } catch (e) {

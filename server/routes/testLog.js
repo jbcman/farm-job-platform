@@ -12,26 +12,8 @@ const { classifyBug } = require('../services/bugClassifier');
 
 const router = express.Router();
 
-// ── DB 초기화: test_logs 테이블 ───────────────────────────────────
-try {
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS test_logs (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            type       TEXT    NOT NULL,
-            payload    TEXT    DEFAULT '{}',
-            priority   INTEGER DEFAULT 3,
-            sessionId  TEXT    DEFAULT '',
-            createdAt  TEXT    DEFAULT (datetime('now'))
-        )
-    `);
-    // 30일 이전 로그 자동 정리 (스타트업 시 1회)
-    db.exec(`DELETE FROM test_logs WHERE createdAt < datetime('now', '-30 days')`);
-} catch (e) {
-    console.error('[TEST_LOG_INIT]', e.message);
-}
-
 // ── POST /api/test-log — 이벤트 기록 ─────────────────────────────
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     try {
         const { type, payload = {}, sessionId = '', ts } = req.body || {};
         if (!type) return res.status(400).json({ ok: false, error: 'type 필요' });
@@ -39,9 +21,9 @@ router.post('/', (req, res) => {
         const priority = classifyBug(type);
         const payloadStr = JSON.stringify(payload);
 
-        db.prepare(`
+        await db.prepare(`
             INSERT INTO test_logs (type, payload, priority, sessionId, createdAt)
-            VALUES (?, ?, ?, ?, datetime('now'))
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
         `).run(type, payloadStr, priority, String(sessionId || ''));
 
         // Priority 1 오류는 콘솔에 즉시 경고
@@ -60,9 +42,9 @@ router.post('/', (req, res) => {
 });
 
 // ── GET /api/test-log — 빠른 확인용 (최근 50건) ──────────────────
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
-        const rows = db.prepare(`
+        const rows = await db.prepare(`
             SELECT id, type, payload, priority, sessionId, createdAt
             FROM test_logs
             ORDER BY id DESC

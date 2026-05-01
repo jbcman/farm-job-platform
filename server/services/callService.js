@@ -12,10 +12,10 @@ const db = require('../db');
  *
  * @param {string} jobId
  * @param {string} requestingUserId  - 농민 userId 또는 작업자 userId
- * @returns {{ ok: boolean, farmerPhone?: string, workerPhone?: string, workerName?: string, farmerName?: string, error?: string }}
+ * @returns {Promise<{ ok: boolean, farmerPhone?: string, workerPhone?: string, workerName?: string, farmerName?: string, error?: string }>}
  */
-function getCallInfo(jobId, requestingUserId) {
-    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+async function getCallInfo(jobId, requestingUserId) {
+    const job = await db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
     if (!job) return { ok: false, error: '작업을 찾을 수 없어요.' };
     if (job.status !== 'matched' && job.status !== 'in_progress') {
         return { ok: false, error: '아직 연결이 완료되지 않은 작업이에요.' };
@@ -28,8 +28,8 @@ function getCallInfo(jobId, requestingUserId) {
     const isFarmer = job.requesterId === requestingUserId;
 
     // BUG_FIX: selectedWorkerId = user-xxx 대응 (workers 프로필 없이 선택된 경우)
-    const selectedWorkerRow = db.prepare('SELECT * FROM workers WHERE id = ?').get(job.selectedWorkerId)
-                           || db.prepare('SELECT * FROM workers WHERE userId = ?').get(job.selectedWorkerId);
+    const selectedWorkerRow = await db.prepare('SELECT * FROM workers WHERE id = ?').get(job.selectedWorkerId)
+                           || await db.prepare('SELECT * FROM workers WHERE userId = ?').get(job.selectedWorkerId);
 
     // 작업자 여부: 3단계 체크
     // 1) workers.userId === requestingUserId  (일반 케이스 — 사용자 고유 ID)
@@ -46,13 +46,13 @@ function getCallInfo(jobId, requestingUserId) {
     }
 
     // 농민 연락처
-    const farmerUser = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.requesterId);
+    const farmerUser = await db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.requesterId);
 
     // 작업자 연락처: workers.phone 우선, 없으면 users.phone fallback
     let workerPhone = selectedWorkerRow?.phone || null;
     let workerName  = selectedWorkerRow?.name  || null;
     if (!workerPhone || !workerName) {
-        const workerUserRow = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.selectedWorkerId);
+        const workerUserRow = await db.prepare('SELECT name, phone FROM users WHERE id = ?').get(job.selectedWorkerId);
         workerPhone = workerPhone || workerUserRow?.phone || null;
         workerName  = workerName  || workerUserRow?.name  || '작업자';
     }

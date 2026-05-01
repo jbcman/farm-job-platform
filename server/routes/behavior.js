@@ -31,7 +31,7 @@ const stmtExpEvent = db.prepare(`
     VALUES (?, ?, ?, ?, ?, ?)
 `);
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     const userId = req.headers['x-user-id'];
     const { jobId, action, jobType, lat, lng } = req.body || {};
 
@@ -44,7 +44,7 @@ router.post('/', (req, res) => {
     // ① 개인화 행동 기록 (view / apply 만)
     if (PERSONALIZE_ACTIONS.has(action)) {
         try {
-            db.prepare(`
+            await db.prepare(`
                 INSERT INTO user_behavior
                 (userId, jobId, action, jobType, lat, lng, createdAt)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -65,10 +65,10 @@ router.post('/', (req, res) => {
     // ① DIFFICULTY_PERSONAL: apply 시 preferredDifficulty 자동 학습 (EMA, decay 0.9/0.1)
     if (action === 'apply') {
         try {
-            const job = db.prepare('SELECT difficulty FROM jobs WHERE id = ?').get(String(jobId));
+            const job = await db.prepare('SELECT difficulty FROM jobs WHERE id = ?').get(String(jobId));
             const d   = job?.difficulty;
             if (d != null && Number.isFinite(d)) {
-                db.prepare(`
+                await db.prepare(`
                     UPDATE users
                     SET preferredDifficulty = (preferredDifficulty * 0.9) + (? * 0.1)
                     WHERE id = ?
@@ -84,7 +84,7 @@ router.post('/', (req, res) => {
         const exp     = getActiveExperiment();
         const variant = assignVariant(userId, exp, { lat, lng }) || 'A';
         if (exp && variant) {
-            stmtExpEvent.run(userId, exp.id, variant, action, String(jobId), Date.now());
+            await stmtExpEvent.run(userId, exp.id, variant, action, String(jobId), Date.now());
             updateBanditStats(exp.id, variant, action);
 
             // 컨텍스트 통계 + RL Q 업데이트

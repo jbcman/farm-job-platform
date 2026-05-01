@@ -88,8 +88,8 @@ router.post('/event', (req, res) => {
 });
 
 // ─── GET /api/analytics/summary ───────────────────────────────
-router.get('/summary', (_req, res) => {
-    const rows = db.prepare(`
+router.get('/summary', async (_req, res) => {
+    const rows = await db.prepare(`
         SELECT event, COUNT(*) as count,
                MAX(createdAt) as lastAt
         FROM analytics
@@ -97,28 +97,28 @@ router.get('/summary', (_req, res) => {
         ORDER BY count DESC
     `).all();
 
-    const total = db.prepare('SELECT COUNT(*) as n FROM analytics').get().n;
+    const total = (await db.prepare('SELECT COUNT(*) as n FROM analytics').get()).n;
 
     return res.json({ ok: true, total, events: rows });
 });
 
 // ─── GET /api/analytics/stats — 전환 퍼널 ────────────────────
 // 현장 테스트용: apply → call 전환율 계산
-router.get('/stats', (_req, res) => {
-    const get = (event) =>
-        db.prepare("SELECT COUNT(*) as n FROM analytics WHERE event = ?").get(event)?.n || 0;
+router.get('/stats', async (_req, res) => {
+    const get = async (event) =>
+        (await db.prepare("SELECT COUNT(*) as n FROM analytics WHERE event = ?").get(event))?.n || 0;
 
-    const applyClick   = get('apply_click')  + get('job_apply');   // 카드 + 상세 둘 다 집계
-    const callClick    = get('call_click')   + get('call_clicked');
-    const smsClick     = get('sms_click');
-    const kakaoClick   = get('kakao_chat_click');
-    const contactApply = get('contact_apply');
-    const ctaClick     = get('cta_click');
-    const dirClick     = get('direction_click') + get('nav_kakao') + get('nav_naver');
-    const shareClick   = get('share_click')  + get('share_kakao') + get('share_native') + get('share_clipboard');
-    const detailView   = get('job_detail_view');
-    const mapView      = get('map_view') + get('map_view_open') + get('map_marker_click');
-    const pageView     = get('page_view') + get('mobile_visit');
+    const applyClick   = await get('apply_click')  + await get('job_apply');   // 카드 + 상세 둘 다 집계
+    const callClick    = await get('call_click')   + await get('call_clicked');
+    const smsClick     = await get('sms_click');
+    const kakaoClick   = await get('kakao_chat_click');
+    const contactApply = await get('contact_apply');
+    const ctaClick     = await get('cta_click');
+    const dirClick     = await get('direction_click') + await get('nav_kakao') + await get('nav_naver');
+    const shareClick   = await get('share_click')  + await get('share_kakao') + await get('share_native') + await get('share_clipboard');
+    const detailView   = await get('job_detail_view');
+    const mapView      = await get('map_view') + await get('map_view_open') + await get('map_marker_click');
+    const pageView     = await get('page_view') + await get('mobile_visit');
 
     const convApplyToCall = applyClick > 0
         ? Math.round(((callClick + kakaoClick) / applyClick) * 100)

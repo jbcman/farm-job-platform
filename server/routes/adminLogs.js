@@ -19,9 +19,9 @@ router.use((req, res, next) => {
 });
 
 // ─── 최근 N건 ─────────────────────────────────────────────────────
-router.get('/recent', (_req, res) => {
+router.get('/recent', async (_req, res) => {
     try {
-        const rows = db.prepare(`
+        const rows = await db.prepare(`
             SELECT * FROM rec_logs ORDER BY id DESC LIMIT 200
         `).all();
         res.json(rows);
@@ -29,20 +29,21 @@ router.get('/recent', (_req, res) => {
 });
 
 // ─── 집계 ────────────────────────────────────────────────────────
-router.get('/stats', (_req, res) => {
+router.get('/stats', async (_req, res) => {
     try {
-        const byVariant = db.prepare(`
-            SELECT variantKey, COUNT(*) cnt, ROUND(AVG(score),2) avgScore
+        const byVariant = await db.prepare(`
+            SELECT variantKey, COUNT(*) cnt, ROUND(AVG(score)::numeric,2) avgScore
             FROM rec_logs GROUP BY variantKey ORDER BY cnt DESC
         `).all();
 
-        const byType = db.prepare(`
-            SELECT COALESCE(autoJobType, jobType) AS type,
-                   COUNT(*) cnt, ROUND(AVG(score),2) avgScore
+        const byType = await db.prepare(`
+            SELECT COALESCE(autojobtype, jobtype) AS type,
+                   COUNT(*) cnt, ROUND(AVG(score)::numeric,2) avgScore
             FROM rec_logs GROUP BY type ORDER BY cnt DESC
         `).all();
 
-        const total = db.prepare('SELECT COUNT(*) AS n FROM rec_logs').get().n;
+        const totalRow = await db.prepare('SELECT COUNT(*) AS n FROM rec_logs').get();
+        const total = totalRow?.n || 0;
 
         res.json({ total, byVariant, byType });
     } catch (_) { res.json({ total: 0, byVariant: [], byType: [] }); }

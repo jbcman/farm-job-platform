@@ -9,7 +9,7 @@ function newId() {
 }
 
 // ─── POST /api/reviews ────────────────────────────────────────
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     const { jobId, rating, comment = '' } = req.body;
     const reviewerId = req.headers['x-user-id'] || req.body.reviewerId;
 
@@ -21,7 +21,7 @@ router.post('/', (req, res) => {
     }
 
     // 작업 상태 확인
-    const job = db.prepare('SELECT status, requesterId, selectedWorkerId FROM jobs WHERE id = ?').get(jobId);
+    const job = await db.prepare('SELECT status, requesterId, selectedWorkerId FROM jobs WHERE id = ?').get(jobId);
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
     // PHASE 8: done 또는 paid(입금완료) 상태 모두 허용
     // STATUS_NORMALIZE: completed(신규) 또는 done(레거시) — paymentStatus=paid면 추가 허용
@@ -30,7 +30,7 @@ router.post('/', (req, res) => {
     }
 
     // targetId: contacts에서 workerId 자동 조회
-    const contact = db.prepare('SELECT workerId FROM contacts WHERE jobId = ?').get(jobId);
+    const contact = await db.prepare('SELECT workerId FROM contacts WHERE jobId = ?').get(jobId);
     const targetId = req.body.targetId || contact?.workerId;
     if (!targetId) {
         return res.status(400).json({ ok: false, error: '대상 작업자를 찾을 수 없어요.' });
@@ -39,7 +39,7 @@ router.post('/', (req, res) => {
     // PHASE 31: 참여자 확인 — 농민 또는 선택된 작업자만 후기 가능
     const isFarmer = job.requesterId === reviewerId;
     const selectedWorkerUser = job.selectedWorkerId
-        ? db.prepare('SELECT userId FROM workers WHERE id = ?').get(job.selectedWorkerId)
+        ? await db.prepare('SELECT userId FROM workers WHERE id = ?').get(job.selectedWorkerId)
         : null;
     const isWorker = selectedWorkerUser?.userId === reviewerId;
 
@@ -48,13 +48,13 @@ router.post('/', (req, res) => {
     }
 
     // PHASE 31: 자기 자신 평가 방지
-    const targetWorkerUser = db.prepare('SELECT userId FROM workers WHERE id = ?').get(targetId);
+    const targetWorkerUser = await db.prepare('SELECT userId FROM workers WHERE id = ?').get(targetId);
     if (targetWorkerUser?.userId === reviewerId) {
         return res.status(400).json({ ok: false, error: '자기 자신에게는 후기를 남길 수 없어요.' });
     }
 
     // 중복 후기 확인
-    const already = db.prepare(
+    const already = await db.prepare(
         'SELECT id FROM reviews WHERE jobId = ? AND reviewerId = ?'
     ).get(jobId, reviewerId);
     if (already) return res.status(409).json({ ok: false, error: '이미 후기를 남겼어요.' });
@@ -67,24 +67,24 @@ router.post('/', (req, res) => {
         createdAt: new Date().toISOString(),
     };
 
-    db.prepare(`
+    await db.prepare(`
         INSERT INTO reviews (id, jobId, reviewerId, targetId, rating, comment, createdAt)
         VALUES (@id, @jobId, @reviewerId, @targetId, @rating, @comment, @createdAt)
     `).run(review);
 
     // PHASE REVIEW_SYSTEM: workers + users 평점 동기화
-    const avg = db.prepare(
+    const avg = await db.prepare(
         'SELECT AVG(rating) as avg, COUNT(*) as cnt FROM reviews WHERE targetId = ?'
     ).get(targetId);
     if (avg?.avg != null) {
         const newRating = Math.round(avg.avg * 10) / 10;
         const newCount  = avg.cnt || 0;
         // workers.rating 업데이트
-        db.prepare('UPDATE workers SET rating = ? WHERE id = ?').run(newRating, targetId);
+        await db.prepare('UPDATE workers SET rating = ? WHERE id = ?').run(newRating, targetId);
         // users.rating / reviewCount 동기화 (workerId → userId 경유)
-        const workerRow = db.prepare('SELECT userId FROM workers WHERE id = ?').get(targetId);
+        const workerRow = await db.prepare('SELECT userId FROM workers WHERE id = ?').get(targetId);
         if (workerRow?.userId) {
-            db.prepare(
+            await db.prepare(
                 'UPDATE users SET rating = ?, reviewCount = ? WHERE id = ?'
             ).run(newRating, newCount, workerRow.userId);
         }
@@ -96,14 +96,14 @@ router.post('/', (req, res) => {
 });
 
 // ─── GET /api/reviews?userId=xx ───────────────────────────────
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     const { userId, jobId } = req.query;
 
     let reviews;
     if (jobId) {
-        reviews = db.prepare('SELECT * FROM reviews WHERE jobId = ? ORDER BY createdAt DESC').all(jobId);
+        reviews = await db.prepare('SELECT * FROM reviews WHERE jobId = ? ORDER BY createdAt DESC').all(jobId);
     } else if (userId) {
-        reviews = db.prepare(
+        reviews = await db.prepare(
             'SELECT * FROM reviews WHERE reviewerId = ? OR targetId = ? ORDER BY createdAt DESC'
         ).all(userId, userId);
     } else {
