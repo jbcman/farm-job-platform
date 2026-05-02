@@ -114,6 +114,19 @@ app.get('/health', (_req, res) => {
     });
 });
 
+// ─── GET /ready — Readiness 체크 (DB 준비 여부) ────────────────────
+// liveness(/health)와 분리: DB 연결 완료 전까지 503 반환
+// 초기 트래픽이 DB 준비 전 유입되는 것을 방지하는 용도
+// (Render는 현재 readiness probe 미지원이나, 향후 로드밸런서·k8s 대비)
+app.get('/ready', (_req, res) => {
+    const ready = db.isReady?.() ?? true;
+    res.status(ready ? 200 : 503).json({
+        status: ready ? 'ready' : 'not ready',
+        db:     db.mode,
+        uptime: Math.floor(process.uptime()),
+    });
+});
+
 // ─── GET /api/health — 상세 헬스체크 (대시보드 / 운영 모니터링용) ──
 app.get('/api/health', async (_req, res) => {
     const t0 = Date.now();

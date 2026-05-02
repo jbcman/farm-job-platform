@@ -422,12 +422,19 @@ function buildPgAdapter(pool) {
 // ══════════════════════════════════════════════════════════════════
 let activeAdapter = sqliteAdapter; // 기본값: SQLite (안전)
 
+// ── Readiness 플래그 ─────────────────────────────────────────────
+// DATABASE_URL 없음(SQLite 전용): 즉시 ready
+// DATABASE_URL 있음(PG): PG 연결 + schema/migration 완료 시 ready
+// GET /ready 엔드포인트가 이 값으로 503 → 200 전환을 결정
+let _dbReady = !process.env.DATABASE_URL; // SQLite = true, PG = false until connected
+
 const proxy = {
     get mode()          { return activeAdapter.mode; },
     prepare(sql)        { return activeAdapter.prepare(sql); },
     transaction(fn)     { return activeAdapter.transaction(fn); },
     exec(sql)           { return activeAdapter.exec(sql); },
     q(sql, params)      { return activeAdapter.q(sql, params); },
+    isReady()           { return _dbReady; },
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -499,6 +506,7 @@ if (process.env.DATABASE_URL) {
             }
             console.log('[DB MODE] ✅ POSTGRES column patches 완료');
             activeAdapter = buildPgAdapter(pool);
+            _dbReady = true; // 이 시점부터 /ready → 200 응답
             console.log('[DB MODE] ✅ POSTGRES — PostgreSQL 연결 성공, 전환 완료');
         })
         .catch(err => {
