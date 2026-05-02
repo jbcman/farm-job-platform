@@ -24,9 +24,17 @@ if (fs.existsSync(envPath)) {
 
 const { Pool } = require('pg');
 
+// ── 하드 타임아웃: 45초 내 완료 못 하면 빌드 계속 진행 ──────────────
+const HARD_TIMEOUT = setTimeout(() => {
+    console.warn('[MIGRATE_OPT] ⚠️ 45초 타임아웃 — 빌드 계속 진행 (서버 시작 시 db.js 재시도)');
+    process.exit(0);
+}, 45_000);
+HARD_TIMEOUT.unref();
+
 async function main() {
     if (!process.env.DATABASE_URL) {
         console.log('[MIGRATE_OPT] DATABASE_URL 없음 — 스킵 (SQLite 모드 유지)');
+        clearTimeout(HARD_TIMEOUT);
         process.exit(0); // graceful skip: 로컬 빌드 깨지지 않게
     }
 
@@ -36,7 +44,20 @@ async function main() {
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: isLocal ? false : { rejectUnauthorized: false },
+        max: 1,
+        connectionTimeoutMillis: 15_000, // 15초 연결 타임아웃 (hang 방지)
+        idleTimeoutMillis:       10_000,
     });
+
+    // 연결 테스트 — 실패 시 스킵 (빌드 계속)
+    try {
+        await pool.query('SELECT 1');
+    } catch (connErr) {
+        console.warn('[MIGRATE_OPT] ⚠️ PG 연결 실패 — 스킵:', connErr.message.split('\n')[0]);
+        await pool.end().catch(() => {});
+        clearTimeout(HARD_TIMEOUT);
+        process.exit(0);
+    }
 
     try {
         const migrDir = path.join(__dirname, 'migrations');
@@ -89,10 +110,11 @@ async function main() {
         }
 
     } catch (e) {
-        console.error('[MIGRATE_OPT] ❌ 마이그레이션 실패:', e.message);
-        process.exit(1);
+        // 마이그레이션 실패는 경고 (서버는 시작됨 — db.js에서 재시도)
+        console.warn('[MIGRATE_OPT] ⚠️ 마이그레이션 경고:', e.message.split('\n')[0].slice(0, 120));
     } finally {
-        await pool.end();
+        await pool.end().catch(() => {});
+        clearTimeout(HARD_TIMEOUT);
     }
 }
 
