@@ -346,3 +346,22 @@ CREATE TABLE IF NOT EXISTS test_logs (
     payload   TEXT        DEFAULT '{}',
     createdat TEXT        NOT NULL
 );
+
+-- match_logs (AI 추천 vs 실제 선택 퍼널 — migration 002+003 합산)
+CREATE TABLE IF NOT EXISTS match_logs (
+    id             TEXT        PRIMARY KEY,
+    jobid          TEXT        NOT NULL,
+    workerid       TEXT        NOT NULL,
+    rank           INT         NOT NULL,
+    predictedscore FLOAT       NOT NULL,
+    recommentscore INT,
+    selected       BOOLEAN     NOT NULL DEFAULT FALSE,
+    selectedat     TIMESTAMPTZ,
+    createdat      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    viewed         BOOLEAN     NOT NULL DEFAULT FALSE,
+    clicked        BOOLEAN     NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_logs_job      ON match_logs(jobid, createdat DESC);
+CREATE INDEX IF NOT EXISTS idx_match_logs_selected ON match_logs(selected, createdat DESC);
+CREATE INDEX IF NOT EXISTS idx_match_logs_rank     ON match_logs(rank, createdat DESC);

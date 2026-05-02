@@ -577,20 +577,20 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 <Popup>🚗 작업자 현재 위치</Popup>
               </Marker>
               {/* 작업 목적지 (빨강) */}
-              {job.lat != null && job.lon != null && (
-                <Marker position={[job.lat, job.lon]} icon={JOB_ICON}>
+              {job.latitude != null && job.longitude != null && (
+                <Marker position={[job.latitude, job.longitude]} icon={JOB_ICON}>
                   <Popup>📍 {job.locationText || '작업 위치'}</Popup>
                 </Marker>
               )}
             </MapContainer>
           </div>
           {/* 거리 · 시간 + 카카오맵 길찾기 */}
-          {job.lat != null && job.lon != null && (() => {
-            const dist    = haversineDist(workerMarker.lat, workerMarker.lng, job.lat, job.lon);
+          {job.latitude != null && job.longitude != null && (() => {
+            const dist    = haversineDist(workerMarker.lat, workerMarker.lng, job.latitude, job.longitude);
             const minutes = Math.round(dist * 1.5);
             const kakaoUrl = isMobile
-              ? `kakaomap://route?ep=${job.lat},${job.lon}&by=CAR`
-              : `https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업위치')},${job.lat},${job.lon}`;
+              ? `kakaomap://route?ep=${job.latitude},${job.longitude}&by=CAR`
+              : `https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업위치')},${job.latitude},${job.longitude}`;
             return (
               <div className="flex items-center justify-between gap-2 px-3 py-2 bg-orange-50 border-t border-orange-100">
                 <div className="flex items-center gap-1.5 text-xs text-orange-700 min-w-0">
@@ -622,14 +622,14 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       )}
 
       {/* JOB_LOCATION_MAP: 작업 위치 미리보기 — 실시간 추적 없을 때 표시 */}
-      {job.lat != null && job.lon != null && !workerMarker && (
+      {job.latitude != null && job.longitude != null && !workerMarker && (
         <div className="mx-4 mt-2 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
           {/* 헤더 */}
           <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 text-sm text-gray-700">
             <MapPin size={14} className="text-red-500 shrink-0" />
             <span className="font-semibold">📍 작업 위치</span>
             {myLocation && (() => {
-              const dist    = haversineDist(myLocation.lat, myLocation.lng, job.lat, job.lon);
+              const dist    = haversineDist(myLocation.lat, myLocation.lng, job.latitude, job.longitude);
               const minutes = Math.round(dist * 1.5);
               return (
                 <span className="ml-auto text-xs font-bold text-blue-600">
@@ -641,7 +641,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
           {/* 지도 — 작업위치(빨강) + 내 위치(파랑) */}
           <div style={{ height: 200 }}>
             <MapContainer
-              center={[job.lat, job.lon]}
+              center={[job.latitude, job.longitude]}
               zoom={14}
               style={{ height: '100%', width: '100%' }}
               zoomControl={false}
@@ -649,7 +649,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               {/* 작업 위치 (빨강) */}
-              <Marker position={[job.lat, job.lon]} icon={JOB_ICON}>
+              <Marker position={[job.latitude, job.longitude]} icon={JOB_ICON}>
                 <Popup>📍 {job.locationText || '작업 위치'}</Popup>
               </Marker>
               {/* 내 현재 위치 (파랑) + fitBounds */}
@@ -658,7 +658,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                   <Marker position={[myLocation.lat, myLocation.lng]} icon={WORKER_ICON}>
                     <Popup>🙋 내 현재 위치</Popup>
                   </Marker>
-                  <FitBounds points={[[myLocation.lat, myLocation.lng], [job.lat, job.lon]]} />
+                  <FitBounds points={[[myLocation.lat, myLocation.lng], [job.latitude, job.longitude]]} />
                 </>
               )}
             </MapContainer>
@@ -670,8 +670,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
             </p>
             <a
               href={isMobile
-                ? `kakaomap://route?ep=${job.lat},${job.lon}&by=CAR`
-                : `https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업위치')},${job.lat},${job.lon}`
+                ? `kakaomap://route?ep=${job.latitude},${job.longitude}&by=CAR`
+                : `https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업위치')},${job.latitude},${job.longitude}`
               }
               target="_blank"
               rel="noopener noreferrer"

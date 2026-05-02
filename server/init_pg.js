@@ -23,8 +23,8 @@ const { Pool } = require('pg');
 
 async function main() {
     if (!process.env.DATABASE_URL) {
-        console.error('[INIT_PG] ERROR: DATABASE_URL 환경변수가 없습니다.');
-        process.exit(1);
+        console.log('[INIT_PG] DATABASE_URL 없음 — 스킵 (SQLite 모드 유지)');
+        process.exit(0); // graceful skip: 로컬 빌드 깨지지 않게
     }
 
     const isLocal = process.env.DATABASE_URL.includes('localhost') ||
