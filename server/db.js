@@ -483,6 +483,21 @@ if (process.env.DATABASE_URL) {
             } catch (migrErr) {
                 console.warn('[DB MODE]    migration warn:', migrErr.message.split('\n')[0].slice(0, 80));
             }
+            // ── 컬럼 패치 (기존 테이블 누락 컬럼 안전 추가) ─────────────
+            // ALTER TABLE IF EXISTS + ADD COLUMN IF NOT EXISTS (PG 9.6+)
+            const colPatches = [
+                // jobs: contactCount / lastContactAt
+                "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contactcount INTEGER DEFAULT 0",
+                "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lastcontactat TEXT DEFAULT NULL",
+                // test_logs: 기존 잘못된 스키마(event 컬럼) → 누락 컬럼 추가
+                "ALTER TABLE test_logs ADD COLUMN IF NOT EXISTS type TEXT",
+                "ALTER TABLE test_logs ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 3",
+                "ALTER TABLE test_logs ADD COLUMN IF NOT EXISTS sessionid TEXT DEFAULT ''",
+            ];
+            for (const patch of colPatches) {
+                try { await pool.query(patch); } catch (_) {} // 이미 있으면 무시
+            }
+            console.log('[DB MODE] ✅ POSTGRES column patches 완료');
             activeAdapter = buildPgAdapter(pool);
             console.log('[DB MODE] ✅ POSTGRES — PostgreSQL 연결 성공, 전환 완료');
         })

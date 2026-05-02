@@ -1242,7 +1242,7 @@ router.get('/:id/recommend-workers', async (req, res) => {
     }
 
     const job = normalizeJob(
-        await db.prepare('SELECT id, latitude, longitude, category, autoJobType, workDate FROM jobs WHERE id = ?').get(jobId)
+        await db.prepare('SELECT id, latitude, longitude, category, autoJobType, date FROM jobs WHERE id = ?').get(jobId)
     );
     if (!job) return res.status(404).json({ ok: false, error: '공고를 찾을 수 없어요.' });
     if (!job.latitude || !job.longitude) {

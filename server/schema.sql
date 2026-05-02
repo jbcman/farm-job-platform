@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     paymentstatus         TEXT        DEFAULT 'pending',
     paymentid             TEXT        DEFAULT NULL,
     fee                   INTEGER     DEFAULT 0,
-    netamount             INTEGER     DEFAULT 0
+    netamount             INTEGER     DEFAULT 0,
+    contactcount          INTEGER     DEFAULT 0,
+    lastcontactat         TEXT        DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS workers (
@@ -339,11 +341,13 @@ CREATE TABLE IF NOT EXISTS status_logs (
 
 CREATE INDEX IF NOT EXISTS idx_status_logs_job ON status_logs(jobid, createdat DESC);
 
--- test_logs (testLog 라우트용)
+-- test_logs (testLog 라우트용 — type/priority/sessionId 포함)
 CREATE TABLE IF NOT EXISTS test_logs (
     id        BIGSERIAL   PRIMARY KEY,
-    event     TEXT        NOT NULL,
+    type      TEXT        NOT NULL,
     payload   TEXT        DEFAULT '{}',
+    priority  INTEGER     DEFAULT 3,
+    sessionid TEXT        DEFAULT '',
     createdat TEXT        NOT NULL
 );
 
