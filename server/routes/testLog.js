@@ -13,14 +13,15 @@ const { classifyBug } = require('../services/bugClassifier');
 const router = express.Router();
 
 // ── POST /api/test-log — 이벤트 기록 ─────────────────────────────
+// fire-and-forget: DB 장애와 무관하게 클라이언트는 항상 ok: true
 router.post('/', async (req, res) => {
+    const { type, payload = {}, sessionId = '' } = req.body || {};
+    if (!type) return res.status(400).json({ ok: false, error: 'type 필요' });
+
+    const priority = classifyBug(type);
+
     try {
-        const { type, payload = {}, sessionId = '', ts } = req.body || {};
-        if (!type) return res.status(400).json({ ok: false, error: 'type 필요' });
-
-        const priority = classifyBug(type);
         const payloadStr = JSON.stringify(payload);
-
         await db.prepare(`
             INSERT INTO test_logs (type, payload, priority, sessionId, createdAt)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -32,13 +33,13 @@ router.post('/', async (req, res) => {
         } else if (priority === 2) {
             console.log(`[TEST_BUG_P2] type=${type}`);
         }
-
-        return res.json({ ok: true, priority });
     } catch (e) {
-        // fire-and-forget이므로 500 절대 금지 — 클라이언트는 항상 성공으로 간주
-        console.error('[TEST_LOG_POST_ERROR]', e.message);
-        return res.json({ ok: false });
+        // INSERT 실패는 로그만 — 서비스 영향 0
+        console.error('[TEST_LOG]', e.message);
     }
+
+    // INSERT 성공/실패 무관하게 항상 성공 응답
+    return res.json({ ok: true, priority });
 });
 
 // ── GET /api/test-log — 빠른 확인용 (최근 50건) ──────────────────

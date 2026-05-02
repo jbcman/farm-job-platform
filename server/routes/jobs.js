@@ -1253,7 +1253,8 @@ router.get('/:id/applicants', async (req, res) => {
     return res.json({ ok: true, applicants: result });
   } catch (err) {
     console.error('[APPLICANTS ERROR]', err.message || err);
-    return res.json({ ok: true, applicants: [] }); // ❗ 절대 500 보내지 말 것
+    // ok: false → 개발자 추적 가능 / applicants: [] → UI는 정상 유지
+    return res.json({ ok: false, applicants: [], error: 'DB_ERROR' });
   }
 });
 

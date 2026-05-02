@@ -131,6 +131,10 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     setLoading(true);
     getApplicants(job.id, userId)
       .then(d => {
+        // ok: false → DB_ERROR 감지 (UI는 유지, 개발자는 추적 가능)
+        if (d?.ok === false) {
+          console.warn('[APPLICANTS] 서버 DB_ERROR — 빈 목록으로 대체', d?.error);
+        }
         const raw  = d?.applicants ?? d ?? [];
         const list = Array.isArray(raw) ? raw : [];
         // TRACE: 응답 확인 — null worker 카드 조기 경보
