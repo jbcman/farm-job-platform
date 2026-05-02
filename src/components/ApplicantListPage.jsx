@@ -23,6 +23,38 @@ function MapCenter({ lat, lng }) {
   return null;
 }
 
+// 두 마커가 모두 보이도록 초기 fitBounds (마운트 시 1회)
+function FitBounds({ points }) {
+  const map = useMap();
+  useEffect(() => {
+    if (points.length >= 2) {
+      map.fitBounds(L.latLngBounds(points), { padding: [50, 50] });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+// 원형 마커 아이콘 (DivIcon — 외부 이미지 의존 없음)
+function makeCircleIcon(color) {
+  return L.divIcon({
+    html: `<div style="width:22px;height:22px;background:${color};border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.35)"></div>`,
+    iconSize: [22, 22], iconAnchor: [11, 11], className: '',
+  });
+}
+const JOB_ICON    = makeCircleIcon('#ef4444'); // 빨강 — 작업 위치
+const WORKER_ICON = makeCircleIcon('#3b82f6'); // 파랑 — 작업자 / 내 위치
+
+// Haversine 거리 계산 (km)
+function haversineDist(lat1, lng1, lat2, lng2) {
+  const R    = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a    = Math.sin(dLat / 2) ** 2
+             + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+             * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // 모바일 여부 감지
 const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
@@ -84,6 +116,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const abandonTimerRef     = useRef(null);      // auto_match_abandon 15초 타이머
   const didCallRef          = useRef(false);     // 배너에서 전화 클릭 여부 (abandon 차단용)
   const [workerMarker, setWorkerMarker] = useState(null); // { lat, lng, ts } — 실시간 작업자 위치
+  const [myLocation,   setMyLocation]   = useState(null); // { lat, lng } — 내 현재 위치 (geolocation)
   const [topWorkers,   setTopWorkers]   = useState([]);   // TOP 3 추천 작업자 (반경 20km)
   const top3PanelRef    = useRef(null);   // viewed 이벤트용 IntersectionObserver 타겟
   const viewedFiredRef  = useRef(false);  // 중복 fired 방지
@@ -136,6 +169,15 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     observer.observe(top3PanelRef.current);
     return () => observer.disconnect();
   }, [topWorkers, job.id]); // topWorkers 로드 후 ref 연결
+
+  // 내 위치 1회 조회 — 지도 마커 + 거리 계산용
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      ()  => {} // 권한 거부 시 무시
+    );
+  }, []);
 
   // LIVE_LOCATION: WS 구독 — 작업자 위치 실시간 수신 (on_the_way/in_progress)
   useEffect(() => {
@@ -505,7 +547,6 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
           <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 text-sm text-orange-700">
             <MapPin size={14} className="shrink-0 animate-pulse" />
             <span className="font-semibold">🚗 작업자 실시간 이동 중</span>
-            {/* PC 경고: GPS 정확도 낮음 */}
             {!isMobile && (
               <span className="ml-auto text-xs text-orange-400">
                 📍 PC 위치는 부정확할 수 있어요
@@ -520,23 +561,55 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
               큰 지도
             </a>
           </div>
-          {/* 인라인 Leaflet 지도 */}
-          <div style={{ height: 200 }}>
+          {/* 인라인 Leaflet 지도 — 작업자(파랑) + 작업위치(빨강) */}
+          <div style={{ height: 220 }}>
             <MapContainer
               center={[workerMarker.lat, workerMarker.lng]}
-              zoom={15}
+              zoom={13}
               style={{ height: '100%', width: '100%' }}
               zoomControl={false}
               attributionControl={false}
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <MapCenter lat={workerMarker.lat} lng={workerMarker.lng} />
-              <Marker position={[workerMarker.lat, workerMarker.lng]}>
+              {/* 작업자 위치 (파랑) */}
+              <Marker position={[workerMarker.lat, workerMarker.lng]} icon={WORKER_ICON}>
                 <Popup>🚗 작업자 현재 위치</Popup>
               </Marker>
+              {/* 작업 목적지 (빨강) */}
+              {job.lat != null && job.lon != null && (
+                <Marker position={[job.lat, job.lon]} icon={JOB_ICON}>
+                  <Popup>📍 {job.locationText || '작업 위치'}</Popup>
+                </Marker>
+              )}
             </MapContainer>
           </div>
-          {/* 좌표 + 시간 */}
+          {/* 거리 · 시간 + 카카오맵 길찾기 */}
+          {job.lat != null && job.lon != null && (() => {
+            const dist    = haversineDist(workerMarker.lat, workerMarker.lng, job.lat, job.lon);
+            const minutes = Math.round(dist * 1.5);
+            const kakaoUrl = isMobile
+              ? `kakaomap://route?ep=${job.lat},${job.lon}&by=CAR`
+              : `https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업위치')},${job.lat},${job.lon}`;
+            return (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 bg-orange-50 border-t border-orange-100">
+                <div className="flex items-center gap-1.5 text-xs text-orange-700 min-w-0">
+                  <span className="truncate">📍 {job.locationText}</span>
+                  <span className="font-bold shrink-0">🚗 {dist.toFixed(1)}km · 약 {minutes}분</span>
+                </div>
+                <a
+                  href={kakaoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-bold text-yellow-800 bg-yellow-100 border border-yellow-300
+                             px-2.5 py-1 rounded-lg shrink-0 active:scale-95 transition-transform"
+                >
+                  🗺 길찾기
+                </a>
+              </div>
+            );
+          })()}
+          {/* 좌표 + 수신 시각 */}
           <div className="px-3 py-1.5 bg-orange-50 text-xs text-orange-400 text-right">
             {workerMarker.lat.toFixed(5)}, {workerMarker.lng.toFixed(5)}
             {workerMarker.ts && (
@@ -544,6 +617,69 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 · {new Date(workerMarker.ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* JOB_LOCATION_MAP: 작업 위치 미리보기 — 실시간 추적 없을 때 표시 */}
+      {job.lat != null && job.lon != null && !workerMarker && (
+        <div className="mx-4 mt-2 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+          {/* 헤더 */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 text-sm text-gray-700">
+            <MapPin size={14} className="text-red-500 shrink-0" />
+            <span className="font-semibold">📍 작업 위치</span>
+            {myLocation && (() => {
+              const dist    = haversineDist(myLocation.lat, myLocation.lng, job.lat, job.lon);
+              const minutes = Math.round(dist * 1.5);
+              return (
+                <span className="ml-auto text-xs font-bold text-blue-600">
+                  🚗 {dist.toFixed(1)}km · 약 {minutes}분
+                </span>
+              );
+            })()}
+          </div>
+          {/* 지도 — 작업위치(빨강) + 내 위치(파랑) */}
+          <div style={{ height: 200 }}>
+            <MapContainer
+              center={[job.lat, job.lon]}
+              zoom={14}
+              style={{ height: '100%', width: '100%' }}
+              zoomControl={false}
+              attributionControl={false}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              {/* 작업 위치 (빨강) */}
+              <Marker position={[job.lat, job.lon]} icon={JOB_ICON}>
+                <Popup>📍 {job.locationText || '작업 위치'}</Popup>
+              </Marker>
+              {/* 내 현재 위치 (파랑) + fitBounds */}
+              {myLocation && (
+                <>
+                  <Marker position={[myLocation.lat, myLocation.lng]} icon={WORKER_ICON}>
+                    <Popup>🙋 내 현재 위치</Popup>
+                  </Marker>
+                  <FitBounds points={[[myLocation.lat, myLocation.lng], [job.lat, job.lon]]} />
+                </>
+              )}
+            </MapContainer>
+          </div>
+          {/* 정보 바 + 카카오맵 길찾기 */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 border-t border-gray-100">
+            <p className="text-xs text-gray-600 truncate mr-1">
+              {job.locationText}
+            </p>
+            <a
+              href={isMobile
+                ? `kakaomap://route?ep=${job.lat},${job.lon}&by=CAR`
+                : `https://map.kakao.com/link/to/${encodeURIComponent(job.locationText || '작업위치')},${job.lat},${job.lon}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-yellow-800 bg-yellow-100 border border-yellow-300
+                         px-3 py-1.5 rounded-lg shrink-0 active:scale-95 transition-transform"
+            >
+              🗺 카카오맵 길찾기
+            </a>
           </div>
         </div>
       )}
