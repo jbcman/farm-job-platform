@@ -452,7 +452,37 @@ if (process.env.DATABASE_URL) {
 
     // 비동기 연결 테스트 — 서버 시작을 블로킹하지 않음
     pool.query('SELECT 1')
-        .then(() => {
+        .then(async () => {
+            // ── 스키마 자동 초기화 (IF NOT EXISTS — 멱등) ─────────────
+            // init_pg.js가 build command에서 실행되지 않았을 때 안전망
+            try {
+                const fs         = require('fs');
+                const schemaPath = path.join(__dirname, 'schema.sql');
+                const schemaSql  = fs.readFileSync(schemaPath, 'utf8');
+                await pool.query(schemaSql);
+                console.log('[DB MODE] ✅ POSTGRES schema 자동 초기화 완료 (IF NOT EXISTS)');
+            } catch (schemaErr) {
+                // 이미 존재하거나 부분 오류 — 서비스 중단 없이 계속
+                console.warn('[DB MODE]    schema init warn:', schemaErr.message.split('\n')[0].slice(0, 120));
+            }
+            // ── 마이그레이션 파일 자동 적용 (migrations/*.sql) ─────────
+            try {
+                const fs      = require('fs');
+                const migrDir = path.join(__dirname, 'migrations');
+                const files   = fs.readdirSync(migrDir)
+                    .filter(f => f.endsWith('.sql'))
+                    .sort();
+                for (const file of files) {
+                    const sql   = fs.readFileSync(path.join(migrDir, file), 'utf8');
+                    const stmts = sql.split(';').map(s => s.trim()).filter(s => s.length > 0 && !s.startsWith('--'));
+                    for (const stmt of stmts) {
+                        try { await pool.query(stmt); } catch (_) {} // IF NOT EXISTS — 실패 무시
+                    }
+                }
+                console.log(`[DB MODE] ✅ POSTGRES migrations 자동 적용 완료 (${files.length}개)`);
+            } catch (migrErr) {
+                console.warn('[DB MODE]    migration warn:', migrErr.message.split('\n')[0].slice(0, 80));
+            }
             activeAdapter = buildPgAdapter(pool);
             console.log('[DB MODE] ✅ POSTGRES — PostgreSQL 연결 성공, 전환 완료');
         })
