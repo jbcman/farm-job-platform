@@ -828,6 +828,16 @@ router.post('/:id/apply', async (req, res) => {
     const { workerId, message = '' } = req.body;
     if (!workerId) return res.status(400).json({ ok: false, error: 'workerId가 필요해요.' });
 
+    // ── 자기 공고 지원 차단 ─────────────────────────────────────────
+    // workerId는 workers.id 또는 users.id 둘 다 올 수 있음 → 양쪽 비교
+    if (workerId === job.requesterId) {
+        return res.status(400).json({ ok: false, error: '본인이 올린 공고에는 지원할 수 없어요.' });
+    }
+    const _wRow = await db.prepare('SELECT userId FROM workers WHERE id = ?').get(workerId);
+    if (_wRow && _wRow.userId === job.requesterId) {
+        return res.status(400).json({ ok: false, error: '본인이 올린 공고에는 지원할 수 없어요.' });
+    }
+
     const now = Date.now();
     const lastAt = applyRateLimit.get(workerId) || 0;
     if (now - lastAt < APPLY_RATE_MS) {
@@ -1018,6 +1028,17 @@ router.post('/:id/contact-apply', async (req, res) => {
 
     const job = normalizeJob(await db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId));
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    // 자기 공고 차단 (contact-apply 우회 경로)
+    if (workerId && workerId !== 'anonymous') {
+        if (workerId === job.requesterId) {
+            return res.status(400).json({ ok: false, error: '본인이 올린 공고에는 지원할 수 없어요.' });
+        }
+        const _cw = await db.prepare('SELECT userId FROM workers WHERE id = ?').get(workerId);
+        if (_cw && _cw.userId === job.requesterId) {
+            return res.status(400).json({ ok: false, error: '본인이 올린 공고에는 지원할 수 없어요.' });
+        }
+    }
 
     if (
         (job.status === 'in_progress' || job.status === 'matched') &&
@@ -1380,6 +1401,13 @@ router.post('/:id/select-worker', async (req, res) => {
     if (!worker) {
         console.warn(`[BROKEN_LINK][SELECT_WORKER] workerId=${workerId} not found in workers or users`);
         return res.status(404).json({ ok: false, error: '작업자를 찾을 수 없어요.' });
+    }
+
+    // ── 자기 자신 선택 차단 ─────────────────────────────────────────
+    const _selWorkerUserId = worker.userId || workerId;
+    if (jobPre.requesterId === _selWorkerUserId || jobPre.requesterId === workerId) {
+        console.warn(`[SELECT_WORKER_DENY] reason=self_select jobId=${jobId} requesterId=${jobPre.requesterId}`);
+        return res.status(400).json({ ok: false, error: '본인을 작업자로 선택할 수 없어요.' });
     }
 
     const farmerUser  = await db.prepare('SELECT phone FROM users WHERE id = ?').get(jobPre.requesterId);

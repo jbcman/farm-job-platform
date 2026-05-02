@@ -621,8 +621,8 @@ export default function JobCard({
 
       {/* ── 작업자 모드 액션 — ACTION_BUTTON_SIMPLIFY_V2 ── */}
 
-      {/* CASE: worker + open + 미지원 → 버튼 2개 */}
-      {mode === 'worker' && job.status === 'open' && (
+      {/* CASE: worker + open + 미지원 → 버튼 2개 (내 공고면 숨김) */}
+      {mode === 'worker' && job.status === 'open' && !isOwner && (
         applied ? (
           <button disabled className="btn btn-full bg-gray-100 text-gray-400 cursor-not-allowed">
             신청됨 ✓
