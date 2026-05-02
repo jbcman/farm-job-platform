@@ -780,20 +780,35 @@ export default function JobCard({
             <MapPin size={14} /> 📍 내 밭 지도 보기
           </button>
 
-          {/* 지원자 수 + 지원자 보기 (마감 포함 항상 표시) */}
-          {job.status !== 'in_progress' && job.status !== 'completed' && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                지원자 <strong className="text-farm-green">{job.applicationCount || 0}명</strong>
-              </span>
+          {/* 지원자 보기 버튼 (마감·매칭·오픈 공통) */}
+          {job.status !== 'in_progress' && job.status !== 'completed' && (() => {
+            const cnt = job.applicationCount || 0;
+            const isOpen = job.status !== 'closed' && job.status !== 'matched';
+            const hasApplicants = isOpen && cnt > 0;
+            const label =
+              job.status === 'closed'   ? '지원자 확인' :
+              job.status === 'matched'  ? '연결 확인' :
+              hasApplicants             ? `📩 지원자 ${cnt}명 보기` :
+                                          '지원자 보기';
+
+            return (
               <button
                 onClick={() => onViewApplicants?.(job)}
-                className="btn-outline py-2 px-4 text-sm"
+                className={
+                  hasApplicants
+                    ? 'btn-full py-2.5 text-sm font-bold rounded-xl border transition-transform active:scale-95'
+                    : 'btn-outline py-2 px-4 text-sm w-full'
+                }
+                style={hasApplicants ? {
+                  background: '#f0fdf4',
+                  borderColor: '#16a34a',
+                  color: '#15803d',
+                } : undefined}
               >
-                {job.status === 'closed' ? '지원자 확인' : job.status === 'matched' ? '연결 확인' : '누가 할 수 있나'}
+                {label}
               </button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* FINAL_CONVERSION: 실패 공포 — open 상태 + 스폰서 미등록 공고에만 */}
           {job.status === 'open' && !job.isSponsored && (
