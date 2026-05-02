@@ -13,7 +13,10 @@ const {
 } = require('../services/notificationService');
 const { trackEvent }              = require('../services/analyticsService');
 const { findMatchingWorkers }     = require('../services/matchingService');
-const { sendJobAlert, sendApplyAlert, sendDepartureReminder, sendContactAlert } = require('../services/kakaoService');
+const {
+    sendJobAlert, sendApplyAlert, sendDepartureReminder, sendContactAlert,
+    sendWorkerSelectedAlert, sendApplicantArrivedAlert,
+} = require('../services/kakaoService');
 const { sortRecommendedJobs }          = require('../services/recommendationService');
 const { reengageUnselectedApplicants } = require('../services/reengageService');
 const { checkAndAutoSelect }           = require('../services/autoSelect');
@@ -1497,6 +1500,28 @@ router.post('/:id/select-worker', async (req, res) => {
     console.log(`[SELECT_WORKER] jobId=${jobId} workerId=${workerId} farmerPhone=***${farmerPhone.slice(-4)}`);
     console.log(`[CONTACT_REVEALED] jobId=${jobId} farmer<->worker contactRevealed=1`);
     console.log(`[CONTACT_STORED] jobId=${jobId} farmerId=${jobPre.requesterId} workerId=${workerId}`);
+
+    // ── 카카오 알림: 선택 확정 시 양방향 알림 (fail-safe) ─────────
+    setImmediate(async () => {
+        try {
+            const farmerUser = await db.prepare('SELECT id, name, phone FROM users WHERE id = ?').get(jobPre.requesterId);
+            // ① 농민에게: "작업자 연결 완료"
+            sendWorkerSelectedAlert({
+                job:    matchedJob,
+                worker: { id: workerId, name: worker.name, phone: worker.phone },
+                farmer: farmerUser || { id: jobPre.requesterId, name: jobPre.requesterName, phone: farmerPhone },
+                isAuto: false,
+            }).catch(() => {});
+            // ② 작업자에게: "선택됐어요" (arrived)
+            sendApplicantArrivedAlert({
+                job:    matchedJob,
+                worker: { id: workerId, name: worker.name, phone: worker.phone },
+                farmer: farmerUser || null,
+            }).catch(() => {});
+        } catch (e) {
+            console.error('[SELECT_ALERT_ERROR]', e.message);
+        }
+    });
 
     return res.json({
         ok: true,
