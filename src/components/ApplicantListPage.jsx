@@ -131,7 +131,8 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     setLoading(true);
     getApplicants(job.id, userId)
       .then(d => {
-        const list = d.applicants || [];
+        const raw  = d?.applicants ?? d ?? [];
+        const list = Array.isArray(raw) ? raw : [];
         // TRACE: 응답 확인 — null worker 카드 조기 경보
         const nullCount = list.filter(a => !a.worker).length;
         console.log(`[TRACE][FETCH_RESULT] jobId=${job.id} total=${list.length} nullWorkers=${nullCount}`);

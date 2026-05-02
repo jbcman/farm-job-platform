@@ -183,7 +183,7 @@ export default function MainApp() {
 
   // ── 내부 navigate (page 상태 전환) ────────────────────────────────
   function navigate(p, extras = {}) {
-    if (p === 'job-detail') setPrevPage(page);
+    if (p === 'job-detail' || p === 'applicants') setPrevPage(page);
     if (extras.job)     setSelectedJob(extras.job);
     if (extras.jobId)   setDeepJobId(extras.jobId);
     if (extras.source)  setDeepSource(extras.source);
@@ -351,13 +351,28 @@ export default function MainApp() {
         />
       )}
 
-      {page === 'applicants' && selectedJob && (
-        <ApplicantListPage
-          job={selectedJob}
-          userId={userId}
-          onBack={() => setPage('my-jobs')}
-          onSelectContact={handleSelectContact}
-        />
+      {page === 'applicants' && (
+        selectedJob
+          ? (
+            <ApplicantListPage
+              job={selectedJob}
+              userId={userId}
+              onBack={() => setPage(prevPage === 'home' ? 'home' : 'my-jobs')}
+              onSelectContact={handleSelectContact}
+            />
+          ) : (
+            /* selectedJob 누락 안전망 — 흰 화면 방지 */
+            <div className="min-h-screen bg-farm-bg flex flex-col items-center justify-center gap-4 text-gray-400">
+              <p className="text-4xl">😓</p>
+              <p className="font-semibold text-gray-500">공고 정보를 불러올 수 없어요</p>
+              <button
+                className="btn-primary px-6 py-3 text-sm"
+                onClick={goHome}
+              >
+                홈으로 돌아가기
+              </button>
+            </div>
+          )
       )}
 
       {page === 'my-connections' && (
