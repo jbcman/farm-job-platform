@@ -780,32 +780,47 @@ export default function JobCard({
             <MapPin size={14} /> 📍 내 밭 지도 보기
           </button>
 
-          {/* 지원자 보기 버튼 (마감·매칭·오픈 공통) */}
+          {/* 상태 배지 — 버튼과 분리 */}
+          {job.status === 'matched' && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              background: '#f0fdf4', border: '1px solid #86efac',
+              borderRadius: 8, padding: '4px 10px',
+              fontSize: 12, fontWeight: 700, color: '#15803d',
+            }}>
+              🟢 작업자 연결됨
+            </div>
+          )}
+          {job.status === 'closed' && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              background: '#fff1f2', border: '1px solid #fecdd3',
+              borderRadius: 8, padding: '4px 10px',
+              fontSize: 12, fontWeight: 700, color: '#be123c',
+            }}>
+              🔴 마감
+            </div>
+          )}
+
+          {/* 지원자 보기 버튼 — 항상 동일 CTA (상태 무관) */}
           {job.status !== 'in_progress' && job.status !== 'completed' && (() => {
             const cnt = job.applicationCount || 0;
-            const isOpen = job.status !== 'closed' && job.status !== 'matched';
-            const hasApplicants = isOpen && cnt > 0;
-            const label =
-              job.status === 'closed'   ? '지원자 확인' :
-              job.status === 'matched'  ? '연결 확인' :
-              hasApplicants             ? `📩 지원자 ${cnt}명 보기` :
-                                          '지원자 보기';
-
+            const hasApplicants = cnt > 0;
             return (
               <button
                 onClick={() => onViewApplicants?.(job)}
-                className={
-                  hasApplicants
-                    ? 'btn-full py-2.5 text-sm font-bold rounded-xl border transition-transform active:scale-95'
-                    : 'btn-outline py-2 px-4 text-sm w-full'
-                }
+                className="btn-full py-2.5 text-sm font-bold rounded-xl border transition-transform active:scale-95"
                 style={hasApplicants ? {
                   background: '#f0fdf4',
                   borderColor: '#16a34a',
                   color: '#15803d',
-                } : undefined}
+                } : {
+                  background: '#f9fafb',
+                  borderColor: '#d1d5db',
+                  color: '#374151',
+                }}
               >
-                {label}
+                {hasApplicants ? `📩 지원자 ${cnt}명 보기` : '지원자 보기'}
               </button>
             );
           })()}
