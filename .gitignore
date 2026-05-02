@@ -1,23 +1,106 @@
+# =========================
+# Node.js
+# =========================
 node_modules/
-server/node_modules/
-.env
-*.log
-*.txt
-BACKUP_*
-server_BACKUP_*
-src_BACKUP_*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# 빌드 결과물 — Render가 자체 빌드하므로 추적 불필요
+# =========================
+# Build / Dist
+# =========================
 dist/
+build/
+*.log
 
-# DB 백업 파일
-server/*.bak*
-server/backup_*.db
-# SQLite WAL/SHM 임시 파일
-server/farm.db-shm
-server/farm.db-wal
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
 
-# IDE / 에디터 임시 파일
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# =========================
+# Database (SQLite - 로컬용)
+# =========================
+server/farm.db
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================
+# Dumps / Backups
+# =========================
+server/scripts/*.json
+server/scripts/*.sql
+backup/
+backups/
+*.dump
+
+# =========================
+# Local scripts / test files
+# =========================
+scripts/
+server/test_*.js
+server/scripts/temp/
+*.sh
+
+# =========================
+# Uploads / Static files (필요 시)
+# =========================
+uploads/
+media/
+tmp/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# PM2
+# =========================
+.pids/
+*.pid
+
+# =========================
+# Coverage / Test
+# =========================
+coverage/
+
+# =========================
+# Misc
+# =========================
 *.bak
-*.bak.*
-src/**/*.bak
+*.tmp
+*.swp
+
+# =========================
+# Python (혹시 사용 시)
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# AI / Model cache (있을 경우)
+# =========================
+cache/
+models/
