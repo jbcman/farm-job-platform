@@ -1063,7 +1063,14 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
 
         {applicants.map((applicant, idx) => {
           const w    = applicant.worker;
-          if (!w) return null;
+          // worker 데이터 없음 → 침묵 스킵 대신 안내 카드 표시
+          if (!w) return (
+            <div key={applicant.applicationId}
+              className="card border border-dashed border-gray-200 bg-gray-50 text-center py-4">
+              <p className="text-sm text-gray-400">⚠️ 지원자 정보를 불러올 수 없어요</p>
+              <p className="text-xs text-gray-300 mt-1">잠시 후 새로고침하면 나타날 수 있어요</p>
+            </div>
+          );
           const rank = applicant.rank;           // PHASE 28: 1-based rank
           const isTop3 = rank <= 3;
           const badge  = RANK_BADGE[rank];

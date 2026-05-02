@@ -1211,6 +1211,7 @@ router.get('/:id/applicants', async (req, res) => {
 
         return {
             applicationId: a.id,
+            _workerId:     a.workerId,   // 진단용 — null worker 로그에서 실제 ID 확인
             status:        a.status,
             message:       a.message,
             createdAt:     a.createdAt,
@@ -1246,7 +1247,9 @@ router.get('/:id/applicants', async (req, res) => {
 
     const nullWorkerCount = result.filter(a => !a.worker).length;
     if (nullWorkerCount > 0) {
-        console.warn(`[BROKEN_LINK][APPLICANTS] jobId=${job.id} nullWorkers=${nullWorkerCount}/${result.length} — workerIds=${raw.filter(a => !a.worker).map(a => a.applicationId).join(',')}`);
+        const broken = result.filter(a => !a.worker);
+        console.warn(`[BROKEN_LINK][APPLICANTS] jobId=${job.id} nullWorkers=${nullWorkerCount}/${result.length}`);
+        broken.forEach(a => console.warn(`  ↳ appId=${a.applicationId} workerId=${a._workerId} — workers/users 조회 실패`));
     }
     console.log(`[TRACE][APPLICANTS] jobId=${job.id} total=${result.length} nullWorkers=${nullWorkerCount} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
     console.log(`[APPLICANT_VIEWED_RANKED] jobId=${job.id} count=${result.length} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
