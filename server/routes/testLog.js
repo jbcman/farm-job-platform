@@ -35,9 +35,9 @@ router.post('/', async (req, res) => {
 
         return res.json({ ok: true, priority });
     } catch (e) {
-        // fire-and-forget이므로 클라이언트 오류 노출 최소화
+        // fire-and-forget이므로 500 절대 금지 — 클라이언트는 항상 성공으로 간주
         console.error('[TEST_LOG_POST_ERROR]', e.message);
-        return res.status(500).json({ ok: false });
+        return res.json({ ok: false });
     }
 });
 
@@ -55,7 +55,7 @@ router.get('/', async (req, res) => {
             payload: safeJson(r.payload),
         }))});
     } catch (e) {
-        return res.status(500).json({ ok: false, error: e.message });
+        return res.json({ ok: false, logs: [], error: e.message });
     }
 });
 

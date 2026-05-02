@@ -278,7 +278,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
     const timer = setInterval(async () => {
       try {
         const d = await getApplicants(job.id, userId);
-        const fresh = d.applicants || [];
+        const fresh = d?.applicants || [];
         setApplicants(fresh);
         const selected = fresh.find(a => a.status === 'selected');
         if (selected) {
@@ -451,7 +451,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       showToast('선택이 취소되었습니다. 다시 작업자를 선택해보세요.');
       // 지원자 목록 다시 로드 (모두 applied 상태로 복구됨)
       const d = await getApplicants(job.id, userId);
-      setApplicants(d.applicants || []);
+      setApplicants(d?.applicants || []);
     } catch (e) {
       showToast(e.message || '선택 취소에 실패했어요.');
     } finally {

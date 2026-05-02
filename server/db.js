@@ -496,10 +496,12 @@ if (process.env.DATABASE_URL) {
                 // jobs: contactCount / lastContactAt
                 "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contactcount INTEGER DEFAULT 0",
                 "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lastcontactat TEXT DEFAULT NULL",
-                // test_logs: 기존 잘못된 스키마(event 컬럼) → 누락 컬럼 추가
+                // test_logs: 기존 잘못된 스키마(event 컬럼) → 누락 컬럼 추가 + NOT NULL 해제
                 "ALTER TABLE test_logs ADD COLUMN IF NOT EXISTS type TEXT",
                 "ALTER TABLE test_logs ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 3",
                 "ALTER TABLE test_logs ADD COLUMN IF NOT EXISTS sessionid TEXT DEFAULT ''",
+                // event 컬럼이 NOT NULL로 남아있으면 INSERT 실패 → DROP NOT NULL
+                "ALTER TABLE test_logs ALTER COLUMN event DROP NOT NULL",
             ];
             for (const patch of colPatches) {
                 try { await pool.query(patch); } catch (_) {} // 이미 있으면 무시

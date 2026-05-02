@@ -1130,6 +1130,7 @@ router.post('/:id/reschedule', async (req, res) => {
 
 // ─── GET /api/jobs/:id/applicants ─────────────────────────────
 router.get('/:id/applicants', async (req, res) => {
+  try {
     const job = normalizeJob(await db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
 
@@ -1250,6 +1251,10 @@ router.get('/:id/applicants', async (req, res) => {
     console.log(`[TRACE][APPLICANTS] jobId=${job.id} total=${result.length} nullWorkers=${nullWorkerCount} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
     console.log(`[APPLICANT_VIEWED_RANKED] jobId=${job.id} count=${result.length} top=${result[0]?.worker?.name ?? 'none'} score=${result[0]?.matchScore ?? 'N/A'}`);
     return res.json({ ok: true, applicants: result });
+  } catch (err) {
+    console.error('[APPLICANTS ERROR]', err.message || err);
+    return res.json({ ok: true, applicants: [] }); // ❗ 절대 500 보내지 말 것
+  }
 });
 
 // ─── GET /api/jobs/:id/recommend-workers ──────────────────────
