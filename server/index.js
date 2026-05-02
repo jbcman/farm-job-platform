@@ -103,6 +103,18 @@ if (fs.existsSync(distPath)) {
 
 // ─── 헬스체크 (DB 상태 포함) ─────────────────────────────────────
 const db = require('./db');
+// ─── GET /health — Render 헬스체크 전용 (항상 빠른 응답) ───────────
+// Render는 이 경로로 트래픽 전환 여부를 결정함
+// DB 연결 여부와 무관하게 Express가 살아있으면 200 응답
+app.get('/health', (_req, res) => {
+    res.json({
+        status: 'ok',
+        db:     db.mode,          // 'SQLITE' | 'POSTGRES'
+        uptime: Math.floor(process.uptime()),
+    });
+});
+
+// ─── GET /api/health — 상세 헬스체크 (대시보드 / 운영 모니터링용) ──
 app.get('/api/health', async (_req, res) => {
     const t0 = Date.now();
     let dbStatus = 'unknown';
@@ -320,6 +332,22 @@ server.listen(PORT, HOST, () => {
    Test URL  : GET /api/test/alarm
 ──────────────────────────────────────────
     `.trim());
+});
+
+// ─── Graceful Shutdown (SIGTERM — Render 무중단 배포 핵심) ──────────
+// Render는 새 버전 헬스체크 통과 후 구 서버에 SIGTERM 전송
+// 10초 안에 in-flight 요청 완료 → 강제 종료
+process.on('SIGTERM', () => {
+    console.log('[SHUTDOWN] SIGTERM 수신 — graceful shutdown 시작...');
+    server.close(() => {
+        console.log('[SHUTDOWN] ✅ 모든 연결 종료 완료, 프로세스 종료');
+        process.exit(0);
+    });
+    // 10초 후 강제 종료 (in-flight 요청이 안 끝나는 경우 대비)
+    setTimeout(() => {
+        console.warn('[SHUTDOWN] ⚠️ 10초 타임아웃 — 강제 종료');
+        process.exit(0);
+    }, 10_000).unref();
 });
 
 function getLocalIp() {
