@@ -140,6 +140,16 @@ export async function closeJob(jobId, requesterId) {
     return req('POST', `/jobs/${jobId}/close`, { requesterId });
 }
 
+/** 작업자: 지원 취소 (job.status === 'open', 선택 전만 가능) */
+export async function cancelApply(jobId, workerId) {
+    return req('POST', `/jobs/${jobId}/cancel-apply`, { workerId });
+}
+
+/** 농민: 선택 취소 → 공고 open 복구 (matched / on_the_way 상태에서만 가능) */
+export async function unselectWorker(jobId, requesterId) {
+    return req('POST', `/jobs/${jobId}/unselect-worker`, { requesterId });
+}
+
 /** PHASE 22: 작업자 완료 처리 (application status → completed) */
 export async function completeWork(jobId, workerId) {
     return req('POST', `/jobs/${jobId}/complete-work`, { workerId });

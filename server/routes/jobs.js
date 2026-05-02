@@ -950,6 +950,47 @@ router.get('/:id/contact', async (req, res) => {
     });
 });
 
+// ─── POST /api/jobs/:id/cancel-apply ─────────────────────────
+// 작업자가 지원을 취소합니다.
+// 조건: job.status === 'open', applications.status === 'applied'
+// 이미 selected 이후는 400 ALREADY_MATCHED
+router.post('/:id/cancel-apply', async (req, res) => {
+    const { workerId } = req.body;
+    if (!workerId) return res.status(400).json({ ok: false, error: 'workerId가 필요해요.' });
+
+    const job = normalizeJob(await db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    if (job.status !== 'open') {
+        return res.status(400).json({ ok: false, code: 'ALREADY_MATCHED', error: '이미 매칭이 진행되어 지원을 취소할 수 없어요.' });
+    }
+
+    const app = await db.prepare(
+        "SELECT * FROM applications WHERE jobRequestId = ? AND workerId = ? AND status != 'cancelled'"
+    ).get(job.id, workerId);
+    if (!app) return res.status(404).json({ ok: false, code: 'APPLICATION_NOT_FOUND', error: '지원 내역을 찾을 수 없어요.' });
+
+    if (app.status === 'selected') {
+        return res.status(400).json({ ok: false, code: 'ALREADY_MATCHED', error: '이미 선택된 상태라 취소할 수 없어요.' });
+    }
+
+    await db.prepare(
+        "UPDATE applications SET status = 'cancelled' WHERE jobRequestId = ? AND workerId = ?"
+    ).run(job.id, workerId);
+
+    // WS: 농민 화면에서 실시간 반영
+    try {
+        if (global.emitToJob) global.emitToJob(job.id, {
+            type: 'application_cancelled',
+            jobId: job.id,
+            workerId,
+        });
+    } catch (_) {}
+
+    console.log(`[CANCEL_APPLY] jobId=${job.id} workerId=${workerId}`);
+    return res.json({ ok: true });
+});
+
 // ─── POST /api/jobs/:id/contact ───────────────────────────────
 router.post('/:id/contact', async (req, res) => {
     const now = new Date().toISOString();
@@ -1439,6 +1480,81 @@ router.post('/:id/select-worker', async (req, res) => {
             message: `${worker.name}님이 선택되었어요! 연락처를 확인하고 직접 연락해보세요.`,
         },
     });
+});
+
+// ─── POST /api/jobs/:id/unselect-worker ──────────────────────
+// 농민이 선택된 작업자를 취소하고 공고를 다시 open으로 되돌립니다.
+// 허용: matched, on_the_way
+// 금지: in_progress, completed, closed, paid, reviewed
+router.post('/:id/unselect-worker', async (req, res) => {
+    const { requesterId } = req.body;
+    if (!requesterId) return res.status(400).json({ ok: false, error: 'requesterId가 필요해요.' });
+
+    const job = normalizeJob(await db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+    if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
+
+    if (job.requesterId !== requesterId) {
+        return res.status(403).json({ ok: false, error: '내 공고만 변경할 수 있어요.' });
+    }
+
+    const FORBIDDEN = ['in_progress', 'completed', 'closed', 'paid', 'reviewed'];
+    if (FORBIDDEN.includes(job.status)) {
+        return res.status(400).json({ ok: false, code: 'CANNOT_UNSELECT_AFTER_START', error: '작업이 시작된 이후에는 선택을 취소할 수 없어요.' });
+    }
+
+    if (!job.selectedWorkerId) {
+        return res.status(400).json({ ok: false, code: 'NO_SELECTED_WORKER', error: '선택된 작업자가 없어요.' });
+    }
+
+    const prevWorkerId = job.selectedWorkerId;
+
+    // 공고를 open 으로 복구, 선택 정보 초기화
+    await db.prepare(`
+        UPDATE jobs
+        SET status = 'open', selectedWorkerId = NULL, selectedAt = NULL
+        WHERE id = ?
+    `).run(job.id);
+
+    // 선택됐던 작업자의 지원 상태도 applied 로 되돌림 (다시 지원 상태로)
+    await db.prepare(
+        "UPDATE applications SET status = 'applied' WHERE jobRequestId = ? AND workerId = ? AND status = 'selected'"
+    ).run(job.id, prevWorkerId);
+
+    // 나머지 rejected → applied 복구 (선택 취소 시 모두 재검토 가능)
+    await db.prepare(
+        "UPDATE applications SET status = 'applied' WHERE jobRequestId = ? AND status = 'rejected'"
+    ).run(job.id);
+
+    const updatedJob = normalizeJob(await db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id));
+
+    // WS: 모든 구독자에게 상태 변경 알림
+    try {
+        if (global.emitToJob) global.emitToJob(job.id, {
+            type: 'job_update',
+            job: { ...updatedJob, status: 'open', selectedWorkerId: null },
+        });
+    } catch (_) {}
+
+    // 카카오 알림: 작업자에게 선택 취소 안내
+    try {
+        const workerRow = await db.prepare('SELECT * FROM workers WHERE id = ?').get(prevWorkerId)
+                       || await db.prepare('SELECT * FROM workers WHERE userId = ?').get(prevWorkerId);
+        if (workerRow?.phone) {
+            const { sendJobMatchAlert } = require('../services/kakaoAlertService');
+            await sendJobMatchAlert({
+                jobId:       job.id + '_unselect',
+                phone:       workerRow.phone,
+                name:        workerRow.name,
+                jobType:     job.category,
+                locationText: job.locationText,
+                pay:         job.pay,
+                date:        job.date,
+            }).catch(() => {});
+        }
+    } catch (_) {}
+
+    console.log(`[UNSELECT_WORKER] jobId=${job.id} prevWorkerId=${prevWorkerId} → status=open`);
+    return res.json({ ok: true, job: updatedJob });
 });
 
 // ─── POST /api/jobs/:id/connect-call ─────────────────────────

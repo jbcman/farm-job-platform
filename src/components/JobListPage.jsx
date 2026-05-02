@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ArrowLeft, Loader2, MapPin, Phone, Navigation } from 'lucide-react';
-import { getJobs, getMyJobs, getMyApplications, applyJob, startJob, completeJob, closeJob, getNearbyJobs, getJobContact, rematchJob, getUserId } from '../utils/api.js';
+import { getJobs, getMyJobs, getMyApplications, applyJob, startJob, completeJob, closeJob, getNearbyJobs, getJobContact, rematchJob, getUserId, cancelApply } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logClickFail, logCheckpoint } from '../utils/testLogger.js'; // REAL_USER_TEST
 import { filterUrgentOnly } from '../utils/sortJobs.js';
 import { sortJobsByRecommend, RECOMMEND_BADGE_THRESHOLD } from '../utils/recommendJobs.js';
@@ -85,6 +85,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const [toast,        setToast]        = useState('');
   const [error,        setError]        = useState('');
   const [reviewJob,    setReviewJob]    = useState(null); // ReviewModal 대상
+  const [cancelling,   setCancelling]   = useState(null); // 지원 취소 중인 applicationId
   // UI_INTEGRATION: 지원 후 강제 행동 시트
   const [postApply,    setPostApply]    = useState(null); // { phone, jobName }
   // PHASE 18: 급구 필터 (일반 목록 전용)
@@ -445,6 +446,22 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
       load();
     } catch (e) {
       showToast(e.message);
+    }
+  }
+
+  // ── 작업자: 지원 취소 ─────────────────────────────────────────
+  async function handleCancelApply(appId, jobId) {
+    if (!window.confirm('지원을 취소할까요?')) return;
+    setCancelling(appId);
+    try {
+      await cancelApply(jobId, userId);
+      showToast('지원이 취소되었습니다.');
+      // 목록에서 즉시 제거
+      setApplications(prev => prev.filter(a => a.id !== appId));
+    } catch (e) {
+      showToast(e.message || '지원 취소에 실패했어요.');
+    } finally {
+      setCancelling(null);
     }
   }
 
@@ -938,6 +955,8 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               const job = a.job || {};
               const statusInfo = getAppStatus(a.status, job.status);
               const isSelected = a.status === 'selected';
+              // 지원 취소 가능: 아직 선택 전 + 공고 open
+              const canCancel  = a.status === 'applied' && job.status === 'open';
               return (
                 <div key={a.id} className={`card space-y-2 ${isSelected ? 'border-l-4 border-l-farm-green' : ''}`}>
                   <div className="flex items-center justify-between">
@@ -964,6 +983,18 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
                         <Phone size={14} /> 바로 전화
                       </a>
                     </div>
+                  )}
+                  {/* 지원 취소 버튼 — open + applied 상태에서만 노출 */}
+                  {canCancel && (
+                    <button
+                      onClick={() => handleCancelApply(a.id, job.id)}
+                      disabled={cancelling === a.id}
+                      className="w-full mt-1 py-2 text-sm font-semibold text-red-500
+                                 border border-red-200 rounded-xl bg-red-50
+                                 active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                      {cancelling === a.id ? '취소 중...' : '지원 취소'}
+                    </button>
                   )}
                 </div>
               );

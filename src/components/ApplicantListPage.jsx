@@ -3,7 +3,7 @@ import { ArrowLeft, Star, MapPin, Wrench, CheckCircle, Loader2, Phone, Trophy, Z
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent, getRecommendWorkers, trackRecommendView, trackRecommendClick } from '../utils/api.js';
+import { getApplicants, selectWorker, connectCall, startJob, setJobUrgent, autoAssignWorker, setAutoAssign, trackClientEvent, getRecommendWorkers, trackRecommendView, trackRecommendClick, unselectWorker } from '../utils/api.js';
 import { logTestEvent, logCallTriggered, logCallFail, logCheckpoint, logClickFail } from '../utils/testLogger.js'; // REAL_USER_TEST
 import { connectWS } from '../services/ws.js';
 import { useToast, ToastBanner } from '../hooks/useToast.jsx';
@@ -75,6 +75,7 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
   const [togglingAuto,   setTogglingAuto]   = useState(false);              // 토글 처리 중
   const [autoMatched,    setAutoMatched]    = useState(null);               // 폴링 중 자동 매칭 감지 → 알림 { worker, matchScore, matchedAt }
   const [matchedElapsed, setMatchedElapsed] = useState('');                 // "N초 전" 라이브 업데이트
+  const [unselecting,    setUnselecting]    = useState(false);              // 선택 취소 처리 중
   const hadSelectedRef      = useRef(false);     // 페이지 로드 시 이미 선택됨 여부 (false 알림 방지)
   const viewApplicantsAtRef = useRef(null);      // view_applicants ts = firstSeenAt 기준
   const firstActionAtRef    = useRef(null);      // 첫 의미있는 액션 ts (decision_time 기준)
@@ -394,6 +395,24 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
       setError(e.message);
     } finally {
       setCalling(null);
+    }
+  }
+
+  // CANCEL_FLOW: 농민 선택 취소 → 공고 open 복구
+  // 허용: matched, on_the_way / 금지: in_progress 이후
+  async function handleUnselectWorker() {
+    if (!window.confirm('선택을 취소하면 공고가 다시 열립니다.\n계속할까요?')) return;
+    setUnselecting(true);
+    try {
+      await unselectWorker(job.id, userId);
+      showToast('선택이 취소되었습니다. 다시 작업자를 선택해보세요.');
+      // 지원자 목록 다시 로드 (모두 applied 상태로 복구됨)
+      const d = await getApplicants(job.id, userId);
+      setApplicants(d.applicants || []);
+    } catch (e) {
+      showToast(e.message || '선택 취소에 실패했어요.');
+    } finally {
+      setUnselecting(false);
     }
   }
 
@@ -1087,6 +1106,19 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                         className="text-orange-400 text-lg leading-none flex-shrink-0"
                       >✕</button>
                     </div>
+                  )}
+
+                  {/* 선택 취소 — 농민 + matched/on_the_way 상태에서만 표시 */}
+                  {isFarmer && ['matched', 'on_the_way'].includes(job.status) && (
+                    <button
+                      onClick={handleUnselectWorker}
+                      disabled={unselecting}
+                      className="w-full py-2 text-sm font-semibold text-gray-500
+                                 border border-gray-200 rounded-xl bg-gray-50
+                                 active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                      {unselecting ? '처리 중...' : '선택 취소 (다른 작업자 선택)'}
+                    </button>
                   )}
                 </div>
               ) : applicant.status === 'applied' && !isReadOnly ? (
