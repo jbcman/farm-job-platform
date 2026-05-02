@@ -506,7 +506,8 @@ if (process.env.DATABASE_URL) {
             }
             console.log('[DB MODE] ✅ POSTGRES column patches 완료');
             activeAdapter = buildPgAdapter(pool);
-            _dbReady = true; // 이 시점부터 /ready → 200 응답
+            _dbReady = true; // 이 시점부터 /ready → 200, requireReady → next()
+            console.log('[READY] ✅ DB ready: POSTGRES (schema+migration 완료)');
             console.log('[DB MODE] ✅ POSTGRES — PostgreSQL 연결 성공, 전환 완료');
         })
         .catch(err => {
@@ -520,6 +521,7 @@ if (process.env.DATABASE_URL) {
     console.log('[DB MODE] ⏳ POSTGRES 연결 테스트 중... (SQLite로 임시 서비스 중)');
 } else {
     console.log(`[DB MODE] ✅ SQLITE — ${DB_PATH}`);
+    console.log('[READY] ✅ DB ready: SQLITE (즉시 사용 가능)');
     console.log('[DB MODE]    PostgreSQL로 전환하려면 DATABASE_URL 환경변수를 설정하세요');
 }
 

@@ -210,6 +210,12 @@ app.get('/api/reverse-geocode', async (req, res) => {
     }
 });
 
+// ─── DB Readiness 게이트 ─────────────────────────────────────────
+// PG 연결+migration 완료 전 DB 의존 API를 503으로 차단
+// /api/health, /api/geocode, /api/reverse-geocode는 이미 위에서 처리됨 → bypass
+const requireReady = require('./middleware/requireReady');
+app.use('/api', requireReady);
+
 // ─── API 라우트 ──────────────────────────────────────────────────
 app.use('/api/jobs',        jobRoutes);
 app.use('/api/workers',     workerRoutes);
