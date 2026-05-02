@@ -101,7 +101,15 @@ export default function JobCard({
   const resolvedType = job.autoJobType || job.category;
   const emoji    = JOB_ICONS[resolvedType] || '🌱';
   const statusBadge = STATUS_BADGE[job.status];
-  const isOwner  = userId && job.requesterId === userId;
+
+  // PHASE_ROLE_STATE_SPLIT_V2: userId prop 미전달 시 localStorage 폴백 (HomePage 농민모드 등)
+  const currentUserId = userId || (() => {
+    try { return localStorage.getItem('farm-userId'); } catch(_) { return null; }
+  })();
+  const isOwner = !!(currentUserId && job.requesterId === currentUserId);
+
+  // PHASE_ROLE_AUTO_SWITCH_UI: job.applications 배열에서 파생 (prop applied 폴백)
+  const hasApplied = applied || !!(job.applications?.some(a => a.workerId === currentUserId));
 
   // STEP 1: 역할 배지 — 사용자가 이 카드에서 맡는 역할을 즉시 인지
   const roleBadge = (() => {
@@ -110,7 +118,7 @@ export default function JobCard({
       if (job.status === 'completed') return { label: '⭐ 완료', cls: 'bg-gray-100 text-gray-600' };
       return { label: '🧑‍🌾 내가 올린 일', cls: 'bg-farm-light text-farm-green border border-farm-green' };
     }
-    if (userId && job.selectedWorkerId === userId)
+    if (currentUserId && job.selectedWorkerId === currentUserId)
       return { label: '🎯 선택됨',       cls: 'bg-green-100 text-green-700 border border-green-300' };
     if (applied)
       return { label: '👷 내가 지원한 일', cls: 'bg-blue-50 text-blue-600 border border-blue-200' };
@@ -163,20 +171,23 @@ export default function JobCard({
         : 'bg-blue-50 text-blue-600 font-semibold'
     : 'bg-blue-50 text-blue-600 font-medium';
 
+  // PHASE_ROLE_AUTO_SWITCH_UI: 내 공고 + 지원자 있음 → 초록 테두리 강조
   // PHASE 18: 급구/오늘 카드 강조 클래스
-  const urgentBorder = job.isUrgent && job.status === 'open'
-    ? 'border-l-4 border-l-red-500'
-    : job.isToday
-      ? 'border-l-4 border-l-farm-green'
-      : '';
+  const urgentBorder = isOwner && (job.applicationCount || 0) > 0
+    ? 'border-l-4 border-l-farm-green ring-1 ring-farm-green/30'
+    : job.isUrgent && job.status === 'open'
+      ? 'border-l-4 border-l-red-500'
+      : job.isToday
+        ? 'border-l-4 border-l-farm-green'
+        : '';
 
   // HOMEPAGE_BRAND_POLISH_V1 STEP 7: 전화 유도 UX — 0.5초 "연결 중..." 로딩
   const [connecting,     setConnecting]     = useState(false);
   const [contactLoading, setContactLoading] = useState(false); // matched: 작업자 연락
 
-  // UX_V2 STEP 1: 카드 노출 로그 (worker+open 전환율 측정)
+  // UX_V2 STEP 1: 카드 노출 로그 (작업자 관점 전환율 측정)
   useEffect(() => {
-    if (mode === 'worker' && job.status === 'open' && !applied) {
+    if (!isOwner && job.status === 'open' && !hasApplied) {
       logView(job.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,8 +206,8 @@ export default function JobCard({
     window.location.href = url;
   };
 
-  // ══ UX_V2: worker + open → 심플 전화 카드 ══
-  if (mode === 'worker' && job.status === 'open' && !applied) {
+  // ══ UX_V2: 남의 공고(=!isOwner) + open → 심플 전화 카드 ══
+  if (!isOwner && job.status === 'open' && !hasApplied) {
     const phone      = job.phone || job.contact || job.phoneFull || job.farmerPhone || null;
     const callLink   = getCallLink(job);
     const driveLabel = formatDriveTime(job) ||
@@ -453,8 +464,8 @@ export default function JobCard({
         </div>
       )}
 
-      {/* FINAL_CONVERSION: 오늘 N명 지원 중 스트립 (worker + open, 스폰서·급구 없는 일반 공고) */}
-      {mode === 'worker' && job.status === 'open' && !job.isSponsored && !job.isUrgent && (
+      {/* FINAL_CONVERSION: 오늘 N명 지원 중 스트립 (남의 공고 + open, 스폰서·급구 없는 일반 공고) */}
+      {!isOwner && job.status === 'open' && !job.isSponsored && !job.isUrgent && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12,
@@ -620,11 +631,11 @@ export default function JobCard({
         </p>
       )}
 
-      {/* ── 작업자 모드 액션 — ACTION_BUTTON_SIMPLIFY_V2 ── */}
+      {/* ── 작업자 CTA — !isOwner 기준 자동 전환 ── */}
 
-      {/* CASE: worker + open + 미지원 → 버튼 2개 (내 공고면 숨김) */}
-      {mode === 'worker' && job.status === 'open' && !isOwner && (
-        applied ? (
+      {/* CASE: 남의 공고 + open → 연결 버튼 (이미 지원했으면 비활성) */}
+      {!isOwner && job.status === 'open' && (
+        hasApplied ? (
           <button disabled className="btn btn-full bg-gray-100 text-gray-400 cursor-not-allowed">
             신청됨 ✓
           </button>
@@ -703,9 +714,8 @@ export default function JobCard({
         )
       )}
 
-      {/* STEP 5: worker + matched → "연락 완료" 상태 배지 */}
-      {mode === 'worker' && job.status === 'matched' &&
-       job.selectedWorkerId === ((() => { try { return localStorage.getItem('farm-userId'); } catch(_){return null;} })()) && (
+      {/* STEP 5: 내가 선택된 작업자 + matched → "연락 완료" 상태 배지 */}
+      {!isOwner && job.status === 'matched' && job.selectedWorkerId === currentUserId && (
         <div className="bg-green-50 border border-green-200 text-green-800
                         px-4 py-3 rounded-2xl mt-2
                         flex items-center gap-2 text-sm font-bold">
@@ -713,8 +723,8 @@ export default function JobCard({
         </div>
       )}
 
-      {/* CASE: worker + matched/in_progress → 전화 + 문자 */}
-      {mode === 'worker' && (job.status === 'matched' || job.status === 'in_progress') && (() => {
+      {/* CASE: 남의 공고 + matched/in_progress → 전화 + 문자 */}
+      {!isOwner && (job.status === 'matched' || job.status === 'in_progress') && (() => {
         const skillLevel = getUserSkillLevel();
         const smsLink    = getSMSLink(job, skillLevel);
         const callLink   = getCallLink(job);
@@ -766,8 +776,8 @@ export default function JobCard({
         );
       })()}
 
-      {/* ── 농민 모드 액션 ── */}
-      {mode === 'farmer' && (
+      {/* ── 내 공고 액션 — isOwner 기준 자동 표시 (mode 무관) ── */}
+      {isOwner && (
         <div className="space-y-2">
           {/* 지도 버튼 — 농민도 자기 밭 위치 확인 가능 (handleMapClick 공유) */}
           <button
@@ -832,7 +842,7 @@ export default function JobCard({
               if (contactLoading) return;
               setContactLoading(true);
               try {
-                const uid = userId || localStorage.getItem('farm-userId') || '';
+                const uid = currentUserId || '';
                 const r = await fetch(`/api/jobs/${job.id}/connect-call`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -970,6 +980,7 @@ export default function JobCard({
           )}
         </div>
       )}
+
     </div>
   );
 }

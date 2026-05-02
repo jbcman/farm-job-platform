@@ -376,72 +376,113 @@ export default function HomePage({
         )}
 
         {/* ── 농민 모드 콘텐츠 ── */}
-        {!loading && mode === 'farmer' && (
-          <>
-            {/* 바로 등록 CTA — DESIGN_V3: 감정+속도 강조 */}
-            <button
-              onClick={onPostJob}
-              className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
-                         shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
-            >
-              🔥 3초 안에 일손 구하기
-            </button>
+        {!loading && mode === 'farmer' && (() => {
+          // PHASE_ROLE_STATE_SPLIT_V2: 내 공고 / 남의 공고 분리
+          const _uid = (() => { try { return localStorage.getItem('farm-userId'); } catch(_) { return null; } })();
+          const allJobs = [...urgentJobs, ...recentJobs];
+          // 중복 제거
+          const seen = new Set();
+          const deduped = allJobs.filter(j => { if (seen.has(j.id)) return false; seen.add(j.id); return true; });
+          const myJobs   = _uid ? deduped.filter(j => j.requesterId === _uid) : [];
+          const myJobIds = new Set(myJobs.map(j => j.id));
+          // 기존 섹션에서 내 공고 제외
+          const otherUrgent = urgentJobs.filter(j => !myJobIds.has(j.id));
+          const otherRecent = recentJobs.filter(j => !myJobIds.has(j.id));
 
-            {workers.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  {/* DESIGN_V4: 섹션 타이틀 */}
-                  <p className="section-title mb-0">👨‍🌾 지금 바로 투입 가능한 작업자</p>
-                  <span className="text-sm text-farm-green font-bold">{workers.length}명</span>
-                </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
-                  {workers.map(w => <WorkerChip key={w.id} worker={w} />)}
-                </div>
-              </section>
-            )}
+          return (
+            <>
+              {/* 바로 등록 CTA — DESIGN_V3: 감정+속도 강조 */}
+              <button
+                onClick={onPostJob}
+                className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
+                           shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+              >
+                🔥 3초 안에 일손 구하기
+              </button>
 
-            {urgentJobs.length > 0 && (
-              <section>
-                <p className="section-title flex items-center gap-1.5">
-                  <Zap size={18} className="text-farm-yellow" />
-                  급한 요청
-                </p>
-                <div className="space-y-3">
-                  {urgentJobs.map(job => (
-                    <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
-                  ))}
-                </div>
-              </section>
-            )}
+              {/* ── 내 공고 상단 고정 ── */}
+              {myJobs.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="section-title mb-0 flex items-center gap-1.5">
+                      🧑‍🌾 내 공고
+                      <span className="text-xs bg-farm-light text-farm-green font-bold rounded-full px-2 py-0.5">
+                        {myJobs.length}건
+                      </span>
+                    </p>
+                    <button
+                      onClick={onViewMyJobs}
+                      className="text-sm text-farm-green font-bold flex items-center gap-0.5"
+                    >
+                      전체 보기 <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {myJobs.map(job => (
+                      <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
+                    ))}
+                  </div>
+                </section>
+              )}
 
-            {recentJobs.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0">최근 등록 작업</p>
-                  <button
-                    onClick={onViewMyJobs}
-                    className="text-sm text-farm-green font-bold flex items-center gap-0.5"
-                  >
-                    전체 보기 <ChevronRight size={14} />
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {recentJobs.slice(0, 2).map(job => (
-                    <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
-                  ))}
-                </div>
-              </section>
-            )}
+              {workers.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    {/* DESIGN_V4: 섹션 타이틀 */}
+                    <p className="section-title mb-0">👨‍🌾 지금 바로 투입 가능한 작업자</p>
+                    <span className="text-sm text-farm-green font-bold">{workers.length}명</span>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+                    {workers.map(w => <WorkerChip key={w.id} worker={w} />)}
+                  </div>
+                </section>
+              )}
 
-            {!urgentJobs.length && !recentJobs.length && (
-              <div className="card text-center py-10 text-gray-400">
-                <p className="text-4xl mb-3">🌱</p>
-                <p className="font-semibold text-gray-500">아직 올라온 일이 없습니다</p>
-                <p className="text-sm mt-1">첫 일을 올려보세요!</p>
-              </div>
-            )}
-          </>
-        )}
+              {/* ── 다른 공고 (급한 요청) ── */}
+              {otherUrgent.length > 0 && (
+                <section>
+                  <p className="section-title flex items-center gap-1.5">
+                    <Zap size={18} className="text-farm-yellow" />
+                    지금 사람 구하는 일
+                  </p>
+                  <div className="space-y-3">
+                    {otherUrgent.map(job => (
+                      <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* ── 다른 공고 (최근 등록) ── */}
+              {otherRecent.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="section-title mb-0">최근 등록 작업</p>
+                    <button
+                      onClick={onViewJobList}
+                      className="text-sm text-farm-green font-bold flex items-center gap-0.5"
+                    >
+                      전체 보기 <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {otherRecent.slice(0, 3).map(job => (
+                      <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {!myJobs.length && !otherUrgent.length && !otherRecent.length && (
+                <div className="card text-center py-10 text-gray-400">
+                  <p className="text-4xl mb-3">🌱</p>
+                  <p className="font-semibold text-gray-500">아직 올라온 일이 없습니다</p>
+                  <p className="text-sm mt-1">첫 일을 올려보세요!</p>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* ── 작업자 모드 콘텐츠 ── */}
         {!loading && mode === 'worker' && (
