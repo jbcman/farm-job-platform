@@ -1199,6 +1199,15 @@ router.get('/:id/applicants', async (req, res) => {
                 .map(([tag]) => tag);
         }
 
+        // ── successProb: matchScore 기반 경량 계산 (weather/ctx 없이) ──
+        // matchScore 0~100 → 확률 35~95% 선형 매핑
+        // worker.successRate(누적 완료율)가 있으면 +5pt 보정
+        const successProb = matchScore !== null ? (() => {
+            const base   = Math.round(35 + matchScore * 0.60);     // 0→35%, 100→95%
+            const srBonus = (worker?.successRate ?? 0) > 0.7 ? 5 : 0;
+            return Math.min(95, Math.max(35, base + srBonus));
+        })() : null;
+
         return {
             applicationId: a.id,
             status:        a.status,
@@ -1216,11 +1225,13 @@ router.get('/:id/applicants', async (req, res) => {
                 hasRotary:        worker.hasRotary,
                 completedJobs:    worker.completedJobs,
                 rating:           worker.rating,
+                successRate:      worker.successRate ?? 0,
                 availableTimeText: worker.availableTimeText,
                 noshowCount:      worker.noshowCount  || 0,
                 ratingAvg:        worker.ratingAvg   ?? null,
                 ratingCount:      worker.ratingCount ?? 0,
                 topTags,
+                successProb,
                 distKm,
                 distLabel:        dist !== null ? distLabel(dist) : null,
                 locationUpdatedAt: worker.locationUpdatedAt ?? null,

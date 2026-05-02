@@ -1163,6 +1163,20 @@ export default function ApplicantListPage({ job, userId, onBack, onSelectContact
                 })()}
               </div>
 
+              {/* AI 매칭 성공 확률 배지 — applicants API successProb */}
+              {w.successProb != null && (
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className={
+                    `text-xs font-bold px-2.5 py-0.5 rounded-full ` +
+                    (w.successProb >= 80 ? 'bg-green-100 text-green-700 border border-green-200'
+                   : w.successProb >= 60 ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                   :                       'bg-gray-100 text-gray-500 border border-gray-200')
+                  }>
+                    ✅ 매칭 성공률 {w.successProb}%
+                  </span>
+                </div>
+              )}
+
               {/* REVIEW_UX: topTags (실제 후기 기반 태그) */}
               {w.topTags && w.topTags.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap mb-2">
