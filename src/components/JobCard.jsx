@@ -171,7 +171,8 @@ export default function JobCard({
       : '';
 
   // HOMEPAGE_BRAND_POLISH_V1 STEP 7: 전화 유도 UX — 0.5초 "연결 중..." 로딩
-  const [connecting, setConnecting] = useState(false);
+  const [connecting,     setConnecting]     = useState(false);
+  const [contactLoading, setContactLoading] = useState(false); // matched: 작업자 연락
 
   // UX_V2 STEP 1: 카드 노출 로그 (worker+open 전환율 측정)
   useEffect(() => {
@@ -802,8 +803,8 @@ export default function JobCard({
             </div>
           )}
 
-          {/* 지원자 보기 버튼 — 항상 동일 CTA (상태 무관) */}
-          {job.status !== 'in_progress' && job.status !== 'completed' && (() => {
+          {/* 지원자 보기 버튼 — open / closed 에서만 표시 */}
+          {(job.status === 'open' || job.status === 'closed') && (() => {
             const cnt = job.applicationCount || 0;
             const hasApplicants = cnt > 0;
             return (
@@ -824,6 +825,63 @@ export default function JobCard({
               </button>
             );
           })()}
+
+          {/* matched: 작업자 연락 버튼 (농민 오너만) */}
+          {job.status === 'matched' && isOwner && (() => {
+            async function fetchWorkerContact(action) {
+              if (contactLoading) return;
+              setContactLoading(true);
+              try {
+                const uid = userId || localStorage.getItem('farm-userId') || '';
+                const r = await fetch(`/api/jobs/${job.id}/connect-call`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ requestingUserId: uid }),
+                });
+                const d = await r.json();
+                const phone = (d.workerPhone || '').replace(/[^0-9]/g, '');
+                if (phone) window.location.href = `${action}:${phone}`;
+              } catch (_) {
+                alert('연락처를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+              } finally {
+                setContactLoading(false);
+              }
+            }
+            return (
+              <div className="flex gap-2">
+                <button
+                  disabled={contactLoading}
+                  onClick={() => fetchWorkerContact('tel')}
+                  className="flex-1 py-2.5 bg-emerald-500 text-white font-bold rounded-xl text-sm
+                             flex items-center justify-center gap-1.5
+                             active:scale-95 transition-transform disabled:opacity-60"
+                >
+                  {contactLoading ? '⏳' : '📞'} 작업자 연락하기
+                </button>
+                <button
+                  disabled={contactLoading}
+                  onClick={() => fetchWorkerContact('sms')}
+                  className="flex-1 py-2.5 bg-blue-500 text-white font-bold rounded-xl text-sm
+                             flex items-center justify-center gap-1.5
+                             active:scale-95 transition-transform disabled:opacity-60"
+                >
+                  💬 문자 보내기
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* in_progress: 진행 중 상태 표시 */}
+          {job.status === 'in_progress' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#eff6ff', border: '1px solid #bfdbfe',
+              borderRadius: 10, padding: '6px 12px',
+              fontSize: 12, fontWeight: 700, color: '#1d4ed8',
+            }}>
+              🚜 작업 진행 중
+            </div>
+          )}
 
           {/* FINAL_CONVERSION: 실패 공포 — open 상태 + 스폰서 미등록 공고에만 */}
           {job.status === 'open' && !job.isSponsored && (
