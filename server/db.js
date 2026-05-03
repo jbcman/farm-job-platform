@@ -521,6 +521,31 @@ if (process.env.DATABASE_URL) {
             } catch (cleanErr) {
                 console.warn('[DB_CLEANUP] warn:', cleanErr.message.split('\n')[0]);
             }
+
+            // ── 진단: 연결 깨진 applications workerId 샘플링 ─────────────
+            // → workers 테이블에도, users 테이블에도 없는 workerId 목록을 로그에 출력
+            // → 다음 배포 후 로그에서 실제 workerId 형태 확인 가능
+            try {
+                const { rows: orphans } = await pool.query(`
+                    SELECT a.id AS appid, a.workerid, a.jobrequestid
+                    FROM   applications a
+                    WHERE  a.workerid != 'anonymous'
+                      AND  NOT EXISTS (SELECT 1 FROM workers WHERE id = a.workerid)
+                      AND  NOT EXISTS (SELECT 1 FROM workers WHERE userid = a.workerid)
+                      AND  NOT EXISTS (SELECT 1 FROM users   WHERE id = a.workerid)
+                    LIMIT  10
+                `);
+                if (orphans.length > 0) {
+                    console.warn(`[DB_DIAG] 연결 깨진 applications ${orphans.length}건:`);
+                    orphans.forEach(r =>
+                        console.warn(`  ↳ appId=${r.appid} workerId=${r.workerid} jobId=${r.jobrequestid}`)
+                    );
+                } else {
+                    console.log('[DB_DIAG] orphan applications 없음 ✅');
+                }
+            } catch (diagErr) {
+                console.warn('[DB_DIAG] warn:', diagErr.message.split('\n')[0]);
+            }
             activeAdapter = buildPgAdapter(pool);
             _dbReady = true; // 이 시점부터 /ready → 200, requireReady → next()
             console.log('[READY] ✅ DB ready: POSTGRES (schema+migration 완료)');
