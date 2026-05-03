@@ -262,8 +262,15 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── 시드 데이터 ──────────────────────────────────────────────────
-if (process.env.USE_SEED_DATA !== 'false') {
+// production에서는 절대 실행 금지 — 데이터 오염 방지
+// 로컬 개발: NODE_ENV=development (자동 허용)
+// 명시적 허용: ENABLE_SEED=true (스테이징 등)
+const shouldSeed = process.env.NODE_ENV !== 'production' ||
+                   process.env.ENABLE_SEED === 'true';
+if (shouldSeed) {
     seed().catch(e => console.error('[SEED_FAIL]', e.message));
+} else {
+    console.log('[SEED] production 환경 — 시드 스킵');
 }
 
 // ─── PHASE 32: 재시작 후 출발 독촉 타이머 복구 ──────────────────────

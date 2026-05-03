@@ -522,9 +522,9 @@ if (process.env.DATABASE_URL) {
                 console.warn('[DB_CLEANUP] warn:', cleanErr.message.split('\n')[0]);
             }
 
-            // ── 진단: 연결 깨진 applications workerId 샘플링 ─────────────
-            // → workers 테이블에도, users 테이블에도 없는 workerId 목록을 로그에 출력
-            // → 다음 배포 후 로그에서 실제 workerId 형태 확인 가능
+            // ── 진단 + 안전 삭제: orphan applications ─────────────────
+            // workers/users 어디에도 없는 workerId → nullWorker 원인
+            // anonymous 외 orphan도 삭제 (단, 조회 불가 레코드만 — 정상 데이터 보존)
             try {
                 const { rows: orphans } = await pool.query(`
                     SELECT a.id AS appid, a.workerid, a.jobrequestid
@@ -533,13 +533,20 @@ if (process.env.DATABASE_URL) {
                       AND  NOT EXISTS (SELECT 1 FROM workers WHERE id = a.workerid)
                       AND  NOT EXISTS (SELECT 1 FROM workers WHERE userid = a.workerid)
                       AND  NOT EXISTS (SELECT 1 FROM users   WHERE id = a.workerid)
-                    LIMIT  10
+                    LIMIT  50
                 `);
                 if (orphans.length > 0) {
-                    console.warn(`[DB_DIAG] 연결 깨진 applications ${orphans.length}건:`);
+                    console.warn(`[DB_DIAG] orphan applications ${orphans.length}건 발견:`);
                     orphans.forEach(r =>
                         console.warn(`  ↳ appId=${r.appid} workerId=${r.workerid} jobId=${r.jobrequestid}`)
                     );
+                    // 조회 불가 레코드 안전 삭제 (정상 레코드는 위 WHERE 조건에 걸리지 않음)
+                    const ids = orphans.map(r => r.appid);
+                    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+                    const delOrphan = await pool.query(
+                        `DELETE FROM applications WHERE id IN (${placeholders})`, ids
+                    );
+                    console.log(`[DB_CLEANUP] orphan applications ${delOrphan.rowCount}건 삭제 완료`);
                 } else {
                     console.log('[DB_DIAG] orphan applications 없음 ✅');
                 }
