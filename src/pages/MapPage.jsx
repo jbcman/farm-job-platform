@@ -13,6 +13,7 @@ import 'leaflet/dist/leaflet.css';
 import { MAP_CONFIG } from '../config/mapConfig.js';
 import { getKakaoNaviLink } from '../utils/mapLink.js';
 import { getDistanceKm } from '../utils/distance.js';
+import KakaoButton from '../components/KakaoButton.jsx';
 
 // Vite 환경 Leaflet 마커 아이콘 경로 복구
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -207,8 +208,8 @@ export default function MapPage() {
             )}
           </div>
 
-          {/* 액션 버튼 */}
-          <div style={{ display: 'flex', gap: 8 }}>
+          {/* 액션 버튼 행 1: 상세보기 + 길찾기 */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             {/* 📄 상세보기 — jobId 있을 때만 활성 */}
             <button
               onClick={() => {
@@ -231,7 +232,7 @@ export default function MapPage() {
               <a href={naviLink} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textDecoration: 'none' }}>
                 <button style={{
                   width: '100%', padding: '12px 0', borderRadius: 12, border: 'none',
-                  background: '#FAE100', color: '#1a1a1a',
+                  background: '#f0fdf4', color: '#16a34a', outline: '1.5px solid #86efac',
                   fontWeight: 800, fontSize: 14, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}>
@@ -247,6 +248,9 @@ export default function MapPage() {
               </button>
             )}
           </div>
+
+          {/* 행 2: 카카오 채팅 문의 */}
+          <KakaoButton jobId={jobId} label="💬 카카오톡으로 문의하기" />
         </div>
       )}
     </div>

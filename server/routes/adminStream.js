@@ -12,7 +12,7 @@ const db     = require('../db');
 const POLL_MS   = 2000;
 const BATCH_MAX = 50;
 
-router.get('/sse', (req, res) => {
+router.get('/sse', async (req, res) => {
     // 토큰 가드 (헤더 또는 쿼리 파라미터 — EventSource는 헤더 미지원)
     const token = req.headers['x-admin-token'] || req.query.token;
     if (process.env.ADMIN_TOKEN && token !== process.env.ADMIN_TOKEN) {
@@ -27,13 +27,13 @@ router.get('/sse', (req, res) => {
     // 연결 시점의 마지막 id 조회 (이후 데이터만 스트림)
     let lastId = 0;
     try {
-        const row = db.prepare('SELECT MAX(id) AS maxId FROM rec_logs').get();
+        const row = await db.prepare('SELECT MAX(id) AS maxId FROM rec_logs').get();
         lastId = row?.maxId ?? 0;
     } catch (_) {}
 
-    const timer = setInterval(() => {
+    const timer = setInterval(async () => {
         try {
-            const rows = db.prepare(`
+            const rows = await db.prepare(`
                 SELECT * FROM rec_logs
                 WHERE id > ?
                 ORDER BY id ASC

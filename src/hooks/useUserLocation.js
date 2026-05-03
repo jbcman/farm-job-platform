@@ -14,8 +14,9 @@
  * 반환값:
  *   location : { lat: number, lng: number } | null
  *   loading  : boolean
+ *   retry    : () => void  — GPS 캐시 초기화 후 재시도
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /** 서버에 현재 위치 전송 — fire-and-forget */
 function pushLocationToServer(lat, lng) {
@@ -32,20 +33,26 @@ function pushLocationToServer(lat, lng) {
 }
 
 export function useUserLocation() {
-    const [location, setLocation] = useState(null);
-    const [loading,  setLoading]  = useState(true);
+    const [location,    setLocation]    = useState(null);
+    const [loading,     setLoading]     = useState(true);
+    const [retryCount,  setRetryCount]  = useState(0);
 
     useEffect(() => {
-        // ① 캐시된 위치 먼저 확인 (localStorage → { lat, lon })
-        try {
-            const stored = JSON.parse(localStorage.getItem('userLocation'));
-            if (stored && Number.isFinite(stored.lat) &&
-                Number.isFinite(stored.lon || stored.lng)) {
-                setLocation({ lat: stored.lat, lng: stored.lon ?? stored.lng });
-                setLoading(false);
-                return;
-            }
-        } catch (_) {}
+        setLoading(true);
+        setLocation(null);
+
+        // ① 첫 번째 시도에서만 캐시 사용 (retry 시 항상 fresh GPS)
+        if (retryCount === 0) {
+            try {
+                const stored = JSON.parse(localStorage.getItem('userLocation'));
+                if (stored && Number.isFinite(stored.lat) &&
+                    Number.isFinite(stored.lon || stored.lng)) {
+                    setLocation({ lat: stored.lat, lng: stored.lon ?? stored.lng });
+                    setLoading(false);
+                    return;
+                }
+            } catch (_) {}
+        }
 
         // ② GPS 새로 취득
         if (!navigator.geolocation) {
@@ -70,9 +77,15 @@ export function useUserLocation() {
                 // GPS 거부 or 타임아웃 → null 유지
                 setLoading(false);
             },
-            { timeout: 8000, maximumAge: 60000 }
+            { timeout: 8000, maximumAge: retryCount > 0 ? 0 : 60000 }
         );
+    }, [retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /** GPS 캐시 초기화 + 재요청 */
+    const retry = useCallback(() => {
+        try { localStorage.removeItem('userLocation'); } catch (_) {}
+        setRetryCount(c => c + 1);
     }, []);
 
-    return { location, loading };
+    return { location, loading, retry };
 }

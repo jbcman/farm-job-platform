@@ -9,7 +9,7 @@ function newId() {
 }
 
 // ─── POST /api/reports ────────────────────────────────────────
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     const { jobId, reason } = req.body;
     const reporterId = req.headers['x-user-id'] || req.body.reporterId;
 
@@ -25,7 +25,7 @@ router.post('/', (req, res) => {
         createdAt:  new Date().toISOString(),
     };
 
-    db.prepare(`
+    await db.prepare(`
         INSERT INTO reports (id, jobId, reporterId, reason, createdAt)
         VALUES (@id, @jobId, @reporterId, @reason, @createdAt)
     `).run(report);

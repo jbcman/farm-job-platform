@@ -89,4 +89,48 @@ function calcMatchScore(job, worker, distKm, nearFieldKm = 3, weights = {}) {
     return score;
 }
 
-module.exports = { calcMatchScore, DEFAULT_WEIGHTS };
+/**
+ * calcRecommendScore — 추천 작업자 전용 점수 (0~1)
+ *
+ * DB 조회 없는 순수 계산 (엔드포인트에서 대량 호출 시 사용)
+ *
+ * 가중치 (자동 튜닝 — weightTuner.js가 model_weights.json 갱신):
+ *   거리   기본 50%  : 0km=1.0 → 20km=0.0 (선형)
+ *   평점   기본 30%  : 1~5 → 0~1 정규화
+ *   경험   고정 15%  : 0~100회 → 0~1 포화
+ *   즉시가능 고정 5% : activeNow or 10분 내 위치 갱신
+ *
+ * @param {object} worker  normalizeWorker() 적용된 작업자 행
+ * @param {number} distKm  job ↔ worker 거리 (km)
+ * @returns {number}       0~1 점수 (높을수록 추천)
+ */
+function calcRecommendScore(worker, distKm) {
+    // 동적 가중치 로드 (weightTuner가 24시간마다 조정)
+    let W = { distance: 0.50, rating: 0.30, experience: 0.15, activeNow: 0.05 };
+    try {
+        const { getWeights } = require('./weightTuner');
+        const loaded = getWeights();
+        W = {
+            distance:   loaded.distance   ?? 0.50,
+            rating:     loaded.rating     ?? 0.30,
+            experience: loaded.experience ?? 0.15,
+            activeNow:  loaded.activeNow  ?? 0.05,
+        };
+    } catch (_) {} // weightTuner 미존재 시 기본값 유지
+
+    const MAX_DIST = 20;
+    const dScore = Math.max(0, 1 - distKm / MAX_DIST);
+    const rScore = Math.max(0, ((worker.rating || 4.0) - 1) / 4);   // 1~5 → 0~1
+    const eScore = Math.min(1, (worker.completedJobs || 0) / 100);   // 최대 100회 포화
+
+    // 즉시 가능: activeNow OR 최근 10분 내 위치 갱신
+    const TEN_MIN = 10 * 60 * 1000;
+    const recentlyActive = worker.locationUpdatedAt
+        ? Date.now() - new Date(worker.locationUpdatedAt).getTime() < TEN_MIN
+        : false;
+    const aScore = (worker.activeNow || recentlyActive) ? 1 : 0;
+
+    return dScore * W.distance + rScore * W.rating + eScore * W.experience + aScore * W.activeNow;
+}
+
+module.exports = { calcMatchScore, DEFAULT_WEIGHTS, calcRecommendScore };

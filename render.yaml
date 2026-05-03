@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: farm-job-platform
+    runtime: node
+    nodeVersion: 22.x
+
+    # ── 빌드: 순수 정적 빌드만 (PG 연결 없음 → 타임아웃 리스크 0)
+    # DB 스키마 마이그레이션은 런타임 server/db.js 에서 자동 처리됨
+    buildCommand: npm install && cd server && npm install && cd .. && npm run build
+
+    # ── 시작: kill-port 제거 (Render는 포트 충돌 없음)
+    startCommand: node server/index.js
+
+    # ── 헬스체크: /health 응답 확인 후 트래픽 전환
+    # Express 기동 즉시 200 응답 → 빠른 배포 완료 감지
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production

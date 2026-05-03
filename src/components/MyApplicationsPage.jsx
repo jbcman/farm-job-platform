@@ -1,26 +1,41 @@
 /**
- * MyApplicationsPage.jsx — PHASE 22
+ * MyApplicationsPage.jsx — PHASE FLOW_UNIFICATION
  * 작업자 전용 내 지원 현황
  *
- * 상태 흐름:
- *   applied   → 선택 대기 중
- *   selected  → 연결됨 (농민 연락처 공개) + [작업 완료] 버튼
- *   completed → 작업완료 + 후기 UI (미작성) / 후기 확인 (작성 완료)
- *   rejected  → 미선택
+ * 섹션 우선순위:
+ *   🔥 진행중   → job.status=in_progress & app.status=selected
+ *   🎯 선택됨   → app.status=selected (연락 가능)
+ *   ⏳ 대기중   → app.status=applied
+ *   ✅ 완료     → app.status=completed
+ *   마감됨      → rejected / closed
+ *
+ * 선택 알림:
+ *   5초 폴링 → selectedApps 증가 감지 → 상단 배너 + 진동
+ *   [TRACE] SELECT_DETECTED
  */
-import React, { useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, Loader2, Phone } from 'lucide-react';
-import { getMyApplications, completeWork, submitJobReview } from '../utils/api.js';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { ArrowLeft, Loader2, Phone, Bell } from 'lucide-react';
+import { getMyApplications, completeWork, getUserId } from '../utils/api.js';
+import { logTestEvent, logCallTriggered, logCheckpoint, logVibrate } from '../utils/testLogger.js'; // REAL_USER_TEST
+import ReviewModal from './ReviewModal.jsx';
+import { connectWS } from '../services/ws.js';
+import { useToast, ToastBanner } from '../hooks/useToast.jsx';
 
-// ── 상태 배지 ────────────────────────────────────────────────────
+// ── 상태 배지 — PHASE 5: on_the_way 포함 ────────────────────────────
 function getStatusInfo(appStatus, jobStatus) {
   if (appStatus === 'completed') {
     return { label: '작업완료', cls: 'bg-blue-50 text-blue-700', icon: '✅' };
   }
   if (appStatus === 'selected') {
-    return jobStatus === 'closed'
-      ? { label: '연결완료',    cls: 'bg-blue-50  text-blue-700'  , icon: '🔗' }
-      : { label: '연락가능합니다', cls: 'bg-green-50 text-green-700', icon: '📞' };
+    if (jobStatus === 'on_the_way')
+      return { label: '이동중',     cls: 'bg-orange-100 text-orange-700', icon: '🚗' };
+    if (jobStatus === 'in_progress')
+      return { label: '진행중',     cls: 'bg-blue-100 text-blue-800',   icon: '🔵' };
+    if (jobStatus === 'completed' || jobStatus === 'closed')
+      return { label: '연결완료',   cls: 'bg-blue-50  text-blue-700',   icon: '🔗' };
+    if (jobStatus === 'paid')
+      return { label: '입금완료',   cls: 'bg-green-100 text-green-700', icon: '💰' };
+    return { label: '연락가능',   cls: 'bg-green-50 text-green-700', icon: '📞' };
   }
   if (appStatus === 'rejected') {
     return { label: '미선택', cls: 'bg-gray-100 text-gray-400', icon: '—' };
@@ -31,87 +46,166 @@ function getStatusInfo(appStatus, jobStatus) {
   return { label: '선택 대기중', cls: 'bg-amber-50 text-amber-700', icon: '⏳' };
 }
 
-// ── 별점 선택 컴포넌트 ────────────────────────────────────────────
-function StarRating({ value, onChange, disabled = false }) {
+// ── 섹션 헤더 ─────────────────────────────────────────────────────
+function SectionHeader({ title, count, priority }) {
   return (
-    <div className="flex gap-0.5">
-      {[1, 2, 3, 4, 5].map(n => (
-        <button
-          key={n}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange?.(n)}
-          style={{
-            background: 'none', border: 'none', padding: '2px 3px',
-            fontSize: 28, cursor: disabled ? 'default' : 'pointer',
-            color: n <= value ? '#f59e0b' : '#e5e7eb',
-            transition: 'color .1s',
-          }}
-        >
-          ★
-        </button>
-      ))}
+    <div className={`flex items-center gap-2 px-1 mb-2 mt-4 ${priority ? 'mt-2' : ''}`}>
+      <p className={`text-sm font-black ${priority ? 'text-gray-800' : 'text-gray-500'}`}>
+        {title}
+      </p>
+      {count > 0 && (
+        <span className={`text-xs font-bold rounded-full px-2 py-0.5
+                          ${priority ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-600'}`}>
+          {count}
+        </span>
+      )}
     </div>
   );
 }
 
-// ── 인라인 후기 폼 ────────────────────────────────────────────────
-function ReviewForm({ jobId, workerId, onSubmitted }) {
-  const [rating,  setRating]  = useState(0);
-  const [review,  setReview]  = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
-
-  async function handleSubmit() {
-    if (rating === 0) { setError('별점을 먼저 선택해주세요.'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      await submitJobReview(jobId, { workerId, rating, review });
-      onSubmitted();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+// ── 지원 카드 ─────────────────────────────────────────────────────
+function AppCard({ a, completing, onComplete, onReview }) {
+  const job        = a.job || {};
+  const statusInfo = getStatusInfo(a.status, job.status);
+  const isSelected  = a.status === 'selected';
+  const isCompleted = a.status === 'completed';
+  const isInProgress = isSelected && job.status === 'in_progress';
+  const hasReview   = !!a.review;
 
   return (
-    <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
-      <p className="text-xs font-semibold text-gray-500 mb-2">이 농민에게 후기를 남겨주세요</p>
-      <StarRating value={rating} onChange={setRating} />
-      <textarea
-        value={review}
-        onChange={e => setReview(e.target.value)}
-        placeholder="작업 경험을 공유해주세요 (선택 사항)"
-        rows={2}
-        className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-xl text-sm
-                   focus:outline-none focus:border-farm-green resize-none"
-      />
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-      <button
-        onClick={handleSubmit}
-        disabled={loading}
-        className="mt-2 w-full py-2.5 bg-amber-400 text-white font-black text-sm
-                   rounded-xl flex items-center justify-center gap-2 disabled:opacity-60
-                   active:scale-95 transition-transform shadow-sm"
-      >
-        {loading
-          ? <><Loader2 size={14} className="animate-spin" /> 등록 중...</>
-          : '⭐ 후기 등록하기'
-        }
-      </button>
+    <div className={`card space-y-2 ${
+      isInProgress  ? 'border-l-4 border-l-blue-500'
+      : isSelected  ? 'border-l-4 border-l-farm-green'
+      : isCompleted ? 'border-l-4 border-l-blue-300'
+      : ''
+    }`}>
+      {/* 상단 행 */}
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-bold text-gray-800 text-base">{job.category || '—'}</span>
+        <span className={`shrink-0 text-xs px-2.5 py-0.5 rounded-full font-semibold ${statusInfo.cls}`}>
+          {statusInfo.icon} {statusInfo.label}
+        </span>
+      </div>
+
+      {/* 일자리 정보 */}
+      <p className="text-sm text-gray-500">
+        {job.locationText && <span>{job.locationText}</span>}
+        {job.locationText && job.date && <span> · </span>}
+        {job.date && <span>{job.date}</span>}
+      </p>
+      {job.pay && (
+        <p className="text-sm font-semibold text-farm-green">일당 {job.pay}</p>
+      )}
+
+      {/* 연락처 (selected / completed) */}
+      {(isSelected || isCompleted) && a.farmerContact && (
+        <div className="mt-1 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-400">농민 연락처</p>
+            <p className="font-semibold text-gray-800 text-sm">{a.farmerContact.farmerName}</p>
+            <p className="text-sm text-gray-600">{a.farmerContact.farmerPhone}</p>
+          </div>
+          <a
+            href={`tel:${a.farmerContact.farmerPhone}`}
+            onClick={() => logCallTriggered(a.job?.id, a.workerId)} // REAL_USER_TEST STEP 13
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-farm-green text-white
+                       rounded-xl text-sm font-bold active:scale-95 transition-transform"
+          >
+            <Phone size={14} /> 바로 전화
+          </a>
+        </div>
+      )}
+
+      {/* PHASE 5: 출발했어요 버튼 — matched 상태에서만 표시 */}
+      {isSelected && job.status === 'matched' && (
+        <button
+          onClick={() => onComplete(a, 'depart')}
+          disabled={!!completing}
+          className="w-full py-2.5 bg-orange-500 text-white font-bold rounded-xl text-sm
+                     flex items-center justify-center gap-2 disabled:opacity-60 mt-1
+                     active:scale-95 transition-transform shadow-sm"
+        >
+          {completing === a.id
+            ? <><Loader2 size={14} className="animate-spin" /> 처리 중...</>
+            : '🚗 출발했어요'
+          }
+        </button>
+      )}
+
+      {/* 작업 완료 버튼 — on_the_way / in_progress 상태 */}
+      {isSelected && ['on_the_way', 'in_progress'].includes(job.status) && (
+        <button
+          onClick={() => onComplete(a)}
+          disabled={!!completing}
+          className="w-full py-2.5 bg-blue-500 text-white font-bold rounded-xl text-sm
+                     flex items-center justify-center gap-2 disabled:opacity-60 mt-1
+                     active:scale-95 transition-transform shadow-sm"
+        >
+          {completing === a.id
+            ? <><Loader2 size={14} className="animate-spin" /> 처리 중...</>
+            : '✅ 작업 완료 처리하기'
+          }
+        </button>
+      )}
+
+      {/* PHASE 7: 입금 안내 (completed이고 paid 아닐 때) */}
+      {isCompleted && job.paymentStatus !== 'paid' && (
+        <div className="mt-1 pt-3 border-t border-dashed border-amber-200 bg-amber-50 rounded-xl px-3 py-2">
+          <p className="text-xs font-bold text-amber-700">💰 입금 대기 중</p>
+          <p className="text-xs text-amber-600 mt-0.5">농민분께서 작업 완료 확인 후 입금 처리를 해주셔야 해요</p>
+        </div>
+      )}
+
+      {/* PHASE 8: 후기 섹션 — paid 상태일 때만 허용 */}
+      {isCompleted && !hasReview && job.paymentStatus === 'paid' && (
+        <div className="mt-1 pt-3 border-t border-dashed border-gray-200">
+          <p className="text-xs text-gray-400 mb-2">입금 완료! 농민분께 후기를 남겨보세요 ⭐</p>
+          <button
+            onClick={() => onReview(a)}
+            className="w-full py-2.5 bg-amber-400 text-white font-bold text-sm
+                       rounded-xl flex items-center justify-center gap-1.5
+                       active:scale-95 transition-transform shadow-sm"
+          >
+            ⭐ 후기 남기기
+          </button>
+        </div>
+      )}
+      {/* 입금 전 후기 불가 안내 */}
+      {isCompleted && !hasReview && job.paymentStatus !== 'paid' && (
+        <p className="text-xs text-gray-400 text-center mt-1">입금 완료 후 후기를 남길 수 있어요</p>
+      )}
+      {isCompleted && hasReview && (
+        <div className="mt-1 pt-3 border-t border-dashed border-gray-200">
+          <p className="text-xs text-gray-400 mb-1.5">내가 남긴 후기</p>
+          <div className="flex items-center gap-1 flex-wrap">
+            {[1,2,3,4,5].map(n => (
+              <span key={n} style={{ fontSize: 18, color: n <= a.review.rating ? '#f59e0b' : '#e5e7eb' }}>★</span>
+            ))}
+            <span className="text-xs text-gray-400 ml-1.5">
+              {a.review.comment || '(코멘트 없음)'}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────
 export default function MyApplicationsPage({ userId, onBack }) {
-  const [applications, setApplications] = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState('');
-  const [toast,        setToast]        = useState('');
-  const [completing,   setCompleting]   = useState(null); // 완료 처리 중인 appId
+  const [applications,   setApplications]   = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState('');
+  const [completing,     setCompleting]     = useState(null);
+  const [reviewApp,      setReviewApp]      = useState(null);
+  // STEP 4: 선택 알림 배너
+  const [selectionBanner, setSelectionBanner] = useState(false);
+  const [newlySelectedJob, setNewlySelectedJob] = useState(null); // { category, farmerName }
+  const prevSelectedCountRef = useRef(null); // 이전 selectedApps 카운트
+  // LIVE_LOCATION GPS 상태
+  const [gpsStatus, setGpsStatus] = useState('idle'); // 'idle'|'sharing'|'error'
+  // TOAST
+  const { toast, showToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,19 +222,176 @@ export default function MyApplicationsPage({ userId, onBack }) {
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 2500);
+  // REALTIME_ROOM_V2: WS 구독 — job_update 이벤트로 즉시 상태 반영
+  useEffect(() => {
+    if (!userId) return;
+    const handle = connectWS(
+      (data) => {
+        if (data.type === 'job_update' && data.job) {
+          setApplications(prev => prev.map(a => {
+            if (a.job?.id === data.job.id) {
+              // Toast: 상태 변경 알림
+              const prev_status = a.job?.status;
+              const next_status = data.job.status;
+              if (prev_status !== next_status) {
+                const msg = {
+                  matched:     '🎉 농민��� 나를 선택했어요!',
+                  on_the_way:  '🚗 출발 처리됐어요',
+                  in_progress: '✅ 작업 시작!',
+                  completed:   '🏁 작업이 완료됐어요',
+                }[next_status];
+                if (msg) showToast(msg, 3500);
+              }
+              return { ...a, job: { ...a.job, ...data.job } };
+            }
+            return a;
+          }));
+        }
+      },
+      // WS 상태 콜백
+      (status) => {
+        if (status === 'disconnected') showToast('🔄 연결이 끊겼어요. 재연결 중...', 4000);
+        if (status === 'connected' && gpsStatus !== 'idle') showToast('✅ 연결 복���됨', 2000);
+      }
+    );
+    return () => handle.close();
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // LIVE_LOCATION: 작업 이동중/진행중 → 5초마다 GPS 서버 전송
+  useEffect(() => {
+    if (!userId) return;
+    const hasActive = applications.some(
+      a => a.status === 'selected' &&
+           (a.job?.status === 'on_the_way' || a.job?.status === 'in_progress')
+    );
+    if (!hasActive) {
+      setGpsStatus('idle');
+      return;
+    }
+    if (!navigator.geolocation) {
+      setGpsStatus('error');
+      return;
+    }
+
+    let timer = null;
+    let failCount = 0;
+
+    // BATTERY_SAVE: on_the_way=5s, in_progress=15s (현장 도착 후 느리게)
+    const activeApp = applications.find(
+      a => a.status === 'selected' &&
+           (a.job?.status === 'on_the_way' || a.job?.status === 'in_progress')
+    );
+    const intervalMs = activeApp?.job?.status === 'in_progress' ? 15000 : 5000;
+
+    function sendLocation() {
+      // BATTERY_SAVE: 백그라운드(탭 숨김) 중이면 전송 생략
+      if (document.hidden) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          failCount = 0;
+          setGpsStatus('sharing');
+          fetch('/api/workers/location', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+            body:    JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          }).catch(() => {});
+        },
+        (err) => {
+          failCount++;
+          console.warn('[GPS FAIL]', err.code, err.message);
+          if (failCount >= 2) setGpsStatus('error'); // 2회 연속 실패 시 UI 표시
+        },
+        { timeout: 4000, maximumAge: 10000 }
+      );
+    }
+
+    // 탭 포커스 복귀 시 즉시 한 번 전송
+    function onVisible() {
+      if (!document.hidden) sendLocation();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+
+    sendLocation();
+    timer = setInterval(sendLocation, intervalMs);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      setGpsStatus('idle');
+    };
+  }, [userId, applications]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── STEP 4: 5초 폴링 — 선택 알림 감지 ───────────────────────
+  useEffect(() => {
+    if (!userId) return;
+
+    const checkSelection = async () => {
+      try {
+        const r = await fetch(`/api/jobs/my/notifications?userId=${encodeURIComponent(userId)}`);
+        const d = await r.json();
+        const newCount = d.selectedApps || 0;
+
+        if (prevSelectedCountRef.current !== null && newCount > prevSelectedCountRef.current) {
+          // 새 선택 발생!
+          console.log(`[TRACE] SELECT_DETECTED userId=${userId} prevCount=${prevSelectedCountRef.current} newCount=${newCount}`);
+          setSelectionBanner(true);
+          // REAL_USER_TEST: 작업자 선택 감지
+          logTestEvent('worker_selected_detected', { userId, prevCount: prevSelectedCountRef.current, newCount });
+          logCheckpoint('selected_detected', { userId });
+          // 진동 (모바일)
+          try { navigator.vibrate?.([200, 100, 200]); logVibrate(); } catch (_) {}
+          // 8초 후 자동 닫힘
+          setTimeout(() => setSelectionBanner(false), 8000);
+          // 목록 새로고침
+          load();
+        }
+
+        prevSelectedCountRef.current = newCount;
+      } catch (_) {} // fail-safe
+    };
+
+    checkSelection(); // 즉시 1회
+    const interval = setInterval(checkSelection, 5000);
+    return () => clearInterval(interval);
+  }, [userId, load]);
+
+  // PHASE 5: 출발 처리 (on_the_way)
+  async function handleDepart(a) {
+    if (completing) return;
+    const jobId = a.job?.id;
+    if (!jobId) return;
+    setCompleting(a.id);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/on-the-way`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workerId: userId }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || '출발 처리 실패');
+      showToast('출발 완료! 농민분께 알림이 갔어요 🚗');
+      load();
+    } catch (e) {
+      showToast(`오류: ${e.message}`);
+    } finally {
+      setCompleting(null);
+    }
   }
 
-  async function handleComplete(app) {
+  async function handleComplete(a, type) {
+    // PHASE 5: depart 타입이면 출발 처리
+    if (type === 'depart') return handleDepart(a);
+
     if (completing) return;
-    const jobId = app.job?.id;
+    const jobId = a.job?.id;
     if (!jobId) return;
-    setCompleting(app.id);
+    setCompleting(a.id);
     try {
       await completeWork(jobId, userId);
-      showToast('작업 완료 처리됐어요!');
+      showToast('작업 완료 처리됐어요! 🎉');
+      // REAL_USER_TEST: 작업자 완료
+      logTestEvent('worker_complete', { jobId, appId: a.id });
+      logCheckpoint('worker_complete_done', { jobId });
+      setReviewApp({ app: a, job: a.job });
       load();
     } catch (e) {
       showToast(e.message);
@@ -149,44 +400,104 @@ export default function MyApplicationsPage({ userId, onBack }) {
     }
   }
 
-  const doneCount    = applications.filter(a => a.status === 'completed').length;
-  const reviewedCount = applications.filter(a => a.status === 'completed' && a.review).length;
+  // ── 섹션 분류 ───────────────────────────────────────────────
+  const sInProgress = applications.filter(
+    a => a.status === 'selected' && a.job?.status === 'in_progress'
+  );
+  const sSelected = applications.filter(
+    a => a.status === 'selected' && a.job?.status !== 'in_progress'
+  );
+  const sApplied = applications.filter(
+    a => a.status === 'applied' && a.job?.status !== 'closed'
+  );
+  const sCompleted = applications.filter(a => a.status === 'completed');
+  const sClosed = applications.filter(
+    a => a.status === 'rejected' || (a.status === 'applied' && a.job?.status === 'closed')
+  );
+
+  const doneCount     = sCompleted.length;
+  const reviewedCount = sCompleted.filter(a => a.review).length;
+  const activeCount   = sInProgress.length + sSelected.length;
 
   return (
     <div className="min-h-screen bg-farm-bg pb-8">
+      {/* TOAST */}
+      <ToastBanner toast={toast} />
+
+      {/* ── STEP 4: 선택 알림 배너 ─────────────────────────────── */}
+      {selectionBanner && (
+        <div className="fixed top-0 left-0 right-0 z-50 shadow-xl animate-fade-in"
+             style={{ background: 'linear-gradient(90deg,#2d8a4e,#16a34a)' }}>
+          <div className="flex items-center gap-3 px-4 py-4">
+            <Bell size={22} className="text-white animate-bounce shrink-0" />
+            <div className="flex-1">
+              <p className="font-black text-white text-base">🎯 선택되었습니다!</p>
+              <p className="text-sm text-green-100">농민 연락처를 확인하고 전화하세요</p>
+            </div>
+            <button
+              onClick={() => setSelectionBanner(false)}
+              className="text-white text-2xl font-light leading-none shrink-0 px-2"
+            >
+              ✕
+            </button>
+          </div>
+          {/* 8초 타이머 바 */}
+          <div style={{
+            height: 3, background: 'rgba(255,255,255,0.3)',
+            animation: 'timerBar 8s linear forwards',
+          }} />
+          <style>{`
+            @keyframes timerBar {
+              from { width: 100%; }
+              to   { width: 0%; }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* GPS 상태 배너 */}
+      {gpsStatus === 'sharing' && (
+        <div className="mx-4 mt-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-xs text-green-700">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+          📍 위치 공유 중 — 농민이 내 위치를 볼 수 있어요
+        </div>
+      )}
+      {gpsStatus === 'error' && (
+        <div className="mx-4 mt-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-700">
+          <span className="shrink-0">⚠️</span>
+          위치 공유 중지됨 — 설정에서 위치 권한을 허용해주세요
+        </div>
+      )}
 
       {/* 헤더 */}
-      <header className="bg-white px-4 pt-safe pt-4 pb-3 border-b border-gray-100 sticky top-0 z-30">
+      <header className={`bg-white px-4 pt-safe pb-3 border-b border-gray-100 sticky z-30
+                          ${selectionBanner ? 'top-[68px]' : 'top-0'}`}
+              style={{ paddingTop: selectionBanner ? 12 : undefined }}>
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 text-gray-600">
             <ArrowLeft size={24} />
           </button>
           <div>
             <h1 className="text-lg font-bold text-gray-800">내 지원 현황</h1>
-            {doneCount > 0 && (
-              <p className="text-xs text-farm-green -mt-0.5">
-                완료 {doneCount}건 · 후기 {reviewedCount}/{doneCount}
-              </p>
-            )}
+            <p className="text-xs text-gray-400 -mt-0.5">
+              {activeCount > 0 && <span className="text-farm-green font-bold">활성 {activeCount}건 · </span>}
+              {doneCount > 0 && `완료 ${doneCount}건 · 후기 ${reviewedCount}/${doneCount}`}
+            </p>
           </div>
           <span className="ml-auto text-sm text-gray-400">{applications.length}건</span>
         </div>
       </header>
 
-      {/* 토스트 */}
-      {toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white
-                        rounded-full px-5 py-2.5 text-sm font-bold shadow-lg animate-fade-in">
-          {toast}
-        </div>
-      )}
+      <div className="px-4 py-4">
 
-      <div className="px-4 py-4 space-y-3">
         {loading && (
           <div className="flex items-center justify-center py-16 text-gray-400">
             <Loader2 size={28} className="animate-spin mr-2" />
             <span>불러오는 중...</span>
           </div>
+        )}
+        {error && (
+          <div className="card bg-red-50 text-red-600 text-sm py-3 text-center">{error}</div>
         )}
 
         {!loading && applications.length === 0 && !error && (
@@ -197,105 +508,96 @@ export default function MyApplicationsPage({ userId, onBack }) {
           </div>
         )}
 
-        {error && (
-          <div className="card bg-red-50 text-red-600 text-sm py-3 text-center">{error}</div>
-        )}
-
-        {!loading && applications.map(a => {
-          const job         = a.job || {};
-          const statusInfo  = getStatusInfo(a.status, job.status);
-          const isSelected  = a.status === 'selected';
-          const isCompleted = a.status === 'completed';
-          const hasReview   = !!a.review;
-          const isActive    = isSelected || isCompleted;
-
-          return (
-            <div
-              key={a.id}
-              className={`card space-y-2 ${
-                isCompleted ? 'border-l-4 border-l-blue-400'
-                : isSelected ? 'border-l-4 border-l-farm-green'
-                : ''
-              }`}
-            >
-              {/* 상단 행 */}
-              <div className="flex items-start justify-between gap-2">
-                <span className="font-bold text-gray-800 text-base">{job.category || '—'}</span>
-                <span className={`shrink-0 text-xs px-2.5 py-0.5 rounded-full font-semibold ${statusInfo.cls}`}>
-                  {statusInfo.icon} {statusInfo.label}
-                </span>
+        {!loading && (
+          <>
+            {/* 🔥 진행중 */}
+            {sInProgress.length > 0 && (
+              <div>
+                <SectionHeader title="🔵 진행중" count={sInProgress.length} priority />
+                <div className="space-y-3">
+                  {sInProgress.map(a => (
+                    <AppCard key={a.id} a={a} completing={completing}
+                      onComplete={handleComplete}
+                      onReview={a2 => setReviewApp({ app: a2, job: a2.job })} />
+                  ))}
+                </div>
               </div>
+            )}
 
-              {/* 일자리 정보 */}
-              <p className="text-sm text-gray-500">
-                {job.locationText && <span>{job.locationText}</span>}
-                {job.locationText && job.date && <span> · </span>}
-                {job.date && <span>{job.date}</span>}
-              </p>
-              {job.pay && (
-                <p className="text-sm font-semibold text-farm-green">일당 {job.pay}</p>
-              )}
-
-              {/* 연락처 (selected / completed) */}
-              {isActive && a.farmerContact && (
-                <div className="mt-1 pt-3 border-t border-gray-100 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-400">농민 연락처</p>
-                    <p className="font-semibold text-gray-800 text-sm">{a.farmerContact.farmerName}</p>
-                    <p className="text-sm text-gray-600">{a.farmerContact.farmerPhone}</p>
-                  </div>
-                  <a
-                    href={`tel:${a.farmerContact.farmerPhone}`}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-farm-green text-white
-                               rounded-xl text-sm font-bold active:scale-95 transition-transform"
-                  >
-                    <Phone size={14} /> 바로 전화
-                  </a>
+            {/* 🎯 선택됨 */}
+            {sSelected.length > 0 && (
+              <div>
+                <SectionHeader title="🎯 선택됨 — 지금 연락하세요" count={sSelected.length} priority />
+                <div className="space-y-3">
+                  {sSelected.map(a => (
+                    <AppCard key={a.id} a={a} completing={completing}
+                      onComplete={handleComplete}
+                      onReview={a2 => setReviewApp({ app: a2, job: a2.job })} />
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* 작업 완료 버튼 (selected 상태) */}
-              {isSelected && (
-                <button
-                  onClick={() => handleComplete(a)}
-                  disabled={!!completing}
-                  className="w-full py-2.5 bg-blue-500 text-white font-bold rounded-xl text-sm
-                             flex items-center justify-center gap-2 disabled:opacity-60 mt-1
-                             active:scale-95 transition-transform shadow-sm"
-                >
-                  {completing === a.id
-                    ? <><Loader2 size={14} className="animate-spin" /> 처리 중...</>
-                    : '✅ 작업 완료 처리하기'
-                  }
-                </button>
-              )}
-
-              {/* 후기 섹션 (completed) */}
-              {isCompleted && !hasReview && (
-                <ReviewForm
-                  jobId={job.id}
-                  workerId={userId}
-                  onSubmitted={() => { showToast('후기가 등록됐어요! ⭐'); load(); }}
-                />
-              )}
-
-              {isCompleted && hasReview && (
-                <div className="mt-1 pt-3 border-t border-dashed border-gray-200">
-                  <p className="text-xs text-gray-400 mb-1.5">내가 남긴 후기</p>
-                  <div className="flex items-center gap-1">
-                    {[1,2,3,4,5].map(n => (
-                      <span key={n} style={{ fontSize: 18, color: n <= a.review.rating ? '#f59e0b' : '#e5e7eb' }}>★</span>
-                    ))}
-                    <span className="text-xs text-gray-400 ml-1.5">
-                      {a.review.comment || '(코멘트 없음)'}
-                    </span>
-                  </div>
+            {/* ⏳ 대기중 */}
+            {sApplied.length > 0 && (
+              <div>
+                <SectionHeader title="⏳ 선택 대기중" count={sApplied.length} />
+                <div className="space-y-3">
+                  {sApplied.map(a => (
+                    <AppCard key={a.id} a={a} completing={completing}
+                      onComplete={handleComplete}
+                      onReview={a2 => setReviewApp({ app: a2, job: a2.job })} />
+                  ))}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            )}
+
+            {/* ✅ 완료 */}
+            {sCompleted.length > 0 && (
+              <div>
+                <SectionHeader title="✅ 완료" count={sCompleted.length} />
+                <div className="space-y-3">
+                  {sCompleted.map(a => (
+                    <AppCard key={a.id} a={a} completing={completing}
+                      onComplete={handleComplete}
+                      onReview={a2 => setReviewApp({ app: a2, job: a2.job })} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 마감됨 (접힘) */}
+            {sClosed.length > 0 && (
+              <div>
+                <SectionHeader title="마감됨" count={sClosed.length} />
+                <div className="space-y-3">
+                  {sClosed.map(a => (
+                    <AppCard key={a.id} a={a} completing={completing}
+                      onComplete={handleComplete}
+                      onReview={a2 => setReviewApp({ app: a2, job: a2.job })} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* REVIEW_UX: 후기 모달 */}
+      {reviewApp && (
+        <ReviewModal
+          job={reviewApp.job}
+          reviewerRole="worker"
+          reviewerId={userId}
+          targetId={reviewApp.job?.requesterId}
+          showIncentive={true}
+          onClose={() => setReviewApp(null)}
+          onSubmit={() => {
+            showToast('후기가 등록됐어요! ⭐');
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

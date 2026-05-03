@@ -1,9 +1,115 @@
+# =========================
+# Node.js
+# =========================
 node_modules/
-server/node_modules/
-.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Build / Dist
+# =========================
 dist/
+build/
 *.log
-*.txt
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# =========================
+# Database (SQLite - 로컬용)
+# =========================
+server/farm.db
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================
+# Dumps / Backups
+# =========================
+server/scripts/*.json
+server/scripts/*.sql
+backup/
+backups/
+*.dump
+
+# =========================
+# Local scripts / test files
+# =========================
+scripts/
+server/test_*.js
+server/scripts/temp/
+*.sh
+
+# =========================
+# Uploads / Static files (필요 시)
+# =========================
+uploads/
+media/
+tmp/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# PM2
+# =========================
+.pids/
+*.pid
+
+# =========================
+# Coverage / Test
+# =========================
+coverage/
+
+# =========================
+# Misc
+# =========================
+*.bak
+*.tmp
+*.swp
+
+# =========================
+# Python (혹시 사용 시)
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# AI / Model cache (있을 경우)
+# =========================
+cache/
+models/
+
+# backups
 BACKUP_*
-server_BACKUP_*
-src_BACKUP_*
+*_BACKUP_*
+backup*
+
+server/*.db
+server/*.db-*
+server/*.sqlite

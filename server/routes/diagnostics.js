@@ -8,16 +8,16 @@ const db      = require('../db');
 
 const router = express.Router();
 
-router.get('/', (_req, res) => {
+router.get('/', async (_req, res) => {
     let dbOk = false;
     let jobCount = 0;
     let workerCount = 0;
     let analyticsCount = 0;
 
     try {
-        jobCount       = db.prepare('SELECT COUNT(*) as n FROM jobs').get().n;
-        workerCount    = db.prepare('SELECT COUNT(*) as n FROM workers').get().n;
-        analyticsCount = db.prepare('SELECT COUNT(*) as n FROM analytics').get().n;
+        jobCount       = (await db.prepare('SELECT COUNT(*) as n FROM jobs').get()).n;
+        workerCount    = (await db.prepare('SELECT COUNT(*) as n FROM workers').get()).n;
+        analyticsCount = (await db.prepare('SELECT COUNT(*) as n FROM analytics').get()).n;
         dbOk = true;
     } catch (e) {
         console.error('[DIAGNOSTICS]', e.message);
