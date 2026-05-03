@@ -507,6 +507,20 @@ if (process.env.DATABASE_URL) {
                 try { await pool.query(patch); } catch (_) {} // 이미 있으면 무시
             }
             console.log('[DB MODE] ✅ POSTGRES column patches 완료');
+
+            // ── 데이터 정리 (1회성, 멱등) ───────────────────────────────
+            // anonymous workerId 레코드: contact-apply 비로그인 사용자가 쌓은 오염 데이터
+            // → workers/users 조회 불가 → nullWorker → 농민 화면에 지원자 0명 표시
+            try {
+                const del = await pool.query(
+                    "DELETE FROM applications WHERE workerid = 'anonymous'"
+                );
+                if (del.rowCount > 0) {
+                    console.log(`[DB_CLEANUP] anonymous applications ${del.rowCount}건 삭제`);
+                }
+            } catch (cleanErr) {
+                console.warn('[DB_CLEANUP] warn:', cleanErr.message.split('\n')[0]);
+            }
             activeAdapter = buildPgAdapter(pool);
             _dbReady = true; // 이 시점부터 /ready → 200, requireReady → next()
             console.log('[READY] ✅ DB ready: POSTGRES (schema+migration 완료)');
