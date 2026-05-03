@@ -9,11 +9,11 @@ function newMsgId() {
 }
 
 // ─── GET /api/messages?jobId=xx ───────────────────────────────
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     const { jobId } = req.query;
     if (!jobId) return res.status(400).json({ ok: false, error: 'jobId가 필요해요.' });
 
-    const msgs = db.prepare(
+    const msgs = await db.prepare(
         'SELECT * FROM messages WHERE jobId = ? ORDER BY createdAt ASC'
     ).all(jobId);
 
@@ -21,7 +21,7 @@ router.get('/', (req, res) => {
 });
 
 // ─── POST /api/messages ───────────────────────────────────────
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     const { jobId, text, senderId: bodySenderId } = req.body;
     const senderId = req.headers['x-user-id'] || bodySenderId;
 
@@ -37,7 +37,7 @@ router.post('/', (req, res) => {
         createdAt: new Date().toISOString(),
     };
 
-    db.prepare(`
+    await db.prepare(`
         INSERT INTO messages (id, jobId, senderId, text, createdAt)
         VALUES (@id, @jobId, @senderId, @text, @createdAt)
     `).run(msg);

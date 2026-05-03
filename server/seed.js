@@ -9,13 +9,14 @@
 const db = require('./db');
 
 function dateStr(offsetDays = 0) {
-    const d = new Date('2026-04-15');
+    const d = new Date();           // 오늘 기준 (실행 시점)
     d.setDate(d.getDate() + offsetDays);
     return d.toISOString().slice(0, 10);
 }
 
-function seed() {
-    const count = db.prepare('SELECT COUNT(*) as n FROM jobs').get().n;
+async function seed() {
+    const row   = await db.prepare('SELECT COUNT(*) as n FROM jobs').get();
+    const count = row?.n || 0;
     if (count > 0) {
         console.log(`[SEED] 기존 데이터 ${count}건 있음 → 스킵`);
         return;
@@ -145,10 +146,10 @@ function seed() {
         },
     ];
 
-    db.transaction(() => {
-        jobs.forEach(j => insertJob.run(j));
-        workers.forEach(w => insertWorker.run(w));
-        apps.forEach(a => insertApp.run(a));
+    await db.transaction(async () => {
+        for (const j of jobs)    await insertJob.run(j);
+        for (const w of workers) await insertWorker.run(w);
+        for (const a of apps)    await insertApp.run(a);
     })();
 
     console.log(`[SEED] jobs=${jobs.length} workers=${workers.length} apps=${apps.length} 삽입 완료`);
@@ -158,6 +159,7 @@ module.exports = { seed };
 
 // 단독 실행 지원: node server/seed.js
 if (require.main === module) {
-    seed();
-    process.exit(0);
+    seed()
+        .then(() => process.exit(0))
+        .catch(e => { console.error('[SEED_ERROR]', e.message); process.exit(1); });
 }

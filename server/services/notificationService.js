@@ -305,12 +305,98 @@ ${job.category} 작업이 완료되었습니다. 수고하셨습니다!
     }).catch(() => ({ ok: false, error: 'unhandled' }));
 }
 
+/**
+ * sendWorkerDepartedNotification — 작업자 출발 시 농민에게 알림
+ */
+function sendWorkerDepartedNotification(job, farmer) {
+    const farmerPhone = farmer?.phone || '';
+    const text =
+`[농민일손] 작업자 출발 알림
+
+🚗 작업자가 출발했습니다!
+
+📍 위치: ${job.locationText}
+🌱 ${job.category}
+
+잠시 후 도착할 예정이에요.`;
+
+    console.log(`[ALERT] 출발 알림 → farmer=${farmer?.name} (${maskPhone(formatKoreanPhoneNumber(farmerPhone))})`);
+
+    return sendKakaoAlimtalk({
+        phone:        farmerPhone,
+        templateCode: TEMPLATE.start, // 시작 템플릿 재사용 (농민용 추가 가능)
+        text,
+        variables: { category: job.category || '', locationText: job.locationText || '' },
+    }).catch(() => ({ ok: false, error: 'unhandled' }));
+}
+
+/**
+ * sendJobCompletedToFarmerNotification — 작업 완료 시 농민에게 입금 요청 알림
+ */
+function sendJobCompletedToFarmerNotification(job, farmer) {
+    const farmerPhone = farmer?.phone || '';
+    const payLine = job.pay ? `💰 일당: ${job.pay}\n` : '';
+    const text =
+`[농민일손] 작업 완료 알림
+
+✅ 작업이 완료됐어요! 수고하셨습니다.
+
+📍 위치: ${job.locationText}
+🌱 ${job.category}
+${payLine}
+작업자에게 일당을 입금해주세요 🙏`;
+
+    console.log(`[ALERT] 완료→농민 알림 → farmer=${farmer?.name} (${maskPhone(formatKoreanPhoneNumber(farmerPhone))})`);
+
+    return sendKakaoAlimtalk({
+        phone:        farmerPhone,
+        templateCode: TEMPLATE.complete,
+        text,
+        variables: { category: job.category || '', locationText: job.locationText || '' },
+    }).catch(() => ({ ok: false, error: 'unhandled' }));
+}
+
+/**
+ * sendPaymentDoneNotification — 입금 완료 시 작업자에게 알림
+ * @param {object} job    — normalizeJob 결과 (locationText, category, date, pay)
+ * @param {object} worker — workers row (name, phone)
+ */
+function sendPaymentDoneNotification(job, worker) {
+    const payLine = job.pay ? `💰 일당: ${job.pay}\n` : '';
+    const text =
+`[농민일손] 입금 완료 알림
+
+${job.category} 작업 일당이 입금됐어요!
+
+📍 위치: ${job.locationText}
+📅 날짜: ${job.date || ''}
+${payLine}
+후기를 남기면 다음 매칭에 도움이 돼요 ⭐`;
+
+    console.log(`[ALERT] 입금 완료 알림 → worker=${worker?.name} (${maskPhone(formatKoreanPhoneNumber(worker?.phone || ''))})`);
+
+    return sendKakaoAlimtalk({
+        phone:        worker?.phone || '',
+        templateCode: TEMPLATE.complete, // 완료 템플릿 재사용 (paid 전용 추가 가능)
+        text,
+        variables: {
+            workerName:   worker?.name || '작업자',
+            category:     job.category || '',
+            locationText: job.locationText || '',
+            date:         job.date || '',
+        },
+    }).catch(() => ({ ok: false, error: 'unhandled' }));
+}
+
 module.exports = {
     sendKakaoMessage,
     sendKakaoAlimtalk,
     sendSelectionNotification,
     sendJobStartedNotification,
     sendJobCompletedNotification,
+    sendWorkerDepartedNotification,
+    sendJobCompletedToFarmerNotification,
+    sendPaymentDoneNotification,
     formatKoreanPhoneNumber,
     maskPhone,
     isValidPhone,

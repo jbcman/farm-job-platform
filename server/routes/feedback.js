@@ -18,7 +18,7 @@ const stmtInsert = db.prepare(`
     VALUES (?, ?, ?, ?, ?, ?)
 `);
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     try {
         const { jobId, workerId, rating, actualDifficulty, durationMin } = req.body || {};
 
@@ -35,7 +35,7 @@ router.post('/', (req, res) => {
             ? Math.min(1, Math.max(0, Number(actualDifficulty)))
             : null;
 
-        stmtInsert.run(
+        await stmtInsert.run(
             String(jobId),
             String(workerId),
             safeRating,
@@ -45,11 +45,11 @@ router.post('/', (req, res) => {
         );
 
         // AI 자동 보정 — 비동기 (완전 fail-safe)
-        setImmediate(() => {
+        setImmediate(async () => {
             try {
                 if (typeof safeDiff === 'number') {
-                    updateJobDifficulty(jobId, safeDiff);
-                    updateUserPreference(workerId, safeDiff);
+                    await updateJobDifficulty(jobId, safeDiff);
+                    await updateUserPreference(workerId, safeDiff);
                 }
             } catch (_) {}
         });

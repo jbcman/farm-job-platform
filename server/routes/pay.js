@@ -34,11 +34,11 @@ function newOrderId() {
 }
 
 // ─── GET /api/pay/urgent-price ────────────────────────────────
-router.get('/urgent-price', (req, res) => {
+router.get('/urgent-price', async (req, res) => {
     const userId = req.headers['x-user-id'];
     if (!userId) return res.status(401).json({ ok: false, error: '로그인이 필요해요.' });
 
-    const user = db.prepare('SELECT abGroup, urgentTrialUsed FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare('SELECT abGroup, urgentTrialUsed FROM users WHERE id = ?').get(userId);
     if (!user) return res.status(404).json({ ok: false, error: '사용자를 찾을 수 없어요.' });
 
     const group  = user.abGroup || 'A';
@@ -48,7 +48,7 @@ router.get('/urgent-price', (req, res) => {
     const effectivePrice = firstTrialFree ? 0 : cfg.price;
     const isFree         = effectivePrice === 0;
 
-    try { trackEvent('urgent_price_view', { userId, meta: { group, price: effectivePrice, isFree } }); } catch (_) {}
+    try { await trackEvent('urgent_price_view', { userId, meta: { group, price: effectivePrice, isFree } }); } catch (_) {}
 
     return res.json({
         ok: true,
@@ -63,7 +63,7 @@ router.get('/urgent-price', (req, res) => {
 });
 
 // ─── POST /api/pay/create ─────────────────────────────────────
-router.post('/create', (req, res) => {
+router.post('/create', async (req, res) => {
     const userId = req.headers['x-user-id'];
     const { jobId } = req.body || {};
 
@@ -71,11 +71,11 @@ router.post('/create', (req, res) => {
     if (!jobId)  return res.status(400).json({ ok: false, error: 'jobId가 필요해요.' });
 
     // job 소유권 검증
-    const job = db.prepare('SELECT id, requesterId, category FROM jobs WHERE id = ?').get(jobId);
+    const job = await db.prepare('SELECT id, requesterId, category FROM jobs WHERE id = ?').get(jobId);
     if (!job)                      return res.status(404).json({ ok: false, error: '공고를 찾을 수 없어요.' });
     if (job.requesterId !== userId) return res.status(403).json({ ok: false, error: '본인 공고만 결제할 수 있어요.' });
 
-    const user = db.prepare('SELECT abGroup, urgentTrialUsed FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare('SELECT abGroup, urgentTrialUsed FROM users WHERE id = ?').get(userId);
     if (!user) return res.status(404).json({ ok: false, error: '사용자를 찾을 수 없어요.' });
 
     const group          = user.abGroup || 'A';
@@ -86,12 +86,12 @@ router.post('/create', (req, res) => {
     const orderId        = newOrderId();
 
     // 결제 레코드 생성
-    db.prepare(`
+    await db.prepare(`
         INSERT INTO payments (userId, jobId, amount, status, provider, orderId, createdAt)
         VALUES (?, ?, ?, 'ready', 'toss', ?, ?)
     `).run(userId, jobId, amount, orderId, new Date().toISOString());
 
-    try { trackEvent('payment_start', { userId, jobId, meta: { amount, orderId, group, autoConfirm } }); } catch (_) {}
+    try { await trackEvent('payment_start', { userId, jobId, meta: { amount, orderId, group, autoConfirm } }); } catch (_) {}
 
     console.log(`[PAY_CREATE] orderId=${orderId} userId=${userId} jobId=${jobId} amount=${amount} group=${group} autoConfirm=${autoConfirm}`);
 
@@ -110,7 +110,7 @@ router.post('/confirm', async (req, res) => {
     const { paymentKey, orderId, amount } = req.body || {};
     if (!orderId) return res.status(400).json({ ok: false, error: 'orderId가 필요해요.' });
 
-    const payment = db.prepare('SELECT * FROM payments WHERE orderId = ?').get(orderId);
+    const payment = await db.prepare('SELECT * FROM payments WHERE orderId = ?').get(orderId);
     if (!payment) return res.status(404).json({ ok: false, error: '결제 내역을 찾을 수 없어요.' });
 
     // 멱등성: 이미 처리된 결제
@@ -131,20 +131,20 @@ router.post('/confirm', async (req, res) => {
         }
 
         // 성공 처리
-        db.prepare('UPDATE payments SET status = ?, paymentKey = ? WHERE orderId = ?')
+        await db.prepare('UPDATE payments SET status = ?, paymentKey = ? WHERE orderId = ?')
             .run('paid', paymentKey || 'free', orderId);
-        db.prepare('UPDATE jobs SET isUrgentPaid = 1 WHERE id = ?').run(payment.jobId);
-        db.prepare('UPDATE users SET urgentTrialUsed = 1 WHERE id = ?').run(payment.userId);
+        await db.prepare('UPDATE jobs SET isUrgentPaid = 1 WHERE id = ?').run(payment.jobId);
+        await db.prepare('UPDATE users SET urgentTrialUsed = 1 WHERE id = ?').run(payment.userId);
 
         // Group C: 후불 수금 대기 마킹 (jobs.note에 태그 또는 별도 처리)
-        const user = db.prepare('SELECT abGroup FROM users WHERE id = ?').get(payment.userId);
+        const user = await db.prepare('SELECT abGroup FROM users WHERE id = ?').get(payment.userId);
         if (user?.abGroup === 'C' && payment.amount === 0) {
             console.log(`[PAY_DEFER] group=C jobId=${payment.jobId} → 효과 후 수금 대기`);
             // 관리자 추후 확인을 위한 로그만 남김 (실제 수금은 외부 프로세스)
         }
 
         try {
-            trackEvent('payment_success', {
+            await trackEvent('payment_success', {
                 userId:  payment.userId,
                 jobId:   payment.jobId,
                 meta:    { amount: payment.amount, isFree: isFreeOrder, orderId },
@@ -155,9 +155,9 @@ router.post('/confirm', async (req, res) => {
         return res.json({ ok: true, jobId: payment.jobId, isFree: isFreeOrder });
 
     } catch (e) {
-        db.prepare('UPDATE payments SET status = ? WHERE orderId = ?').run('failed', orderId);
+        await db.prepare('UPDATE payments SET status = ? WHERE orderId = ?').run('failed', orderId);
         try {
-            trackEvent('payment_fail', {
+            await trackEvent('payment_fail', {
                 userId: payment.userId,
                 jobId:  payment.jobId,
                 meta:   { error: e.message, orderId },
@@ -206,31 +206,31 @@ function confirmTossPayment({ paymentKey, orderId, amount, secretKey }) {
 
 // ─── POST /api/pay/request (농민 자발적 결제 의사 표시) ──────────
 // 효과 체험 후 "결제할게요" 클릭 시 → payStatus='pending' 마킹
-router.post('/request', (req, res) => {
+router.post('/request', async (req, res) => {
     const userId = req.headers['x-user-id'];
     const { jobId, method = 'phone' } = req.body || {};
 
     if (!userId) return res.status(401).json({ ok: false, error: '로그인이 필요해요.' });
     if (!jobId)  return res.status(400).json({ ok: false, error: 'jobId가 필요해요.' });
 
-    const job = db.prepare('SELECT id, requesterId FROM jobs WHERE id = ?').get(jobId);
+    const job = await db.prepare('SELECT id, requesterId FROM jobs WHERE id = ?').get(jobId);
     if (!job) return res.status(404).json({ ok: false, error: '공고를 찾을 수 없어요.' });
     if (job.requesterId !== userId) return res.status(403).json({ ok: false, error: '본인 공고만 처리할 수 있어요.' });
 
     try {
-        db.prepare("UPDATE jobs SET payStatus = 'pending', payMethod = ? WHERE id = ?").run(method, jobId);
+        await db.prepare("UPDATE jobs SET payStatus = 'pending', payMethod = ? WHERE id = ?").run(method, jobId);
 
         // payments 테이블에 pending 레코드 (결제 의사 표시)
         const orderId = 'pay-req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-        const existing = db.prepare("SELECT id FROM payments WHERE jobId = ? AND status IN ('ready','pending')").get(jobId);
+        const existing = await db.prepare("SELECT id FROM payments WHERE jobId = ? AND status IN ('ready','pending')").get(jobId);
         if (!existing) {
-            db.prepare(`
+            await db.prepare(`
                 INSERT INTO payments (userId, jobId, amount, status, provider, orderId, createdAt)
                 VALUES (?, ?, 3000, 'pending', ?, ?, ?)
             `).run(userId, jobId, method, orderId, new Date().toISOString());
         }
 
-        trackEvent('pay_request', { userId, jobId, meta: { method } });
+        await trackEvent('pay_request', { userId, jobId, meta: { method } });
         console.log(`[PAY_REQUEST] jobId=${jobId} method=${method} userId=${userId}`);
         return res.json({ ok: true });
     } catch (e) {
@@ -239,7 +239,7 @@ router.post('/request', (req, res) => {
 });
 
 // ─── POST /api/pay/mark-paid (관리자/운영자 결제 완료 처리) ─────────
-router.post('/mark-paid', (req, res) => {
+router.post('/mark-paid', async (req, res) => {
     const { jobId, adminKey } = req.body || {};
     if (!jobId) return res.status(400).json({ ok: false, error: 'jobId가 필요해요.' });
 
@@ -250,9 +250,9 @@ router.post('/mark-paid', (req, res) => {
     }
 
     try {
-        db.prepare("UPDATE jobs SET payStatus = 'paid', isUrgentPaid = 1 WHERE id = ?").run(jobId);
-        db.prepare("UPDATE payments SET status = 'paid' WHERE jobId = ? AND status = 'pending'").run(jobId);
-        trackEvent('pay_mark_paid', { jobId });
+        await db.prepare("UPDATE jobs SET payStatus = 'paid', isUrgentPaid = 1 WHERE id = ?").run(jobId);
+        await db.prepare("UPDATE payments SET status = 'paid' WHERE jobId = ? AND status = 'pending'").run(jobId);
+        await trackEvent('pay_mark_paid', { jobId });
         console.log(`[PAY_MARK_PAID] jobId=${jobId}`);
         return res.json({ ok: true });
     } catch (e) {

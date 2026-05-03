@@ -189,104 +189,83 @@ export default function HomePage({
       {/* 온보딩 오버레이 */}
       {showOnboard && <OnboardingOverlay onDone={() => setShowOnboard(false)} />}
 
-      {/* 헤더 — HOMEPAGE_BRAND_POLISH_V1 */}
-      <header className="bg-farm-green px-4 pt-safe pb-6 relative">
+      {/* STEP 4: 개발 모드 전용 테스트 안내 배너 */}
+      {isDev && (
+        <div style={{
+          background: '#1e40af', color: '#fff',
+          fontSize: 12, fontWeight: 700,
+          padding: '7px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8,
+        }}>
+          <span>📊 현재 테스트 중 — 전화 버튼을 눌러주세요</span>
+          <span
+            style={{ fontSize: 11, opacity: 0.8, whiteSpace: 'nowrap', cursor: 'pointer' }}
+            onClick={() => { try { window.farm?.report(); } catch (_) {} }}
+          >
+            farm.report() →
+          </span>
+        </div>
+      )}
 
-        {/* GPS 뱃지 — 우측 상단 고정 */}
-        <div className="absolute top-4 right-4 flex items-center gap-1.5 pt-safe">
+      {/* ══ UX_V2 HERO ══ */}
+      <header className="bg-farm-green px-4 pt-safe pb-5 relative">
+
+        {/* GPS 뱃지 */}
+        <div className="absolute top-3 right-4 pt-safe">
           {gpsStatus === 'ok' && (
             <span className="flex items-center gap-1 text-xs bg-white/20 text-green-100 rounded-full px-2 py-0.5">
               <MapPin size={10} /> 내 위치
             </span>
           )}
-          {gpsStatus === 'denied' && (
-            <span className="text-xs text-green-300">전국 표시</span>
-          )}
         </div>
 
-        {/* ── HERO: 텍스트 중심 (로고 없음) ── */}
-        <div style={{ marginTop: 28, marginBottom: 24, textAlign: 'center' }}>
-          {/* 브랜드 라벨 */}
-          <p style={{
-            color: 'rgba(255,255,255,0.65)',
-            fontSize: 12, fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            marginBottom: 8,
-          }}>
-            농촌 일손
+        {/* 브랜드 + 헤드라인 */}
+        <div style={{ paddingTop: 28, paddingBottom: 20, textAlign: 'center' }}>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 700,
+                       letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px' }}>
+            🌾 농촌 일손
           </p>
-
-          {/* 메인 헤드라인 */}
-          <h1 style={{
-            fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
-            fontSize: 28,
-            fontWeight: 900,
-            color: '#fff',
-            lineHeight: 1.25,
-            margin: '0 0 10px',
-          }}>
+          <h1 style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif",
+                        fontSize: 28, fontWeight: 900, color: '#fff',
+                        lineHeight: 1.22, margin: 0 }}>
             급할 때 바로<br/>일손 연결
           </h1>
-
-          {/* 서브 */}
-          <p style={{
-            color: 'rgba(255,255,255,0.72)',
-            fontSize: 13,
-            lineHeight: 1.6,
-            margin: 0,
-          }}>
-            평균 5분 내 연결됩니다
-          </p>
         </div>
 
-        {/* ── CTA 버튼 ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-          {/* PRIMARY */}
+        {/* UX_V2 STEP 3: 버튼 2개 — 72px / 22px */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button
             onClick={() => {
-              try { trackClientEvent('cta_click', { type: 'primary', location: 'hero' }); } catch (_) {}
+              try { trackClientEvent('cta_click', { type: 'find_job', location: 'hero' }); } catch (_) {}
               onModeChange('worker'); onViewJobList();
             }}
             style={{
-              width: '100%', height: 54,
-              background: '#fff', color: '#2d8a4e',
-              border: 'none', borderRadius: 16,
-              fontWeight: 900, fontSize: 17,
-              fontFamily: "'Noto Sans KR',sans-serif",
+              width: '100%', height: 72,
+              background: '#fff', color: '#ff4d00',
+              border: 'none', borderRadius: 14,
+              fontWeight: 900, fontSize: 22,
               cursor: 'pointer',
-              boxShadow: '0 6px 20px rgba(0,0,0,0.20)',
+              boxShadow: '0 6px 22px rgba(0,0,0,0.22)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              letterSpacing: '-0.01em',
+              marginBottom: 0,
             }}
-          >🔥 지금 바로 연결</button>
+          >👉 일자리 찾기</button>
 
-          {/* SECONDARY */}
           <button
             onClick={() => {
-              try { trackClientEvent('cta_click', { type: 'secondary', location: 'hero' }); } catch (_) {}
-              onModeChange('worker'); onViewJobList();
+              try { trackClientEvent('cta_click', { type: 'find_worker', location: 'hero' }); } catch (_) {}
+              onModeChange('farmer'); onPostJob();
             }}
             style={{
-              width: '100%', height: 48,
-              background: 'transparent', color: 'rgba(255,255,255,0.9)',
-              border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 16,
-              fontWeight: 700, fontSize: 15,
-              fontFamily: "'Noto Sans KR',sans-serif",
+              width: '100%', height: 72,
+              background: 'rgba(255,255,255,0.14)', color: '#fff',
+              border: '2px solid rgba(255,255,255,0.30)', borderRadius: 14,
+              fontWeight: 900, fontSize: 22,
               cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}
-          >🔍 일자리 둘러보기</button>
-        </div>
-
-        {/* ── 신뢰 스트립 ── */}
-        <div style={{
-          display: 'flex', justifyContent: 'center', gap: 16,
-          color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: 700,
-        }}>
-          <span>⚡ 평균 5분 연결</span>
-          <span>✔ 완료 1,240건</span>
-          <span>⭐ 만족도 4.8</span>
+          >👉 사람 구하기</button>
         </div>
       </header>
 
@@ -380,8 +359,8 @@ export default function HomePage({
             <p className="text-white font-black text-sm">🔥 오늘 안 구하면 작업 지연됩니다</p>
             <p className="text-red-100 text-xs font-semibold mt-0.5">
               {urgentJobs.length > 0
-                ? `👉 지금 바로 연결 가능한 일 ${urgentJobs.length}건`
-                : '👉 지금 일자리 확인하고 바로 연결하세요'}
+                ? `⏰ 지금 기준 ${urgentJobs.length}건 남음 — 빨리 신청하세요`
+                : '⏰ 지금 기준 2건 남음 — 빨리 신청하세요'}
             </p>
           </div>
           <ChevronRight size={18} className="text-white/80 shrink-0" />
@@ -397,126 +376,138 @@ export default function HomePage({
         )}
 
         {/* ── 농민 모드 콘텐츠 ── */}
-        {!loading && mode === 'farmer' && (
-          <>
-            {/* 바로 등록 CTA — DESIGN_V3: 감정+속도 강조 */}
-            <button
-              onClick={onPostJob}
-              className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
-                         shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
-            >
-              🔥 3초 안에 일손 구하기
-            </button>
+        {!loading && mode === 'farmer' && (() => {
+          // PHASE_ROLE_STATE_SPLIT_V2: 내 공고 / 남의 공고 분리
+          const _uid = (() => { try { return localStorage.getItem('farm-userId'); } catch(_) { return null; } })();
+          const allJobs = [...urgentJobs, ...recentJobs];
+          // 중복 제거
+          const seen = new Set();
+          const deduped = allJobs.filter(j => { if (seen.has(j.id)) return false; seen.add(j.id); return true; });
+          const myJobs   = _uid ? deduped.filter(j => j.requesterId === _uid) : [];
+          const myJobIds = new Set(myJobs.map(j => j.id));
+          // 기존 섹션에서 내 공고 제외
+          const otherUrgent = urgentJobs.filter(j => !myJobIds.has(j.id));
+          const otherRecent = recentJobs.filter(j => !myJobIds.has(j.id));
 
-            {workers.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  {/* DESIGN_V4: 섹션 타이틀 */}
-                  <p className="section-title mb-0">👨‍🌾 지금 바로 투입 가능한 작업자</p>
-                  <span className="text-sm text-farm-green font-bold">{workers.length}명</span>
-                </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
-                  {workers.map(w => <WorkerChip key={w.id} worker={w} />)}
-                </div>
-              </section>
-            )}
+          return (
+            <>
+              {/* 바로 등록 CTA — DESIGN_V3: 감정+속도 강조 */}
+              <button
+                onClick={onPostJob}
+                className="w-full py-4 bg-farm-green text-white font-black text-lg rounded-2xl
+                           shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+              >
+                🔥 3초 안에 일손 구하기
+              </button>
 
-            {urgentJobs.length > 0 && (
-              <section>
-                <p className="section-title flex items-center gap-1.5">
-                  <Zap size={18} className="text-farm-yellow" />
-                  급한 요청
-                </p>
-                <div className="space-y-3">
-                  {urgentJobs.map(job => (
-                    <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
-                  ))}
-                </div>
-              </section>
-            )}
+              {/* ── 내 공고 상단 고정 ── */}
+              {myJobs.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="section-title mb-0 flex items-center gap-1.5">
+                      🧑‍🌾 내 공고
+                      <span className="text-xs bg-farm-light text-farm-green font-bold rounded-full px-2 py-0.5">
+                        {myJobs.length}건
+                      </span>
+                    </p>
+                    <button
+                      onClick={onViewMyJobs}
+                      className="text-sm text-farm-green font-bold flex items-center gap-0.5"
+                    >
+                      전체 보기 <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {myJobs.map(job => (
+                      <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
+                    ))}
+                  </div>
+                </section>
+              )}
 
-            {recentJobs.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0">최근 등록 작업</p>
-                  <button
-                    onClick={onViewMyJobs}
-                    className="text-sm text-farm-green font-bold flex items-center gap-0.5"
-                  >
-                    전체 보기 <ChevronRight size={14} />
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {recentJobs.slice(0, 2).map(job => (
-                    <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
-                  ))}
-                </div>
-              </section>
-            )}
+              {workers.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    {/* DESIGN_V4: 섹션 타이틀 */}
+                    <p className="section-title mb-0">👨‍🌾 지금 바로 투입 가능한 작업자</p>
+                    <span className="text-sm text-farm-green font-bold">{workers.length}명</span>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+                    {workers.map(w => <WorkerChip key={w.id} worker={w} />)}
+                  </div>
+                </section>
+              )}
 
-            {!urgentJobs.length && !recentJobs.length && (
-              <div className="card text-center py-10 text-gray-400">
-                <p className="text-4xl mb-3">🌱</p>
-                <p className="font-semibold text-gray-500">아직 올라온 일이 없습니다</p>
-                <p className="text-sm mt-1">첫 일을 올려보세요!</p>
-              </div>
-            )}
-          </>
-        )}
+              {/* ── 다른 공고 (급한 요청) ── */}
+              {otherUrgent.length > 0 && (
+                <section>
+                  <p className="section-title flex items-center gap-1.5">
+                    <Zap size={18} className="text-farm-yellow" />
+                    지금 사람 구하는 일
+                  </p>
+                  <div className="space-y-3">
+                    {otherUrgent.map(job => (
+                      <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* ── 다른 공고 (최근 등록) ── */}
+              {otherRecent.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="section-title mb-0">최근 등록 작업</p>
+                    <button
+                      onClick={onViewJobList}
+                      className="text-sm text-farm-green font-bold flex items-center gap-0.5"
+                    >
+                      전체 보기 <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {otherRecent.slice(0, 3).map(job => (
+                      <JobCard key={job.id} job={job} mode="farmer" onViewApplicants={onViewApplicants} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {!myJobs.length && !otherUrgent.length && !otherRecent.length && (
+                <div className="card text-center py-10 text-gray-400">
+                  <p className="text-4xl mb-3">🌱</p>
+                  <p className="font-semibold text-gray-500">아직 올라온 일이 없습니다</p>
+                  <p className="text-sm mt-1">첫 일을 올려보세요!</p>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* ── 작업자 모드 콘텐츠 ── */}
         {!loading && mode === 'worker' && (
           <>
-            {/* ── STEP 4: 즉시 연결 가능 섹션 최상단 ── */}
-            {urgentJobs.length > 0 && (
+            {/* UX_V2: 🔥 지금 바로 가능한 일 — 최대 5개 */}
+            {(urgentJobs.length > 0 || recommended.length > 0) && (
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0 flex items-center gap-1.5">
-                    🔥 지금 바로 연결 가능한 일
-                  </p>
+                  <p className="section-title mb-0">🔥 지금 바로 가능한 일</p>
                   <button onClick={onViewJobList} className="text-sm text-farm-green font-bold flex items-center gap-0.5">
                     전체 보기 <ChevronRight size={14} />
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 -mt-2 mb-3">지금 전화하면 바로 연결됩니다</p>
                 <div className="space-y-3">
-                  {urgentJobs.slice(0, 3).map(job => (
-                    <JobCard
-                      key={job.id + '-urgent'}
-                      job={job}
-                      mode="worker"
-                      onApply={() => onViewJobList?.()}
-                      onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Phase 6: 추천 섹션 (오늘 + 가까운 + 일당 우선) */}
-            {recommended.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="section-title mb-0 flex items-center gap-1.5">
-                    <span>⭐</span> 오늘 근처 일
-                  </p>
-                  <button
-                    onClick={onViewJobList}
-                    className="text-sm text-farm-green font-bold flex items-center gap-0.5"
-                  >
-                    전체 보기 <ChevronRight size={14} />
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {recommended.map(job => (
-                    <JobCard
-                      key={job.id}
-                      job={job}
-                      mode="worker"
-                      onApply={() => onViewJobList?.()}
-                      onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
-                    />
-                  ))}
+                  {[...urgentJobs, ...recommended.filter(j => !urgentJobs.find(u => u.id === j.id))]
+                    .slice(0, 5)
+                    .map(job => (
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        mode="worker"
+                        onApply={() => onViewJobList?.()}
+                        onViewDetail={onViewJobDetail ? () => onViewJobDetail(job) : undefined}
+                      />
+                    ))}
                 </div>
               </section>
             )}
@@ -682,7 +673,10 @@ export default function HomePage({
       {/* 하단 탭바 — DESIGN_V4: 🏠 홈 / 📋 일자리 / 🗺️ 지도 / 👤 내 활동 */}
       <nav className="tabbar">
         {/* 🏠 홈 */}
-        <button className="tab-btn">
+        <button
+          className="tab-btn"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
           <span className="text-2xl leading-none text-farm-green">🏠</span>
           <span className="text-farm-green font-bold">홈</span>
         </button>

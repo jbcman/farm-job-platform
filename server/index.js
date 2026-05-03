@@ -5,6 +5,19 @@
  * 바인드: 0.0.0.0 (external access)
  */
 
+// ─── 프로세스 전역 에러 핸들러 (최우선 등록) ─────────────────────
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] uncaughtException:', err.message);
+    console.error(err.stack);
+    try { require('./services/metricsService').recordError(); } catch (_) {}
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    console.error('[PROMISE_ERROR] unhandledRejection:', msg);
+    try { require('./services/metricsService').recordError(); } catch (_) {}
+});
+
 // ─── 환경변수 로드 (최우선) ───────────────────────────────────────
 const path = require('path');
 const fs   = require('fs');
@@ -38,6 +51,9 @@ const payRoutes               = require('./routes/pay');
 const adminLogsRoutes         = require('./routes/adminLogs');
 const adminStreamRoutes       = require('./routes/adminStream');
 const adminSystemRoutes       = require('./routes/adminSystem');
+const phoneRoutes             = require('./routes/phone');
+const abRoutes                = require('./routes/ab');
+const testLogRoutes           = require('./routes/testLog');
 const { seed }                      = require('./seed');
 const { initWS }                    = require('./ws');
 const { recoverDepartureReminders } = require('./services/reminderRecovery');
@@ -45,6 +61,10 @@ const { scheduleBehaviorCleanup }   = require('./services/behaviorCleanup');
 const { runAutoWinner }             = require('./services/autoWinnerService');
 const { detect }                    = require('./services/anomalyDetector');
 const { tryRecover }                = require('./services/safeModeRecovery');
+const { tuneWeights }               = require('./services/weightTuner');
+const monitor                       = require('./middleware/monitor');
+const { setJobCounts, getSnapshot } = require('./services/metricsService');
+const { checkAlerts }               = require('./services/alertService');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -64,14 +84,10 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true })); // MAP_CORE: form-encoded body 방어
 
-// ─── 요청 로그 ────────────────────────────────────────────────────
-app.use((req, _res, next) => {
-    if (req.path !== '/api/health') {
-        console.log(`[${new Date().toLocaleTimeString('ko-KR')}] ${req.method} ${req.path}`);
-    }
-    next();
-});
+// ─── 요청 모니터링 (슬로우 API / 5xx 감지) ──────────────────────
+app.use(monitor);
 
 // ─── 업로드 파일 정적 서빙 (VISUAL_JOB_LITE) ─────────────────────
 const uploadsPath = path.join(__dirname, '../uploads');
@@ -85,15 +101,120 @@ if (fs.existsSync(distPath)) {
     console.log(`[STATIC] Serving frontend from ${distPath}`);
 }
 
-// ─── 헬스체크 ─────────────────────────────────────────────────────
-app.get('/api/health', (_req, res) =>
+// ─── 헬스체크 (DB 상태 포함) ─────────────────────────────────────
+const db = require('./db');
+// ─── GET /health — Render 헬스체크 전용 (항상 빠른 응답) ───────────
+// Render는 이 경로로 트래픽 전환 여부를 결정함
+// DB 연결 여부와 무관하게 Express가 살아있으면 200 응답
+app.get('/health', (_req, res) => {
     res.json({
+        status: 'ok',
+        db:     db.mode,          // 'SQLITE' | 'POSTGRES'
+        uptime: Math.floor(process.uptime()),
+    });
+});
+
+// ─── GET /ready — Readiness 체크 (DB 준비 여부) ────────────────────
+// liveness(/health)와 분리: DB 연결 완료 전까지 503 반환
+// 초기 트래픽이 DB 준비 전 유입되는 것을 방지하는 용도
+// (Render는 현재 readiness probe 미지원이나, 향후 로드밸런서·k8s 대비)
+app.get('/ready', (_req, res) => {
+    const ready = db.isReady?.() ?? true;
+    res.status(ready ? 200 : 503).json({
+        status: ready ? 'ready' : 'not ready',
+        db:     db.mode,
+        uptime: Math.floor(process.uptime()),
+    });
+});
+
+// ─── GET /api/health — 상세 헬스체크 (대시보드 / 운영 모니터링용) ──
+app.get('/api/health', async (_req, res) => {
+    const t0 = Date.now();
+    let dbStatus = 'unknown';
+    let dbMode   = db.mode;
+    try {
+        if (dbMode === 'POSTGRES') {
+            await db.q('SELECT 1');
+        } else {
+            await db.prepare('SELECT 1').get();
+        }
+        dbStatus = 'up';
+    } catch (e) {
+        dbStatus = 'down';
+        console.error('[HEALTH] DB 응답 없음:', e.message);
+    }
+    const httpStatus = dbStatus === 'down' ? 503 : 200;
+    res.status(httpStatus).json({
         server:    'ok',
+        db:        dbStatus,
+        dbMode:    dbMode,
         timestamp: new Date().toISOString(),
-        port:      PORT,
+        uptimeSec: Math.floor(process.uptime()),
+        responseMs: Date.now() - t0,
         kakao:     process.env.USE_KAKAO === 'true' ? 'real' : 'mock',
-    })
-);
+    });
+});
+
+// ─── GET /api/geocode — 주소 → 좌표 변환 (JobRequestPage 농지 주소 입력용) ──
+// farmAddress 입력 후 "위치 찾기" 버튼이 이 엔드포인트를 호출함
+const { geocodeAddress, reverseGeocodeAddress } = require('./services/geocodeService');
+app.get('/api/geocode', async (req, res) => {
+    const { address } = req.query;
+    if (!address || !address.trim()) {
+        return res.status(400).json({ ok: false, error: '주소가 필요해요.' });
+    }
+    // GEO_QUALITY: 8자 미만 = 도시/군 단위 → 정확도 낮음 → 차단
+    if (address.trim().length < 8) {
+        return res.status(400).json({
+            ok: false,
+            error: `"${address.trim()}" 주소가 너무 짧아요. 읍·면·리·동까지 입력해주세요. 예) 경기 화성시 서신면 홍법리`,
+        });
+    }
+    try {
+        const result = await geocodeAddress(address.trim());
+        if (!result) {
+            console.warn(`[GEOCODE_API_MISS] "${address}"`);
+            return res.status(404).json({ ok: false, error: `"${address.trim()}" 위치를 찾을 수 없어요. 시·군·읍·면·리 형식으로 더 구체적으로 입력해주세요.` });
+        }
+        console.log(`[GEOCODE_API_OK] "${address}" → (${result.lat}, ${result.lng}) normalized=${result.normalized} precision=${result.precision}`);
+        return res.json({
+            ok:           true,
+            lat:          result.lat,
+            lng:          result.lng,
+            normalized:   result.normalized   ?? false,
+            precision:    result.precision    ?? 'full',
+            roadAddress:  result.roadAddress  || null,
+            jibunAddress: result.jibunAddress || null,
+        });
+    } catch (e) {
+        console.error('[GEOCODE_API_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '위치 검색 중 오류가 발생했어요.' });
+    }
+});
+
+// ─── GET /api/reverse-geocode — 좌표 → 주소 변환 ────────────────
+app.get('/api/reverse-geocode', async (req, res) => {
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ ok: false, error: 'lat, lng 숫자 필요' });
+    }
+    try {
+        const result = await reverseGeocodeAddress(lat, lng);
+        if (!result) return res.json({ ok: true, roadAddress: null, jibunAddress: null });
+        console.log(`[REVERSE_GEOCODE_API] (${lat.toFixed(4)},${lng.toFixed(4)}) → road=${result.roadAddress}`);
+        return res.json({ ok: true, roadAddress: result.roadAddress, jibunAddress: result.jibunAddress });
+    } catch (e) {
+        console.error('[REVERSE_GEOCODE_API_ERROR]', e.message);
+        return res.status(500).json({ ok: false, error: '주소 변환 중 오류가 발생했어요.' });
+    }
+});
+
+// ─── DB Readiness 게이트 ─────────────────────────────────────────
+// PG 연결+migration 완료 전 DB 의존 API를 503으로 차단
+// /api/health, /api/geocode, /api/reverse-geocode는 이미 위에서 처리됨 → bypass
+const requireReady = require('./middleware/requireReady');
+app.use('/api', requireReady);
 
 // ─── API 라우트 ──────────────────────────────────────────────────
 app.use('/api/jobs',        jobRoutes);
@@ -116,6 +237,9 @@ app.use('/api/pay',                     payRoutes);
 app.use('/api/admin/logs',              adminLogsRoutes);
 app.use('/api/admin/stream',            adminStreamRoutes);
 app.use('/api/admin/system',            adminSystemRoutes);
+app.use('/api/phone',                   phoneRoutes);
+app.use('/api/ab',                      abRoutes);
+app.use('/api/test-log',               testLogRoutes);
 
 // ─── SPA 폴백 ────────────────────────────────────────────────────
 const indexHtml = path.join(distPath, 'index.html');
@@ -138,25 +262,75 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── 시드 데이터 ──────────────────────────────────────────────────
-if (process.env.USE_SEED_DATA !== 'false') {
-    seed();
+// production에서는 절대 실행 금지 — 데이터 오염 방지
+// 로컬 개발: NODE_ENV=development (자동 허용)
+// 명시적 허용: ENABLE_SEED=true (스테이징 등)
+const shouldSeed = process.env.NODE_ENV !== 'production' ||
+                   process.env.ENABLE_SEED === 'true';
+if (shouldSeed) {
+    seed().catch(e => console.error('[SEED_FAIL]', e.message));
+} else {
+    console.log('[SEED] production 환경 — 시드 스킵');
 }
 
 // ─── PHASE 32: 재시작 후 출발 독촉 타이머 복구 ──────────────────────
 // 서버가 꺼져 있는 동안 in_progress였던 작업들의 10분 타이머를 복구
-setImmediate(recoverDepartureReminders);
+setImmediate(() => recoverDepartureReminders().catch(e => console.error('[REMINDER_RECOVERY_FAIL]', e.message)));
 
 // ─── PERSONALIZATION: 행동 로그 자동 정리 (30일/사용자당 100개 캡) ──
 scheduleBehaviorCleanup();
 
 // ─── AUTO_WINNER: 10분마다 승자 자동 판정 ───────────────────────
-setInterval(() => {
-    try { runAutoWinner(); } catch (e) { console.error('[AUTO_WINNER_FAIL]', e.message); }
+setInterval(async () => {
+    try { await runAutoWinner(); } catch (e) { console.error('[AUTO_WINNER_FAIL]', e.message); }
 }, 10 * 60 * 1000);
 
 // ─── SAFE_MODE: 이상 감지 (10분) + 자동 복구 시도 (1분) ─────────
-setInterval(() => { try { detect();     } catch (_) {} }, 10 * 60 * 1000);
-setInterval(() => { try { tryRecover(); } catch (_) {} },      60 * 1000);
+setInterval(async () => { try { await detect();     } catch (_) {} }, 10 * 60 * 1000);
+setInterval(async () => { try { await tryRecover(); } catch (_) {} },      60 * 1000);
+
+// ─── JOB 상태 집계 (30초마다 — metricsService 갱신) ──────────────
+// 실시간 대시보드에서 공고 현황 표시에 사용
+;(async function pollJobCounts() {
+    const dbLocal = require('./db');
+    async function _refresh() {
+        try {
+            const rows = await dbLocal.prepare(
+                `SELECT status, COUNT(*) AS cnt FROM jobs GROUP BY status`
+            ).all();
+            const counts = { open: 0, matched: 0, in_progress: 0, completed: 0 };
+            for (const r of rows) {
+                const s = (r.status || '').toLowerCase();
+                if (s === 'open')        counts.open        = Number(r.cnt) || 0;
+                else if (s === 'matched')     counts.matched     = Number(r.cnt) || 0;
+                else if (s === 'in_progress') counts.in_progress = Number(r.cnt) || 0;
+                else if (s === 'completed')   counts.completed   = Number(r.cnt) || 0;
+            }
+            setJobCounts(counts);
+        } catch (_) {}
+    }
+    _refresh(); // 즉시 1회
+    setInterval(_refresh, 30_000); // 30초마다
+})();
+
+// ─── AI 가중치 자동 튜닝 (24시간마다) ────────────────────────────
+// match_logs Top-1 선택률 기반으로 거리/평점 가중치 자동 조정
+// 최소 20건 미달 시 스킵, 결과는 server/model_weights.json 에 저장
+setInterval(async () => {
+    try {
+        const result = await tuneWeights();
+        if (result.action !== 'no_change' && result.action !== 'insufficient_data') {
+            console.log(`[WEIGHT_TUNER] 자동 튜닝 완료: top1=${result.top1Rate}% action=${result.action}`);
+        }
+    } catch (e) { console.error('[WEIGHT_TUNER_FAIL]', e.message); }
+}, 24 * 60 * 60 * 1000); // 24시간
+
+// ─── 운영자 알람 체크 (10초마다 — 메트릭스 임계값 감지) ──────────
+// errorsLast1m > 5 또는 avgResponseMs > 1000 → 카카오 알림톡 발송
+// 쿨다운: 5분 기본 / 3회 연속 → 30분 자동 억제
+setInterval(async () => {
+    try { await checkAlerts(getSnapshot()); } catch (_) {}
+}, 10_000);
 
 // ─── 서버 시작 (WebSocket 공유) ──────────────────────────────────
 const http   = require('http');
@@ -184,6 +358,22 @@ server.listen(PORT, HOST, () => {
    Test URL  : GET /api/test/alarm
 ──────────────────────────────────────────
     `.trim());
+});
+
+// ─── Graceful Shutdown (SIGTERM — Render 무중단 배포 핵심) ──────────
+// Render는 새 버전 헬스체크 통과 후 구 서버에 SIGTERM 전송
+// 10초 안에 in-flight 요청 완료 → 강제 종료
+process.on('SIGTERM', () => {
+    console.log('[SHUTDOWN] SIGTERM 수신 — graceful shutdown 시작...');
+    server.close(() => {
+        console.log('[SHUTDOWN] ✅ 모든 연결 종료 완료, 프로세스 종료');
+        process.exit(0);
+    });
+    // 10초 후 강제 종료 (in-flight 요청이 안 끝나는 경우 대비)
+    setTimeout(() => {
+        console.warn('[SHUTDOWN] ⚠️ 10초 타임아웃 — 강제 종료');
+        process.exit(0);
+    }, 10_000).unref();
 });
 
 function getLocalIp() {

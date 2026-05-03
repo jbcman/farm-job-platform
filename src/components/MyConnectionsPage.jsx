@@ -12,7 +12,7 @@ const JOB_STATUS_LABEL = {
   open:        { label: '모집중',   cls: 'bg-green-50  text-green-700' },
   matched:     { label: '매칭완료', cls: 'bg-blue-50   text-blue-700'  },
   in_progress: { label: '진행중',   cls: 'bg-amber-50  text-amber-700' },
-  done:        { label: '완료',     cls: 'bg-gray-100  text-gray-600'  },
+  completed:   { label: '완료',     cls: 'bg-gray-100  text-gray-600'  },
   closed:      { label: '마감',     cls: 'bg-red-50    text-red-600'   },
 };
 
@@ -185,7 +185,7 @@ export default function MyConnectionsPage({ userId, onBack }) {
 
         {contacts.map(c => {
           const statusInfo = JOB_STATUS_LABEL[c.jobStatus] || JOB_STATUS_LABEL.matched;
-          const isDone    = c.jobStatus === 'done';
+          const isDone    = c.jobStatus === 'completed';
           // PHASE 31: 작업자도 후기 가능 (완료 상태)
           const canReview = isDone;
 
@@ -298,6 +298,9 @@ export default function MyConnectionsPage({ userId, onBack }) {
       {reviewJob && (
         <ReviewModal
           job={reviewJob}
+          reviewerRole={reviewJob.myRole || 'worker'}
+          reviewerId={userId}
+          targetId={reviewJob.targetId}
           showIncentive={reviewIncentive}
           onClose={() => { setReviewJob(null); setReviewIncentive(false); }}
           onSubmit={() => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ArrowLeft, Loader2, MapPin, Phone, Navigation } from 'lucide-react';
-import { getJobs, getMyJobs, getMyApplications, applyJob, startJob, completeJob, closeJob, getNearbyJobs, getJobContact, rematchJob, getUserId } from '../utils/api.js';
+import { getJobs, getMyJobs, getMyApplications, applyJob, startJob, completeJob, closeJob, getNearbyJobs, getJobContact, rematchJob, getUserId, cancelApply } from '../utils/api.js';
+import { logTestEvent, logCallTriggered, logClickFail, logCheckpoint } from '../utils/testLogger.js'; // REAL_USER_TEST
 import { filterUrgentOnly } from '../utils/sortJobs.js';
 import { sortJobsByRecommend, RECOMMEND_BADGE_THRESHOLD } from '../utils/recommendJobs.js';
 import { getUserProfile, saveUserInteraction } from '../utils/userProfile.js';
@@ -9,8 +10,43 @@ import { useUserLocation } from '../hooks/useUserLocation.js';
 import JobCard from './JobCard.jsx';
 import ReviewModal from './ReviewModal.jsx';
 import PostApplySheet from './PostApplySheet.jsx';
+import FilterModal from './FilterModal.jsx';
+import { getBehaviorScore, getHotJobIds } from '../utils/behaviorScore.js';
 
 const CATEGORIES = ['전체', '밭갈이', '로터리', '두둑', '방제', '수확 일손', '예초'];
+
+// ── SMART_V3: 시간대 기반 추천 카테고리 + 이유 ─────────────────
+function getSmartCategories() {
+  const hour = new Date().getHours();
+  if (hour < 12) return ['밭갈이', '로터리'];
+  if (hour < 18) return ['수확', '방제'];
+  return ['방제', '예초'];
+}
+function getSmartReason() {
+  const hour = new Date().getHours();
+  if (hour < 12) return { label: '🌅 오전 작업 추천', desc: `오전이라 ${getSmartCategories().join('·')} 추천 중` };
+  if (hour < 18) return { label: '☀️ 오후 작업 추천', desc: `오후라 ${getSmartCategories().join('·')} 추천 중` };
+  return { label: '🌙 야간 작업 추천', desc: `저녁이라 ${getSmartCategories().join('·')} 추천 중` };
+}
+
+/**
+ * SMART_V4: 스마트 점수
+ *   urgent      +50  (급구/오늘)
+ *   근거리 ≤5km +30
+ *   시간대 일치 +20
+ *   클릭 횟수   ×10  (내 행동)
+ *   전화 횟수   ×30  (내 행동 — 가장 강한 신호)
+ */
+function smartScore(job) {
+  let score = 0;
+  if (job.isUrgent || job.isToday) score += 50;
+  const km = job.distKm;
+  if (km != null && Number.isFinite(km) && km <= 5) score += 30;
+  const smartCats = getSmartCategories();
+  if (smartCats.includes(job.category)) score += 20;
+  score += getBehaviorScore(job.id);   // 클릭×10 + 전화×30
+  return score;
+}
 
 function getStoredLocation() {
   try {
@@ -49,6 +85,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const [toast,        setToast]        = useState('');
   const [error,        setError]        = useState('');
   const [reviewJob,    setReviewJob]    = useState(null); // ReviewModal 대상
+  const [cancelling,   setCancelling]   = useState(null); // 지원 취소 중인 applicationId
   // UI_INTEGRATION: 지원 후 강제 행동 시트
   const [postApply,    setPostApply]    = useState(null); // { phone, jobName }
   // PHASE 18: 급구 필터 (일반 목록 전용)
@@ -57,6 +94,16 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const [nearbyMode,    setNearbyMode]    = useState(false);
   const [nearbyJobs,    setNearbyJobs]    = useState([]);
   const [nearbyLoading, setNearbyLoading] = useState(false);
+  // LOC_CHANGE: 위치 변경 (manual 모드)
+  const [showLocChange,    setShowLocChange]    = useState(false);
+  const [locChangeInput,   setLocChangeInput]   = useState('');
+  const [locChangeLoading, setLocChangeLoading] = useState(false);
+  const [manualLocLabel,   setManualLocLabel]   = useState(''); // 수동 위치 표시명
+  // FILTER_V1: 다중 카테고리 선택 + 모달
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [showFilterModal,    setShowFilterModal]    = useState(false);
+  // SMART_V2: 자동 추천 상태 (true = 시스템 추천 활성)
+  const [smartMode, setSmartMode] = useState(false);
   // FINAL POLISH: localStorage에서 마지막 사용 반경 복원
   const [radius, setRadius] = useState(() => {
     try {
@@ -69,7 +116,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
   const impressedIds = useRef(new Set());
 
   const loc = getStoredLocation();
-  const { location: gpsLoc } = useUserLocation();
+  const { location: gpsLoc, loading: gpsLoading, retry: retryGps } = useUserLocation();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -90,21 +137,33 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
       // 작업자: 전체 목록 + GPS 필터
       const cat = category === '전체' ? undefined : category;
       getJobs({ category: cat, lat: loc?.lat, lon: loc?.lon, radius: loc ? 50 : 500 })
-        .then(d => setJobs(d.jobs || []))
-        .catch(e => setError(e.message))
+        .then(d => {
+          setJobs(d.jobs || []);
+          logTestEvent('worker_view_jobs', { count: (d.jobs || []).length, category: cat || '전체' }); // REAL_USER_TEST STEP 4
+        })
+        .catch(e => {
+          setError(e.message);
+          logClickFail('view_jobs', e.message); // REAL_USER_TEST STEP 5
+        })
         .finally(() => setLoading(false));
     }
   }, [myJobsMode, myApplicationsMode, userId, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
 
-  // PHASE_COMPLETE_SETTLEMENT_WS_V1: 실시간 WS 구독
+  // REALTIME_ROOM_V2: WS 구독 + 룸 join (내 작업 목록 자동 구독)
   useEffect(() => {
     const handle = connectWS((data) => {
+      // SSOT: job_update — 서버에서 내려온 완전한 job 객체로 덮어쓰기
+      if (data.type === 'job_update' && data.job) {
+        setJobs(prev => prev.map(j => j.id === data.job.id ? { ...j, ...data.job } : j));
+        return;
+      }
+      // 레거시 이벤트 하위호환
       if (data.type === 'job_completed') {
         setJobs(prev => prev.map(j =>
           j.id === data.jobId
-            ? { ...j, status: 'done', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }
+            ? { ...j, status: 'completed', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }
             : j
         ));
       }
@@ -121,6 +180,24 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     });
     return () => handle.close();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // REALTIME_ROOM_V2: 내 작업 목록 변경 시 룸 구독 갱신
+  const wsHandleRef = React.useRef(null);
+  useEffect(() => {
+    if (!myJobsMode || !userId) return;
+    // jobs 목록에서 내 jobId 추출 후 룸 구독
+    const handle = connectWS(() => {}); // 구독용 별도 연결 (jobId join 전용)
+    wsHandleRef.current = handle;
+    jobs.forEach(j => handle.joinJob(j.id));
+    return () => handle.close();
+  }, [jobs.map(j => j.id).join(','), myJobsMode, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // FALLBACK_POLL: WS 불안정 환경 대비 5초 폴링
+  useEffect(() => {
+    if (!myJobsMode && !myApplicationsMode) return;
+    const t = setInterval(() => { load(); }, 5000);
+    return () => clearInterval(t);
+  }, [myJobsMode, myApplicationsMode, load]);
 
   function showToast(msg) {
     setToast(msg);
@@ -190,6 +267,32 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     await runNearby(useLoc, km);
   }
 
+  /** LOC_CHANGE: 수동 위치 입력 → geocode → runNearby */
+  async function handleLocChange() {
+    const trimmed = locChangeInput.trim();
+    if (!trimmed) return;
+    setLocChangeLoading(true);
+    try {
+      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (!data.ok || !data.lat) {
+        showToast('위치를 찾을 수 없어요. 시·군·읍·면까지 입력해주세요.');
+        return;
+      }
+      const label = data.roadAddress || data.jibunAddress || trimmed;
+      // 입력 주소 중 시·군까지만 표시 (너무 길면 잘라냄)
+      const shortLabel = label.split(' ').slice(0, 2).join(' ');
+      setManualLocLabel(shortLabel);
+      await runNearby({ lat: data.lat, lng: data.lng }, radius);
+      setShowLocChange(false);
+      setLocChangeInput('');
+    } catch {
+      showToast('위치 검색에 실패했어요.');
+    } finally {
+      setLocChangeLoading(false);
+    }
+  }
+
   // ── FINAL BOOST: 앱 진입 시 최초 1회 자동 실행 (sessionStorage guard) ──
   useEffect(() => {
     // 공개 작업자 목록에서만, myJobsMode/myApplicationsMode 제외
@@ -200,12 +303,50 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     runNearby(gpsLoc, radius);
   }, [gpsLoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── SMART_V3: 첫 진입 자동 추천 (시간대 기반, 1회) ──────────────
+  useEffect(() => {
+    if (myJobsMode || myApplicationsMode) return;
+    if (sessionStorage.getItem('smart_auto_run')) return;
+    sessionStorage.setItem('smart_auto_run', '1');
+    setSelectedCategories(getSmartCategories());
+    setSmartMode(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // BACK_NAV: 스크롤 위치 저장/복원
+  const SCROLL_KEY = 'farm-listScroll';
+  useEffect(() => {
+    // 마운트 시 저장된 스크롤 복원
+    const saved = sessionStorage.getItem(SCROLL_KEY);
+    if (saved) {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: Number(saved), behavior: 'instant' });
+      });
+      sessionStorage.removeItem(SCROLL_KEY); // 1회 복원 후 삭제
+    }
+    // 스크롤 이벤트 저장 (상세 이동 직전 포지션 기록)
+    const onScroll = () => {
+      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** SMART_V3: 🤖 추천 버튼 핸들러 */
+  function applySmartFilter() {
+    setSelectedCategories(getSmartCategories());
+    setUrgentOnly(true);
+    setSmartMode(true);
+  }
+
   // ── 작업자: 지원하기 ──────────────────────────────────────────
   async function handleApply(job) {
     try {
       await applyJob(job.id, { workerId: userId, message: '' });
       setApplied(prev => new Set([...prev, job.id]));
       showToast(`${job.category} 신청됐어요!`);
+      // REAL_USER_TEST: 작업자 지원 완료
+      logTestEvent('worker_apply', { jobId: job.id, category: job.category });
+      logCheckpoint('apply_done', { jobId: job.id });
       // PHASE 19: 지원 행동으로 추천 프로필 업데이트
       try { saveUserInteraction(job); } catch (_) {}
 
@@ -228,6 +369,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
         } catch (_) {}
       }
     } catch (e) {
+      logClickFail('apply_job', e.message); // REAL_USER_TEST STEP 5
       showToast(e.message);
     }
   }
@@ -248,6 +390,9 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     try {
       await completeJob(job.id, userId);
       showToast('작업이 완료되었어요!');
+      // REAL_USER_TEST: 농민 작업 완료
+      logTestEvent('farmer_complete_job', { jobId: job.id, category: job.category });
+      logCheckpoint('complete_done', { jobId: job.id });
       // PHASE RETENTION: 리뷰 유도용 localStorage 마킹
       try {
         localStorage.setItem('farm-pendingReview', JSON.stringify({
@@ -258,6 +403,23 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
       } catch (_) {}
       load();
       setReviewJob(job); // 완료 후 리뷰 모달 자동 팝업
+    } catch (e) {
+      showToast(e.message);
+    }
+  }
+
+  // ── PHASE 7: 농민 → 입금 완료 처리 (done → paid) ──────────────
+  async function handleMarkPaid(job) {
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/mark-paid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: userId }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || '입금 처리 실패');
+      showToast('💰 입금 완료 처리됐어요!');
+      load();
     } catch (e) {
       showToast(e.message);
     }
@@ -287,18 +449,61 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
     }
   }
 
+  // ── 작업자: 지원 취소 ─────────────────────────────────────────
+  async function handleCancelApply(appId, jobId) {
+    if (!window.confirm('지원을 취소할까요?')) return;
+    setCancelling(appId);
+    try {
+      await cancelApply(jobId, userId);
+      showToast('지원이 취소되었습니다.');
+      // 목록에서 즉시 제거
+      setApplications(prev => prev.filter(a => a.id !== appId));
+    } catch (e) {
+      showToast(e.message || '지원 취소에 실패했어요.');
+    } finally {
+      setCancelling(null);
+    }
+  }
+
   const title = myApplicationsMode ? '내 지원 현황' : myJobsMode ? '내 요청 관리' : '지금 가능한 일';
   const mode  = myJobsMode ? 'farmer' : 'worker';
 
-  // PHASE 16+18+19: 일반 목록 → 급구 필터 → 추천 정렬
-  // PHASE NEARBY_MATCH: nearbyMode일 때는 nearbyJobs 사용 (이미 거리순 정렬됨)
-  // myJobsMode/myApplicationsMode는 기존 순서 유지 (농민 관리 화면)
+  // FILTER_V1: 다중 카테고리 제거 핸들러
+  const removeCategory = (cat) => {
+    setSelectedCategories(prev => prev.filter(c => c !== cat));
+  };
+
+  // FILTER_V1: 전체 초기화 (smartMode도 해제)
+  const clearFilters = () => {
+    setSelectedCategories([]);
+    setUrgentOnly(false);
+    setSmartMode(false);
+  };
+
+  // PHASE 16+18+19+FILTER_V1: 일반 목록 → 급구 필터 → 카테고리 다중필터 → 추천 정렬
   const isPublicList = !myJobsMode && !myApplicationsMode;
   const userProfile  = isPublicList ? getUserProfile() : {};
-  const displayJobs  = isPublicList
+
+  function applyFilters(list) {
+    let result = filterUrgentOnly(list, urgentOnly);
+    if (selectedCategories.length > 0) {
+      result = result.filter(j => selectedCategories.includes(j.category));
+    }
+    return result;
+  }
+
+  // SMART_V3: smartMode일 때 스코어 기반 정렬, 아니면 기존 추천 정렬
+  function sortForDisplay(list) {
+    if (smartMode) {
+      return [...list].sort((a, b) => smartScore(b) - smartScore(a));
+    }
+    return sortJobsByRecommend(list, userProfile);
+  }
+
+  const displayJobs = isPublicList
     ? nearbyMode
-      ? filterUrgentOnly(nearbyJobs, urgentOnly)            // 근처 모드: 거리순 유지 (이미 정렬됨)
-      : sortJobsByRecommend(filterUrgentOnly(jobs, urgentOnly), userProfile)  // 일반 모드
+      ? applyFilters(nearbyJobs)
+      : sortForDisplay(applyFilters(jobs))
     : jobs;
 
   const urgentCount = isPublicList ? jobs.filter(j => j.isUrgent).length : 0;
@@ -336,8 +541,9 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
 
         {/* 상단: 뒤로가기 + 타이틀 + 건수 */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-          <button onClick={onBack} className="p-1 text-white active:scale-90 transition-transform">
-            <ArrowLeft size={22} />
+          <button onClick={onBack} className="flex items-center gap-1 text-white active:scale-90 transition-transform px-1 py-1">
+            <ArrowLeft size={20} />
+            <span style={{ fontSize: 13, fontWeight: 700 }}>홈</span>
           </button>
           <div className="flex-1">
             <h1 style={{ fontFamily: "'Jalnan2','Noto Sans KR',sans-serif", fontSize: 18, color: '#fff', margin: 0 }}>
@@ -346,7 +552,7 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
             {!myJobsMode && !myApplicationsMode && (loc || gpsLoc) && (
               <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 3 }}>
                 {nearbyMode
-                  ? <><Navigation size={10} /> {radius}km 내 결과</>
+                  ? <><Navigation size={10} /> {manualLocLabel ? `${manualLocLabel} ·` : '현재 위치 기준 ·'} {radius}km</>
                   : <><MapPin size={10} /> 내 위치 기준</>
                 }
               </p>
@@ -375,86 +581,320 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
           </div>
         )}
 
-        {/* 필터 칩: 내 근처 + 반경 + 🔥급구 + 카테고리 (작업자 공개 목록) */}
+        {/* FILTER_V1: 핵심 4개 칩 + 반경 서브 칩 (작업자 공개 목록) */}
         {!myJobsMode && !myApplicationsMode && (
-          <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-none">
-            {/* 내 근처 */}
-            <button
-              onClick={handleNearby}
-              disabled={nearbyLoading}
-              style={{
-                flexShrink: 0,
-                padding: '5px 12px',
-                borderRadius: 9999,
-                fontWeight: 700,
-                fontSize: 12,
-                background: nearbyMode ? '#fff' : 'transparent',
-                color: nearbyMode ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
-                border: nearbyMode ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 4,
-                opacity: nearbyLoading ? 0.6 : 1,
-              }}
-            >
-              {nearbyLoading ? <Loader2 size={11} className="animate-spin" /> : <Navigation size={11} />}
-              {nearbyMode ? '전체 보기' : '내 근처'}
-            </button>
-
-            {/* 반경 선택 */}
-            {nearbyMode && [3, 5, 10].map(km => (
+          <>
+            {/* 메인 필터 칩 행 */}
+            <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
+              {/* 내 근처 */}
               <button
-                key={km}
-                onClick={() => handleRadiusChange(km)}
+                onClick={handleNearby}
                 disabled={nearbyLoading}
-                style={{
-                  flexShrink: 0,
-                  padding: '5px 10px',
-                  borderRadius: 9999,
-                  fontWeight: 700,
-                  fontSize: 11,
-                  background: radius === km ? '#fff' : 'transparent',
-                  color: radius === km ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
-                  border: radius === km ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
-                  cursor: 'pointer',
-                }}
-              >{km}km</button>
-            ))}
-
-            {/* 🔥 급구 */}
-            <button
-              onClick={() => setUrgentOnly(v => !v)}
-              style={{
-                flexShrink: 0,
-                padding: '5px 12px',
-                borderRadius: 9999,
-                fontWeight: 700,
-                fontSize: 12,
-                background: urgentOnly ? '#dc2626' : 'transparent',
-                color: urgentOnly ? '#fff' : 'rgba(255,255,255,0.85)',
-                border: urgentOnly ? '2px solid #dc2626' : '2px solid rgba(255,255,255,0.4)',
-                cursor: 'pointer',
-              }}
-            >🔥 급구{urgentCount > 0 && !urgentOnly ? ` ${urgentCount}` : ''}</button>
-
-            {/* 카테고리 */}
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setCategory(cat)}
                 style={{
                   flexShrink: 0,
                   padding: '5px 12px',
                   borderRadius: 9999,
                   fontWeight: 700,
                   fontSize: 12,
-                  background: category === cat ? '#fff' : 'transparent',
-                  color: category === cat ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
-                  border: category === cat ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  background: nearbyMode ? '#fff' : 'transparent',
+                  color: nearbyMode ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                  border: nearbyMode ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  opacity: nearbyLoading ? 0.6 : 1,
+                }}
+              >
+                {nearbyLoading ? <Loader2 size={11} className="animate-spin" /> : <Navigation size={11} />}
+                {nearbyMode ? '전체 보기' : '내 근처'}
+              </button>
+
+              {/* 🔥 급구 */}
+              <button
+                onClick={() => setUrgentOnly(v => !v)}
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 12px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: urgentOnly ? '#dc2626' : 'transparent',
+                  color: urgentOnly ? '#fff' : 'rgba(255,255,255,0.85)',
+                  border: urgentOnly ? '2px solid #dc2626' : '2px solid rgba(255,255,255,0.4)',
                   cursor: 'pointer',
                 }}
-              >{cat}</button>
-            ))}
-          </div>
+              >🔥 급구{urgentCount > 0 && !urgentOnly ? ` ${urgentCount}` : ''}</button>
+
+              {/* 전체 (필터 초기화) */}
+              {(urgentOnly || selectedCategories.length > 0) && (
+                <button
+                  onClick={clearFilters}
+                  style={{
+                    flexShrink: 0,
+                    padding: '5px 12px',
+                    borderRadius: 9999,
+                    fontWeight: 700,
+                    fontSize: 12,
+                    background: 'rgba(255,255,255,0.15)',
+                    color: 'rgba(255,255,255,0.85)',
+                    border: '2px solid rgba(255,255,255,0.4)',
+                    cursor: 'pointer',
+                  }}
+                >✕ 초기화</button>
+              )}
+
+              {/* 🤖 추천 버튼 */}
+              <button
+                onClick={applySmartFilter}
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 12px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: smartMode ? '#f59e0b' : 'transparent',
+                  color: smartMode ? '#fff' : 'rgba(255,255,255,0.85)',
+                  border: smartMode ? '2px solid #f59e0b' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                🤖 추천
+              </button>
+
+              {/* 🗂 종류 (카테고리 모달) */}
+              <button
+                onClick={() => { setShowFilterModal(true); setSmartMode(false); }}
+                style={{
+                  flexShrink: 0,
+                  padding: '5px 12px',
+                  borderRadius: 9999,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: selectedCategories.length > 0 && !smartMode ? '#fff' : 'transparent',
+                  color: selectedCategories.length > 0 && !smartMode ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                  border: selectedCategories.length > 0 && !smartMode ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                🗂 종류{selectedCategories.length > 0 && !smartMode ? ` ${selectedCategories.length}` : ''}
+              </button>
+            </div>
+
+            {/* 반경 서브 칩 (nearbyMode일 때만) */}
+            {nearbyMode && (
+              <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
+                {[3, 5, 10].map(km => (
+                  <button
+                    key={km}
+                    onClick={() => handleRadiusChange(km)}
+                    disabled={nearbyLoading}
+                    style={{
+                      flexShrink: 0,
+                      padding: '4px 10px',
+                      borderRadius: 9999,
+                      fontWeight: 700,
+                      fontSize: 11,
+                      background: radius === km ? '#fff' : 'transparent',
+                      color: radius === km ? '#2d8a4e' : 'rgba(255,255,255,0.85)',
+                      border: radius === km ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                      cursor: 'pointer',
+                    }}
+                  >{km}km</button>
+                ))}
+              </div>
+            )}
+
+            {/* GPS_NEARBY_BANNER: 현재 위치 기준 일자리 표시 중 (nearbyMode 활성 시) */}
+            {nearbyMode && (
+              <div style={{ margin: '0 16px 6px' }}>
+                {/* 상단: 상태 텍스트 + 버튼 2개 */}
+                <div style={{
+                  padding: '7px 12px',
+                  borderRadius: showLocChange ? '10px 10px 0 0' : 10,
+                  background: 'rgba(255,255,255,0.15)',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  borderBottom: showLocChange ? '1px solid rgba(255,255,255,0.1)' : undefined,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <span style={{ fontSize: 12, color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1 }}>
+                    <Navigation size={13} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {manualLocLabel
+                        ? `📍 ${manualLocLabel} 기준 · 가까운 순`
+                        : '📍 현재 위치 기준 · 가까운 순'}
+                    </span>
+                  </span>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      onClick={() => setShowLocChange(v => !v)}
+                      style={{ fontSize: 11, fontWeight: 700, color: showLocChange ? '#fff' : 'rgba(255,255,255,0.8)', background: showLocChange ? 'rgba(255,255,255,0.25)' : 'none', border: showLocChange ? '1px solid rgba(255,255,255,0.4)' : 'none', borderRadius: 6, padding: showLocChange ? '2px 7px' : 0, cursor: 'pointer' }}
+                    >
+                      📍 위치 변경
+                    </button>
+                    <button
+                      onClick={() => { setNearbyMode(false); setManualLocLabel(''); setShowLocChange(false); }}
+                      style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      전체 보기
+                    </button>
+                  </div>
+                </div>
+                {/* 위치 변경 입력창 (showLocChange 시 슬라이드 인) */}
+                {showLocChange && (
+                  <div style={{
+                    padding: '8px 10px',
+                    borderRadius: '0 0 10px 10px',
+                    background: 'rgba(255,255,255,0.10)',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    borderTop: 'none',
+                    display: 'flex',
+                    gap: 6,
+                  }}>
+                    <input
+                      value={locChangeInput}
+                      onChange={e => setLocChangeInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleLocChange()}
+                      placeholder="예: 충남 홍성군"
+                      style={{
+                        flex: 1,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.35)',
+                        background: 'rgba(255,255,255,0.18)',
+                        color: '#fff',
+                        padding: '7px 10px',
+                        fontSize: 13,
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      onClick={handleLocChange}
+                      disabled={locChangeLoading || !locChangeInput.trim()}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: 8,
+                        background: locChangeInput.trim() ? '#fff' : 'rgba(255,255,255,0.3)',
+                        color: locChangeInput.trim() ? '#2d8a4e' : 'rgba(255,255,255,0.5)',
+                        fontWeight: 800,
+                        fontSize: 12,
+                        border: 'none',
+                        cursor: locChangeInput.trim() ? 'pointer' : 'default',
+                        flexShrink: 0,
+                        display: 'flex', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      {locChangeLoading ? <Loader2 size={12} className="animate-spin" /> : '검색'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* GPS_RETRY_BTN: GPS 미확보 시 재시도 버튼 */}
+            {!gpsLoc && !gpsLoading && (
+              <div style={{
+                margin: '0 16px 6px',
+                padding: '7px 12px',
+                borderRadius: 10,
+                background: 'rgba(255,255,255,0.10)',
+                border: '1px dashed rgba(255,255,255,0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 600 }}>
+                  위치 정보가 없어요
+                </span>
+                <button
+                  onClick={() => {
+                    retryGps();
+                    showToast('📍 위치 재확인 중...');
+                  }}
+                  style={{
+                    fontSize: 12, fontWeight: 800, color: '#fff',
+                    background: 'rgba(255,255,255,0.2)',
+                    border: '1px solid rgba(255,255,255,0.4)',
+                    borderRadius: 9999,
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                  }}
+                >
+                  <Navigation size={11} /> 📍 내 위치 다시 찾기
+                </button>
+              </div>
+            )}
+
+            {/* SMART_V4: 추천 이유 배너 (행동 데이터 있으면 문구 변경) */}
+            {smartMode && selectedCategories.length > 0 && (() => {
+              const reason   = getSmartReason();
+              const hotIds   = getHotJobIds();
+              const hasHuman = hotIds.length > 0;
+              return (
+                <div style={{
+                  margin: '0 16px 6px',
+                  padding: '7px 12px',
+                  borderRadius: 10,
+                  background: hasHuman
+                    ? 'rgba(37,99,235,0.18)'
+                    : 'rgba(245,158,11,0.18)',
+                  border: `1px solid ${hasHuman ? 'rgba(37,99,235,0.4)' : 'rgba(245,158,11,0.45)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}>
+                  <div>
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'block' }}>
+                      {hasHuman ? '👥 사람 흔적 기반' : reason.label}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#fff', fontWeight: 800 }}>
+                      🤖 {hasHuman
+                        ? `사람들이 많이 선택한 작업 · ${selectedCategories.join('·')}`
+                        : reason.desc}
+                    </span>
+                  </div>
+                  <button
+                    onClick={clearFilters}
+                    style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  >
+                    전체 보기
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* 선택된 카테고리 태그 표시 행 */}
+            {selectedCategories.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
+                {selectedCategories.map(cat => (
+                  <span
+                    key={cat}
+                    onClick={() => removeCategory(cat)}
+                    style={{
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: 'rgba(255,255,255,0.9)',
+                      color: '#2d8a4e',
+                      padding: '3px 10px',
+                      borderRadius: 9999,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {cat} <span style={{ fontSize: 10, opacity: 0.7 }}>✕</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </header>
 
@@ -515,6 +955,8 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               const job = a.job || {};
               const statusInfo = getAppStatus(a.status, job.status);
               const isSelected = a.status === 'selected';
+              // 지원 취소 가능: 아직 선택 전 + 공고 open
+              const canCancel  = a.status === 'applied' && job.status === 'open';
               return (
                 <div key={a.id} className={`card space-y-2 ${isSelected ? 'border-l-4 border-l-farm-green' : ''}`}>
                   <div className="flex items-center justify-between">
@@ -541,6 +983,18 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
                         <Phone size={14} /> 바로 전화
                       </a>
                     </div>
+                  )}
+                  {/* 지원 취소 버튼 — open + applied 상태에서만 노출 */}
+                  {canCancel && (
+                    <button
+                      onClick={() => handleCancelApply(a.id, job.id)}
+                      disabled={cancelling === a.id}
+                      className="w-full mt-1 py-2 text-sm font-semibold text-red-500
+                                 border border-red-200 rounded-xl bg-red-50
+                                 active:scale-95 transition-transform disabled:opacity-50"
+                    >
+                      {cancelling === a.id ? '취소 중...' : '지원 취소'}
+                    </button>
                   )}
                 </div>
               );
@@ -588,10 +1042,13 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
               onViewApplicants={onViewApplicants}
               onStartJob={handleStart}
               onCompleteJob={handleComplete}
+              onMarkPaid={myJobsMode ? handleMarkPaid : undefined}
               onWriteReview={setReviewJob}
               onCloseJob={myJobsMode ? handleClose : undefined}
               onCopyJob={myJobsMode ? onCopyJob : undefined}
+              onViewDetail={onViewJobDetail ? (j) => onViewJobDetail(j) : undefined}
               userLocation={gpsLoc || loc}
+              isSmartMatch={smartMode && selectedCategories.includes(job.category)}
             />
           </div>
         ))}
@@ -601,6 +1058,9 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
       {reviewJob && (
         <ReviewModal
           job={reviewJob}
+          reviewerRole="farmer"
+          reviewerId={userId}
+          targetId={reviewJob.selectedWorkerId}
           showIncentive
           onClose={() => setReviewJob(null)}
           onSubmit={() => {
@@ -622,6 +1082,15 @@ export default function JobListPage({ userId, myJobsMode, myApplicationsMode, on
           jobId={postApply.jobId}
           job={postApply.job}
           onClose={() => setPostApply(null)}
+        />
+      )}
+
+      {/* FILTER_V1: 카테고리 다중 선택 모달 */}
+      {showFilterModal && (
+        <FilterModal
+          selectedCategories={selectedCategories}
+          setSelectedCategories={setSelectedCategories}
+          onClose={() => setShowFilterModal(false)}
         />
       )}
     </div>

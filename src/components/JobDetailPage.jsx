@@ -155,8 +155,9 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
     <div className="min-h-screen bg-farm-bg pb-32">
       {/* 헤더 */}
       <header className="bg-white px-4 pt-safe pt-4 pb-4 border-b border-gray-100 sticky top-0 z-30 flex items-center gap-3">
-        <button onClick={onBack} className="p-1 text-gray-600">
-          <ArrowLeft size={24} />
+        <button onClick={onBack} className="flex items-center gap-1 text-gray-600 active:scale-90 transition-transform">
+          <ArrowLeft size={20} />
+          <span style={{ fontSize: 13, fontWeight: 700 }}>뒤로</span>
         </button>
         <h1 className="text-lg font-bold text-gray-800 flex-1 truncate">
           {emoji} {job.category}
@@ -521,7 +522,7 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
                 });
                 const data = await res.json();
                 if (data.ok) {
-                  setJob(prev => ({ ...prev, status: 'done', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }));
+                  setJob(prev => ({ ...prev, status: 'completed', paid: true, payAmount: data.payAmount, completedAt: data.completedAt }));
                   alert(`✅ 완료 처리됐어요!\n${data.payAmount ? `💰 정산: ${data.payAmount.toLocaleString()}원` : ''}`);
                 } else {
                   alert('⚠️ ' + (data.error || '완료 처리 실패'));
@@ -563,7 +564,7 @@ export default function JobDetailPage({ jobId, job: initialJob, onBack, source =
       )}
 
       {/* 완료 + 정산 완료 배지 */}
-      {job.status === 'done' && job.paid && (
+      {job.status === 'completed' && job.paid && (
         <div className="mx-4 mb-4 bg-green-50 border border-green-200 rounded-2xl px-4 py-3
                         flex items-center gap-3">
           <span className="text-2xl">💰</span>

@@ -1,6 +1,68 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Sparkles, Camera, Loader2, CheckCircle, Zap, MapPin, Navigation, Flame, Search } from 'lucide-react';
 import { createJob, smartAssist, getUserId, getUserName, trackClientEvent, sponsorJob, getUrgentPrice, createPayment, confirmPayment } from '../utils/api.js';
+import { logTestEvent, logMapRender, logApiFail, logCheckpoint } from '../utils/testLogger.js'; // REAL_USER_TEST
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// ── 전체화면 지도 컴포넌트 ────────────────────────────────────────
+// 핀 드래그 + 지도 클릭으로 위치 보정 → "이 위치로 확인" 버튼 닫기
+function FullScreenMap({ lat, lng, onConfirm, onLocationChange, addressLabel: initLabel }) {
+  const mapRef = useRef(null);
+  useEffect(() => {
+    if (!mapRef.current) return;
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    });
+    const map = L.map(mapRef.current, {
+      zoomControl: true, scrollWheelZoom: true,
+      dragging: true, attributionControl: false,
+    }).setView([lat, lng], 18); // GEO_ZOOM: 18 = 번지 단위 표시
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20 }).addTo(map);
+    const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+    // 영구 툴팁: 주소 라벨 상시 표시
+    if (initLabel) {
+      marker.bindTooltip(initLabel, { permanent: true, direction: 'top', offset: [0, -10] });
+    }
+    marker.on('dragend', () => {
+      const p = marker.getLatLng();
+      marker.bindTooltip('📍 주소 확인 중...', { permanent: true, direction: 'top', offset: [0, -10] });
+      onLocationChange(p.lat, p.lng);
+    });
+    map.on('click', (e) => {
+      marker.setLatLng(e.latlng);
+      marker.bindTooltip('📍 주소 확인 중...', { permanent: true, direction: 'top', offset: [0, -10] });
+      onLocationChange(e.latlng.lat, e.latlng.lng);
+    });
+    return () => { try { map.remove(); } catch (_) {} };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-white">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shrink-0">
+        <button onClick={onConfirm} className="p-1 text-gray-600 active:scale-95 transition-transform">
+          <ArrowLeft size={20} />
+        </button>
+        <div>
+          <p className="font-bold text-gray-800 text-sm">농지 위치 선택</p>
+          <p className="text-xs text-gray-500">핀 드래그 또는 지도 클릭으로 정확한 위치를 지정하세요</p>
+        </div>
+      </div>
+      <div ref={mapRef} style={{ flex: 1 }} />
+      <div className="px-4 py-3 bg-white border-t border-gray-100 shrink-0">
+        <button
+          onClick={onConfirm}
+          className="w-full py-3.5 bg-farm-green text-white font-black rounded-2xl text-base
+                     active:scale-95 transition-transform shadow-lg shadow-green-200"
+        >
+          ✔ 이 위치로 확인
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const CATEGORIES = [
   { name: '밭갈이',    emoji: '🚜' },
@@ -43,7 +105,27 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
   const [farmAddress, setFarmAddress] = useState('');
   // DESIGN_V2: 주소 → 좌표 변환 상태
   const [geocodeStatus, setGeocodeStatus] = useState('idle'); // idle | loading | ok | error
+  // GEO_PRECISION: 좌표 정확도 — full(읍·면·리 정확) | partial(시·군 추정, 핀 조정 필요)
+  const [geocodePrecision, setGeocodePrecision] = useState(null); // null | 'full' | 'partial'
+  // GEO_PIN_MOVED: partial 경고 후 사용자가 실제로 핀을 이동했는지 추적
+  const [pinMoved, setPinMoved] = useState(false);
+  // GEO_PIN_HINT: partial 시 지도 위 안내 오버레이 표시 여부 (2초 fade out)
+  const [showPinHint, setShowPinHint] = useState(false);
+  // LOCATION_CONFIRM: 지도에서 위치 확인 여부
+  const [confirmedLocation, setConfirmedLocation] = useState(false);
+  // ADDRESS_LABEL: 좌표 대신 사람이 읽는 주소 (reverse geocode 결과)
+  const [addressLabel, setAddressLabel] = useState('');
+  // FULLSCREEN_MAP: 전체화면 지도 토글
+  const [isMapFull, setIsMapFull] = useState(false);
+  const miniMapRef = useRef(null);   // div DOM ref
+  const miniMapObj = useRef(null);   // L.Map instance
+  const geocodeDebounceRef = useRef(null); // PHASE 2: debounce timer
   const [submitting,    setSubmitting]    = useState(false);
+  // GEO_QUALITY: 소프트 차단 — 경고 횟수 카운터 (0=미경고, ≥1=경고중)
+  // A/B: geo_warn_count 실험 — A그룹=1회, B그룹=2회 경고 후 통과
+  const [geoWarnPending, setGeoWarnPending] = useState(0);
+  // A/B 테스트: 서버에서 variant config 수령 (마운트 1회)
+  const [abConfig, setAbConfig] = useState(null);
   const [done,          setDone]          = useState(false);
   const [error,         setError]         = useState('');
   // PHASE SCALE: 유료 긴급 공고
@@ -95,27 +177,141 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     setImgPreviews(prev => prev.filter((_, i) => i !== idx));
   }
 
-  // DESIGN_V2: 주소 → 좌표 변환 (서버 /api/geocode 경유)
+  // REVERSE_GEOCODE: 좌표 → 사람이 읽는 주소 (드래그/클릭 후 호출)
+  const reverseGeocode = useCallback(async (lat, lng) => {
+    try {
+      const r = await fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`);
+      const d = await r.json();
+      if (d.ok) setAddressLabel(d.roadAddress || d.jibunAddress || '');
+    } catch (_) {}
+  }, []);
+
+  // LOCATION_FIX: 주소 → 좌표 변환 (서버 /api/geocode 경유)
+  // 농지 주소 좌표를 userLocation에 저장하지 않음 (작업자 위치 오염 방지)
   const handleGeocodeAddress = useCallback(async () => {
-    if (!farmAddress.trim()) return;
+    const trimmed = farmAddress.trim();
+    if (!trimmed) return;
+    // GEO_QUALITY: 짧은 주소(8자 미만) — 도시 단위, 정확도 낮음 → 차단
+    if (trimmed.length < 8) {
+      setGeocodeStatus('error');
+      try { trackClientEvent('geocode_short_address', { address: trimmed, len: trimmed.length }); } catch (_) {}
+      return;
+    }
     setGeocodeStatus('loading');
     try {
-      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(farmAddress.trim())}`);
+      const res  = await fetch(`/api/geocode?address=${encodeURIComponent(trimmed)}`);
       const data = await res.json();
       if (!res.ok || !data.lat) throw new Error('주소를 찾을 수 없어요');
+      // 농지 좌표 — gpsLat/gpsLng에 저장하되 userLocation(내 위치)에는 저장 안 함
       setGpsLat(data.lat);
       setGpsLng(data.lng);
-      setGeoStatus('ok');
+      setGpsStatus('ok');
       setGeocodeStatus('ok');
-      try {
-        localStorage.setItem('userLocation', JSON.stringify({ lat: data.lat, lon: data.lng }));
-      } catch (_) {}
-      try { trackClientEvent('geocode_success', { address: farmAddress.trim() }); } catch (_) {}
+      setConfirmedLocation(true); // AUTO_GEOCODE: 버튼 없이 자동 확인
+      // ADDRESS_LABEL: 도로명 우선, 지번 폴백, 없으면 입력 주소 그대로
+      setAddressLabel(data.roadAddress || data.jibunAddress || trimmed);
+      // GEO_PRECISION: 서버 반환 정확도 메타데이터 저장
+      const precision = data.precision ?? 'full';
+      setGeocodePrecision(precision);
+      // GEO_QUALITY: 주소 기반 좌표 품질 추적 (normalized/precision 포함)
+      try { trackClientEvent('geocode_success', { address: trimmed, lat: data.lat, lng: data.lng, addrLen: trimmed.length, normalized: data.normalized, precision }); } catch (_) {}
+      console.log(`[GEO_QUALITY] 주소="${trimmed}" → (${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}) addrLen=${trimmed.length} normalized=${data.normalized} precision=${precision}`);
+      logMapRender(data.lat, data.lng, precision); // REAL_USER_TEST STEP 12
     } catch (e) {
       setGeocodeStatus('error');
-      try { trackClientEvent('geocode_fail', { address: farmAddress.trim() }); } catch (_) {}
+      setGeocodePrecision(null);
+      // 미리 획득한 GPS 좌표도 지워서 잘못된 위치 사용 방지
+      setGpsLat(null);
+      setGpsLng(null);
+      try { trackClientEvent('geocode_fail', { address: trimmed }); } catch (_) {}
     }
   }, [farmAddress]);
+
+  // PHASE 2: farmAddress 변경 → 500ms debounce → 자동 geocode
+  useEffect(() => {
+    const trimmed = farmAddress.trim();
+    if (!trimmed || trimmed.length < 8) {
+      // 짧으면 상태 초기화
+      if (trimmed.length > 0 && trimmed.length < 8) setGeocodeStatus('error');
+      return;
+    }
+    clearTimeout(geocodeDebounceRef.current);
+    geocodeDebounceRef.current = setTimeout(() => {
+      handleGeocodeAddress();
+    }, 500);
+    return () => clearTimeout(geocodeDebounceRef.current);
+  }, [farmAddress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // LOCATION_CONFIRM: geocode 성공 시 미니맵 렌더링
+  useEffect(() => {
+    if (geocodeStatus !== 'ok' || gpsLat == null || gpsLng == null) return;
+    if (!miniMapRef.current) return;
+
+    // 기존 맵 인스턴스 제거 (주소 변경 후 재렌더링 시)
+    if (miniMapObj.current) {
+      miniMapObj.current.remove();
+      miniMapObj.current = null;
+    }
+
+    // Leaflet 기본 아이콘 경로 수정
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    });
+
+    // GEO_PRECISION: partial → zoom 11 (시·군 전체 보임, "이상함" 즉각 인지)
+    //                full   → zoom 18 (번지 단위 표시)
+    const zoomLevel = geocodePrecision === 'partial' ? 11 : 18;
+
+    const map = L.map(miniMapRef.current, {
+      zoomControl:        false,   // 미니맵 = 정적 프리뷰, 컨트롤 불필요
+      scrollWheelZoom:    false,
+      dragging:           false,   // 드래그는 전체화면에서만
+      touchZoom:          false,
+      doubleClickZoom:    false,
+      attributionControl: false,
+    }).setView([gpsLat, gpsLng], zoomLevel);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    // 미니맵 마커 — 위치 표시용(비대화형), 드래그는 FullScreenMap에서
+    const marker = L.marker([gpsLat, gpsLng], { draggable: false }).addTo(map);
+    // 영구 툴팁: addressLabel 상시 표시 (없으면 안내 문구)
+    const tooltipText = addressLabel
+      ? addressLabel
+      : geocodePrecision === 'partial'
+        ? '⚠️ 탭해서 정확한 위치로 조정하세요'
+        : '📍 탭해서 위치 미세 조정';
+    marker.bindTooltip(tooltipText, { permanent: true, direction: 'top', offset: [0, -10] });
+
+    miniMapObj.current = map;
+
+    // GEO_PIN_HINT: partial일 때 — 핀 흔들림(3회) + 안내 오버레이(2.2초)
+    let hintTimer = null;
+    if (geocodePrecision === 'partial') {
+      // 300ms 후 마커 DOM 접근 (Leaflet 렌더 완료 대기)
+      setTimeout(() => {
+        const el = marker.getElement();
+        if (el) el.style.animation = 'pinShake 0.45s ease-in-out 3';
+      }, 300);
+      // 안내 오버레이 표시 → 2.2초 후 fade out
+      setShowPinHint(true);
+      hintTimer = setTimeout(() => setShowPinHint(false), 2200);
+    }
+
+    return () => {
+      if (hintTimer) clearTimeout(hintTimer);
+      if (miniMapObj.current) {
+        miniMapObj.current.remove();
+        miniMapObj.current = null;
+      }
+    };
+  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geocodeStatus, gpsLat, gpsLng, addressLabel]); // addressLabel 추가 — reverseGeocode 완료 후 툴팁 갱신
 
   // alias for geocodeStatus so the rest of the code doesn't break
   // (gpsStatus already exists; we expose geocodeStatus separately)
@@ -147,6 +343,20 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
 
   useEffect(() => { acquireGps(); }, [acquireGps]);
 
+  // A/B CONFIG: 마운트 시 1회 호출 — 서버가 variant 결정, 클라이언트는 수동 반영
+  useEffect(() => {
+    const uid = getUserId();
+    fetch(`/api/ab/config?userId=${encodeURIComponent(uid)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok && d.config) {
+          setAbConfig(d.config);
+          console.log('[AB_CONFIG]', d.config.group, d.config);
+        }
+      })
+      .catch(() => {}); // fail-safe: 조회 실패 시 기본값(A그룹) 유지
+  }, []);
+
   // PHASE SCALE+: A/B 가격 정보 조회
   useEffect(() => {
     getUrgentPrice()
@@ -172,36 +382,95 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
     if (!category) return setError('작업 종류를 선택해주세요.');
     if (!location) return setError('지역을 입력해주세요.');
     if (!date)     return setError('날짜를 선택해주세요.');
-    // PHASE MAP_FIX: GPS 없으면 농지 주소라도 필요
-    if (gpsLat === null && !farmAddress.trim()) {
-      setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 아래 농지 주소를 입력해주세요.');
+    // LOCATION_CONFIRM: 위치 검증
+    if (farmAddress.trim()) {
+      // 농지 주소 입력됐으면 지오코딩 + 지도 확인 필수
+      if (geocodeStatus !== 'ok') {
+        setError(geocodeStatus === 'error'
+          ? '📍 농지 주소를 찾을 수 없어요. "주소를 다시 확인해주세요. (읍·면·리까지 입력)"'
+          : '📍 농지 주소 입력 후 "주소를 입력하면 자동으로 위치를 찾아요."');
+        return;
+      }
+      // AUTO_GEOCODE: confirmedLocation은 자동 설정 — 별도 버튼 불필요
+    } else if (gpsLat === null) {
+      setError('📍 위치를 확인해주세요. "내 위치 사용" 버튼을 누르거나, 농지 주소를 입력해주세요.');
       return;
+    } else {
+      // GPS 있지만 농지 주소 없음 — A/B 기반 소프트/하드 차단
+      const abGroup      = abConfig?.group      ?? 'A';
+      const warnThreshold = abConfig?.geo_warn_count ?? 1;   // A=1회, B=2회
+      const warnMsg      = abConfig?.geo_message
+        ? `📍 ${abConfig.geo_message}\nGPS 좌표로만 등록하면 거리 계산이 부정확할 수 있습니다.\n👉 위쪽 "농지 위치 입력" 칸에 읍·면·리까지 입력해보세요.\n그래도 GPS로 등록하려면 아래 버튼을 한 번 더 누르세요.`
+        : '📍 농지 주소를 입력하면 작업자를 더 정확하게 매칭할 수 있어요.\nGPS 좌표로만 등록하면 거리 계산이 부정확할 수 있습니다.\n👉 위쪽 "농지 위치 입력" 칸에 읍·면·리까지 입력해보세요.\n그래도 GPS로 등록하려면 아래 버튼을 한 번 더 누르세요.';
+
+      // 조건부 하드차단: farmAddrRate < 30% 도달 시 서버가 hardBlock=true 반환
+      if (abConfig?.hardBlock) {
+        setError('📍 현재는 농지 주소 없이 등록할 수 없어요. 읍·면·리까지 입력하면 자동으로 위치를 찾아요.');
+        trackClientEvent('geo_hard_block', { hadGps: true, group: abGroup });
+        return;
+      }
+
+      // 소프트 차단: warnThreshold 횟수 경고 후 통과 허용
+      if (geoWarnPending < warnThreshold) {
+        setGeoWarnPending(c => c + 1);
+        setError(warnMsg);
+        trackClientEvent('geo_soft_block', { hadGps: true, farmAddrLen: 0, warnCount: geoWarnPending + 1, group: abGroup });
+        return;
+      }
+      // 경고 횟수 소진 → GPS 진행 허용
+      setGeoWarnPending(0);
+      trackClientEvent('geo_soft_block_bypass', { hadGps: true, group: abGroup });
+    }
+
+    // FIX: lat/lng 강제 숫자 변환 (문자열 방지)
+    const resolvedLat = gpsLat != null ? Number(gpsLat) : null;
+    const resolvedLng = gpsLng != null ? Number(gpsLng) : null;
+
+    // FIX: 좌표 유효성 최종 방어
+    if (farmAddress.trim() && (!resolvedLat || !resolvedLng || isNaN(resolvedLat) || isNaN(resolvedLng))) {
+      setError('📍 위치 좌표가 올바르지 않아요. 주소를 다시 입력해주세요.');
+      return;
+    }
+
+    const payload = {
+      requesterId:   getUserId(),
+      requesterName: getUserName(),
+      category,
+      locationText:  location,
+      lat: resolvedLat,
+      lng: resolvedLng,
+      date,
+      timeSlot:    simpleMode ? '시간 협의' : timeSlot,
+      areaSize:    parseInt(areaSize) || null,
+      areaUnit,
+      pay:         pay.trim() || null,
+      note,
+      farmImages:  farmImages.length > 0 ? farmImages : undefined,
+      farmAddress: farmAddress.trim() || undefined,
+      isUrgentPaid: isUrgentPaid || undefined,
+    };
+
+    // STEP 1: 요청 payload 디버그 로그
+    console.log('[JOB_SUBMIT]', {
+      ...payload,
+      farmImages: payload.farmImages ? `[${payload.farmImages.length}장]` : undefined,
+    });
+    // GEO_QUALITY: 최종 제출 시점 정확도 기록
+    if (farmAddress.trim()) {
+      console.log(`[GEO_QUALITY] submit precision=${geocodePrecision} normalized=${geocodePrecision !== null} pinMoved=${pinMoved} addr="${farmAddress.trim()}"`);
+      try { trackClientEvent('geo_quality_submit', { precision: geocodePrecision, pinMoved, addrLen: farmAddress.trim().length }); } catch (_) {}
     }
 
     setError('');
     setSubmitting(true);
     try {
-      const result = await createJob({
-        requesterId:   getUserId(),
-        requesterName: getUserName(),
-        category,
-        locationText:  location,
-        // GPS 실좌표 (있을 때만)
-        lat: gpsLat,
-        lng: gpsLng,
-        date,
-        timeSlot:  simpleMode ? '시간 협의' : timeSlot,
-        areaSize:  parseInt(areaSize) || null,
-        areaUnit,
-        pay:       pay.trim() || null,
-        note,
-        // PHASE 26: 다중 이미지 (base64 배열)
-        farmImages: farmImages.length > 0 ? farmImages : undefined,
-        // PHASE MAP_FIX: GPS 없을 때 서버 측 지오코딩 소스
-        farmAddress: farmAddress.trim() || undefined,
-        // PHASE SCALE: 유료 긴급 공고
-        isUrgentPaid: isUrgentPaid || undefined,
-      });
+      const result = await createJob(payload);
+
+      // STEP 4: API 응답 로그
+      console.log('[JOB_RESPONSE]', result);
+      // REAL_USER_TEST: 농민 공고 생성 완료
+      logTestEvent('farmer_create_job', { jobId: result?.job?.id, category });
+      logCheckpoint('create_job_done', { jobId: result?.job?.id });
 
       if (simpleMode) {
         try { trackClientEvent('quick_job_created', { category }); } catch (_) {}
@@ -255,6 +524,9 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
       setDone(true);
       setTimeout(() => onSuccess?.(), 1600);
     } catch (e) {
+      // STEP 4: 에러 상세 로그
+      console.error('[JOB_ERROR]', e.message, e);
+      logApiFail('/api/jobs', 0, 'create_job'); // REAL_USER_TEST
       setError(e.message);
     } finally {
       setSubmitting(false);
@@ -379,9 +651,11 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
           <div className="mt-2 flex items-center gap-2">
             {gpsStatus === 'ok' && (
               <div className="flex items-center gap-1.5 text-xs font-semibold text-green-700
-                              bg-green-50 border border-green-200 rounded-full px-3 py-1.5 flex-1">
-                <Navigation size={11} className="text-green-600" />
-                <span>위치 확인됨 ({gpsLat?.toFixed(4)}, {gpsLng?.toFixed(4)})</span>
+                              bg-green-50 border border-green-200 rounded-full px-3 py-1.5 flex-1 min-w-0">
+                <Navigation size={11} className="text-green-600 shrink-0" />
+                <span className="truncate">
+                  {addressLabel || '위치 확인됨'}
+                </span>
               </div>
             )}
             {gpsStatus === 'acquiring' && (
@@ -416,56 +690,128 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
               </button>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-1.5">
-            📍 위치 좌표가 있어야 지도에 정확히 표시돼요
-          </p>
 
-          {/* PHASE MAP_FIX / DESIGN_V2: GPS 미확인 시 농지 주소 직접 입력 + 위치 찾기 */}
-          {gpsStatus !== 'ok' && (
-            <div className="mt-3">
-              <p className="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
-                <MapPin size={11} className="text-farm-green" />
-                농지 주소 입력 <span className="font-normal text-gray-400">(GPS 대신 사용)</span>
-              </p>
-              <div className="flex gap-2">
-                <input
-                  className="input text-sm flex-1"
-                  placeholder="예: 경기 화성시 서신면 홍법리 123"
-                  value={farmAddress}
-                  onChange={e => { setFarmAddress(e.target.value); setGeocodeStatus('idle'); }}
-                  onKeyDown={e => e.key === 'Enter' && handleGeocodeAddress()}
-                />
-                <button
-                  type="button"
-                  onClick={handleGeocodeAddress}
-                  disabled={geocodeStatus === 'loading' || !farmAddress.trim()}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-2
-                             bg-farm-green text-white text-xs font-bold rounded-xl
-                             disabled:opacity-50 active:scale-95 transition-transform"
-                >
-                  {geocodeStatus === 'loading'
-                    ? <Loader2 size={13} className="animate-spin" />
-                    : <Search size={13} />}
-                  위치 찾기
-                </button>
-              </div>
-              {geocodeStatus === 'ok' && (
-                <p className="text-xs text-green-600 font-semibold mt-1 flex items-center gap-1">
-                  <CheckCircle size={11} /> 위치 확인됨 — 지도에 정확히 표시됩니다
-                </p>
-              )}
-              {geocodeStatus === 'error' && (
-                <p className="text-xs text-red-500 font-semibold mt-1">
-                  ⚠️ 주소를 찾을 수 없어요. 더 자세히 입력해주세요.
-                </p>
-              )}
-              {geocodeStatus === 'idle' && (
-                <p className="text-xs text-gray-400 mt-1">
-                  주소 입력 후 "위치 찾기"를 눌러 지도에 표시하세요
-                </p>
-              )}
+          {/* AUTO_GEOCODE: 농지 주소 입력 — 버튼·설명 없이 입력 즉시 지도 표시 */}
+          <div className="mt-3">
+            {/* 입력 + 인라인 상태 아이콘 */}
+            <div className="relative">
+              <input
+                className="input text-sm pr-9"
+                placeholder="농지 주소 입력 (예: 경기 화성시 서신면)"
+                value={farmAddress}
+                onChange={e => {
+                  setFarmAddress(e.target.value);
+                  setGeocodeStatus('idle');
+                  setGeocodePrecision(null);
+                  setPinMoved(false);
+                  setConfirmedLocation(false);
+                  setGpsLat(null);
+                  setGpsLng(null);
+                  setAddressLabel('');
+                }}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {geocodeStatus === 'loading' && <Loader2 size={15} className="animate-spin text-amber-400" />}
+                {geocodeStatus === 'ok'      && <CheckCircle size={15} className="text-green-500" />}
+                {geocodeStatus === 'error'   && <MapPin size={15} className="text-red-400" />}
+              </span>
             </div>
-          )}
+
+            {/* 상태 텍스트 — 3줄 전부 */}
+            {geocodeStatus === 'loading' && (
+              <p className="text-xs text-gray-400 mt-1.5">위치 확인 중...</p>
+            )}
+            {geocodeStatus === 'ok' && gpsLat != null && (
+              <div className="mt-1.5">
+                {pinMoved ? (
+                  /* ── 핀 이동 후: "최종 위치 확정됨" 강조 박스 ── */
+                  <div style={{
+                    background: '#f0fdf4',
+                    border: '1.5px solid #86efac',
+                    borderRadius: 10,
+                    padding: '8px 12px',
+                  }}>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: '#15803d', display: 'flex', alignItems: 'center', gap: 5, marginBottom: addressLabel ? 4 : 0 }}>
+                      <CheckCircle size={13} />
+                      ✔ 위치 확정됨
+                    </p>
+                    {addressLabel && (
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+                        📍 최종 위치: {addressLabel}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  /* ── 자동 지오코드: "위치 확인됨" + 조정 유도 ── */
+                  <>
+                    <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                      <CheckCircle size={11} />
+                      위치 확인됨
+                    </p>
+                    {addressLabel && (
+                      <p className="text-xs text-gray-700 mt-0.5 font-medium">
+                        📍 {addressLabel}
+                      </p>
+                    )}
+                    {geocodePrecision === 'partial' ? (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        · 지도를 탭해 실제 농지 위치로 정확히 조정해주세요
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        · 지도를 탭해 위치를 미세 조정할 수 있어요
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            {geocodeStatus === 'error' && (
+              <p className="text-xs text-red-500 mt-1.5">주소를 다시 입력해주세요 (시·군·읍·면·리 형식)</p>
+            )}
+
+            {/* 미니맵 — geocode 성공 시만 표시 (탭 = 전체화면 확대) */}
+            {geocodeStatus === 'ok' && (
+              <div
+                className="relative mt-2.5 active:opacity-80 transition-opacity"
+                onClick={() => setIsMapFull(true)}
+                style={{ cursor: 'pointer' }}
+              >
+                {/* 지도 타일 (pointerEvents:none → 터치가 부모 onClick으로 전달) */}
+                <div
+                  ref={miniMapRef}
+                  style={{
+                    width: '100%',
+                    height: geocodePrecision === 'partial' ? 210 : 180,
+                    borderRadius: 12,
+                    border: pinMoved ? '2.5px solid #22c55e' : '2px solid #d1d5db',
+                    overflow: 'hidden',
+                    pointerEvents: 'none',  // 정적 프리뷰, 상호작용 차단
+                  }}
+                />
+                {/* "탭하여 위치 조정" 힌트 오버레이 */}
+                <div style={{
+                  position: 'absolute', bottom: 10, left: 0, right: 0,
+                  display: 'flex', justifyContent: 'center',
+                  pointerEvents: 'none',
+                }}>
+                  <span style={{
+                    background: pinMoved ? 'rgba(21,128,61,0.80)' : 'rgba(0,0,0,0.52)',
+                    color: '#fff',
+                    borderRadius: 9999,
+                    padding: '4px 14px',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    letterSpacing: 0.2,
+                  }}>
+                    <Search size={10} />
+                    {pinMoved ? '✔ 위치 확정됨 — 탭하여 재조정' : '📍 탭하여 위치 조정'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* 3. 날짜 (간편 모드에서도 항상 표시) */}
@@ -649,7 +995,12 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
         </section>
 
         {error && (
-          <div className="bg-red-50 text-red-600 rounded-xl px-4 py-3 text-sm font-semibold">
+          <div className={`rounded-xl px-4 py-3 text-sm font-semibold whitespace-pre-line
+                          ${geoWarnPending > 0
+                            ? abConfig?.geo_warn_color === 'red'
+                              ? 'bg-red-50 text-red-700 border border-red-300'
+                              : 'bg-amber-50 text-amber-800 border border-amber-300'
+                            : 'bg-red-50 text-red-600'}`}>
             {error}
           </div>
         )}
@@ -660,17 +1011,24 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
                       px-4 pt-3 pb-safe pb-4 z-30">
         <button
           onClick={handleSubmit}
+          onTouchStart={() => {}}
           disabled={submitting}
           className={`btn-full text-lg py-4 font-black rounded-2xl flex items-center justify-center gap-2
                       ${isUrgentPaid
                         ? 'bg-red-500 text-white active:scale-95 transition-transform shadow-lg'
-                        : 'btn-primary'}`}
+                        : geoWarnPending > 0
+                          ? abConfig?.geo_warn_color === 'red'
+                            ? 'bg-red-500 text-white active:scale-95 transition-transform shadow-lg'
+                            : 'bg-amber-500 text-white active:scale-95 transition-transform shadow-md shadow-amber-200'
+                          : 'btn-primary'}`}
         >
           {submitting
             ? <><Loader2 size={18} className="animate-spin" /> 등록 중...</>
-            : isUrgentPaid
-              ? <><Flame size={18} /> 긴급 공고 등록</>
-              : simpleMode ? '⚡ 바로 등록' : '요청하기'
+            : geoWarnPending > 0
+              ? '📍 그래도 GPS로 등록하기'
+              : isUrgentPaid
+                ? <><Flame size={18} /> 긴급 공고 등록</>
+                : simpleMode ? '⚡ 바로 등록' : '요청하기'
           }
         </button>
         {simpleMode && !isUrgentPaid && (
@@ -684,6 +1042,23 @@ export default function JobRequestPage({ onBack, onSuccess, prefillJob }) {
           </p>
         )}
       </div>
+
+      {/* 전체화면 지도 오버레이 */}
+      {isMapFull && gpsLat != null && (
+        <FullScreenMap
+          lat={gpsLat}
+          lng={gpsLng}
+          addressLabel={addressLabel}
+          onConfirm={() => setIsMapFull(false)}
+          onLocationChange={(lat, lng) => {
+            setGpsLat(lat);
+            setGpsLng(lng);
+            setConfirmedLocation(true);
+            setPinMoved(true);
+            reverseGeocode(lat, lng);
+          }}
+        />
+      )}
     </div>
   );
 }
