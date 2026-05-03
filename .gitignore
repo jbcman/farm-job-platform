@@ -109,3 +109,7 @@ models/
 BACKUP_*
 *_BACKUP_*
 backup*
+
+server/*.db
+server/*.db-*
+server/*.sqlite
