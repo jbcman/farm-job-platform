@@ -1029,6 +1029,13 @@ router.post('/:id/contact-apply', async (req, res) => {
     const workerId = req.body?.workerId || 'anonymous';
     const now      = new Date().toISOString();
 
+    // 비로그인(anonymous) → application/job 변경 없이 즉시 반환
+    // 전화앱 열리는 건 클라이언트에서 처리, 서버 데이터 오염 방지
+    if (!workerId || workerId === 'anonymous') {
+        console.log(`[CONTACT_APPLY_ANON] jobId=${jobId} — skip (no userId)`);
+        return res.json({ ok: true, anonymous: true });
+    }
+
     const job = normalizeJob(await db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId));
     if (!job) return res.status(404).json({ ok: false, error: '작업을 찾을 수 없어요.' });
 
@@ -1143,7 +1150,13 @@ router.get('/:id/applicants', async (req, res) => {
         "SELECT * FROM applications WHERE jobRequestId = ? AND status != 'cancelled' ORDER BY createdAt ASC"
     ).all(job.id);
 
-    const raw = await Promise.all(apps.map(async a => {
+    // anonymous workerId 필터링 (contact-apply 비로그인 레거시 레코드)
+    const validApps = apps.filter(a => a.workerId && a.workerId !== 'anonymous');
+    if (validApps.length < apps.length) {
+        console.warn(`[APPLICANTS] jobId=${job.id} anonymous 레코드 ${apps.length - validApps.length}건 제외`);
+    }
+
+    const raw = await Promise.all(validApps.map(async a => {
         let workerRow = await db.prepare('SELECT * FROM workers WHERE id = ?').get(a.workerId)
                      || await db.prepare('SELECT * FROM workers WHERE userId = ?').get(a.workerId);
         if (!workerRow) {
